@@ -224,6 +224,8 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
         if (dx > 85 && Math.abs(dy) < 70) setScreenMode('home');
       }}
     >
+      <input ref={importRef} type="file" accept=".json,.yaml,.yml,.txt,application/json,text/yaml" className="hidden" onChange={e => importBook(e.target.files?.[0])} />
+
       <div className="absolute inset-0 opacity-15 bg-paper-noise pointer-events-none" />
 
       {screenMode === 'home' && <div className="absolute inset-0 z-30 overflow-y-auto px-5 pt-12 pb-8" style={{ background: 'var(--paper)' }}>
@@ -463,7 +465,7 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
             >
               Tavern
             </button>
-            <input ref={importRef} type="file" accept=".json,.yaml,.yml" className="hidden" onChange={e => importBook(e.target.files?.[0])} />
+
           </div>
         </div>}
 
