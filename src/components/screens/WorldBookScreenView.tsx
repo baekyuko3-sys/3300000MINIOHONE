@@ -49,6 +49,7 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
   const [selectedBookId, setSelectedBookId] = useState(books[0]?.id || '');
   const [selectedEntryId, setSelectedEntryId] = useState(books[0]?.entries[0]?.id || '');
   const [search, setSearch] = useState('');
+  const [bookSearch, setBookSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [notice, setNotice] = useState('');
   const [manageBooks, setManageBooks] = useState(false);
@@ -306,50 +307,59 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
               <button onClick={() => setManageBooks(value => !value)} className={`h-7 px-2.5 rounded-full border text-[8px] inline-flex items-center gap-1 ${manageBooks ? 'bg-[#292724] text-white border-[#292724]' : 'bg-white/65 text-[#655f59] border-[rgba(40,36,31,.12)]'}`}><Settings2 className="w-3 h-3" />{manageBooks ? '完成管理' : '管理'}</button>
             </div>}
           </div>
-          <div className="space-y-2">
-            {localBooks.map(item => (
-              <div key={item.id} className={`w-full rounded-xl border p-3 transition-all ${item.id === book?.id ? 'bg-[#292724] text-white border-[#292724]' : 'bg-white/60 text-[#4f4943] border-[rgba(40,36,31,.12)]'}`}>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => { setSelectedBookId(item.id); setSelectedEntryId(item.entries[0]?.id || ''); setManageBooks(false); setExpandedEntryId(null); }}
-                    className="min-w-0 flex-1 text-left"
-                  >
-                    <div className="text-[12px] font-serif font-bold break-words">{item.name || '未命名世界书'}</div>
-                    <div className={`mt-1 text-[9px] ${item.id === book?.id ? 'text-white/65' : 'text-[#918980]'}`}>
-                      {item.entries.length} 条设定 · {item.enabled ? '启用' : '停用'}
-                      {item.sourceType === 'character-card' ? ` · 来自角色卡：${item.sourceCharacterName || '角色'}` : ''}
-                    </div>
-                  </button>
-                  <BookOpen className={`w-4 h-4 shrink-0 ${item.id === book?.id ? 'text-white/65' : 'text-[#8b847d]'}`} />
-                </div>
-                {manageBooks && (
-                  <div className="mt-3 pt-2 border-t border-[rgba(40,36,31,.12)] flex flex-wrap items-center gap-3">
-                    <button onClick={() => setBooks(prev => prev.map(bookItem => bookItem.id === item.id ? { ...bookItem, enabled: !bookItem.enabled, updatedAt: new Date().toISOString() } : bookItem))} className="text-[10px]">
-                      {item.enabled ? '停用' : '启用'}
-                    </button>
-                    {screenMode !== 'library' && <button onClick={() => {
-                      if (screenMode === 'online-global') setOnlineGlobalIds(prev => prev.filter(id => id !== item.id));
-                      else setOfflineGlobalIds(prev => prev.filter(id => id !== item.id));
-                      if (selectedBookId === item.id) setSelectedBookId('');
-                      setManageBooks(false);
-                      showNotice('已移出当前全局，不会删除世界书');
-                    }} className="text-[10px] text-[#a37d45]">移出全局</button>}
-                    {screenMode === 'library' && <button onClick={() => {
-                      setOnlineGlobalIds(prev => Array.from(new Set([...prev, item.id])));
-                      showNotice('已加入线上全局');
-                    }} className="text-[10px]">加入线上</button>}
-                    {screenMode === 'library' && <button onClick={() => {
-                      setOfflineGlobalIds(prev => Array.from(new Set([...prev, item.id])));
-                      showNotice('已加入线下全局');
-                    }} className="text-[10px]">加入线下</button>}
-                    <button onClick={() => removeBook(item.id)} className="text-[10px] text-[#9b625b]">删除</button>
-                  </div>
-                )}
+          <div className="rounded-2xl border border-[rgba(40,36,31,.1)] bg-white/45 p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                value={bookSearch}
+                onChange={e => setBookSearch(e.target.value)}
+                placeholder="搜索世界书名称…"
+                aria-label="搜索世界书"
+                className="min-w-0 flex-1 bg-white/75 border border-[rgba(40,36,31,.12)] rounded-xl px-3 py-2 text-[11px] outline-none text-[#444]"
+              />
+              <span className="shrink-0 text-[9px] text-[#8b847d]">{localBooks.filter(item => item.name.toLowerCase().includes(bookSearch.trim().toLowerCase())).length} 本</span>
+            </div>
+            <select
+              aria-label="选择世界书"
+              value={book?.id || ''}
+              onChange={e => {
+                const nextBook = localBooks.find(item => item.id === e.target.value);
+                if (!nextBook) return;
+                setSelectedBookId(nextBook.id);
+                setSelectedEntryId(nextBook.entries[0]?.id || '');
+                setExpandedEntryId(null);
+                setAdvancedOpen(false);
+                setManageBooks(false);
+              }}
+              className="w-full bg-white border border-[rgba(40,36,31,.12)] rounded-xl px-3 py-3 text-[12px] text-[#302d29] outline-none"
+            >
+              {localBooks.filter(item => item.name.toLowerCase().includes(bookSearch.trim().toLowerCase())).map(item => (
+                <option key={item.id} value={item.id}>{item.name} · {item.entries.length} 条</option>
+              ))}
+              {localBooks.filter(item => item.name.toLowerCase().includes(bookSearch.trim().toLowerCase())).length === 0 && <option value="">没有匹配的世界书</option>}
+            </select>
+            {book && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[rgba(40,36,31,.08)] pt-2 text-[10px] text-[#655f59]">
+                <span>{book.entries.length} 条目 · {book.enabled ? '已启用' : '已停用'}</span>
+                <button onClick={() => setManageBooks(value => !value)} className="text-[#655f59]">{manageBooks ? '收起管理' : '管理这本'}</button>
+                {manageBooks && <>
+                  <button onClick={() => setBooks(prev => prev.map(item => item.id === book.id ? { ...item, enabled: !item.enabled, updatedAt: new Date().toISOString() } : item))}>{book.enabled ? '停用世界书' : '启用世界书'}</button>
+                  {screenMode === 'library' && <>
+                    <button onClick={() => { setOnlineGlobalIds(prev => Array.from(new Set([...prev, book.id]))); showNotice('已加入线上全局'); }}>加入线上</button>
+                    <button onClick={() => { setOfflineGlobalIds(prev => Array.from(new Set([...prev, book.id]))); showNotice('已加入线下全局'); }}>加入线下</button>
+                  </>}
+                  {(screenMode === 'online-global' || screenMode === 'offline-global') && <button onClick={() => {
+                    if (screenMode === 'online-global') setOnlineGlobalIds(prev => prev.filter(id => id !== book.id));
+                    else setOfflineGlobalIds(prev => prev.filter(id => id !== book.id));
+                    setSelectedBookId('');
+                    showNotice('已移出当前全局，不会删除世界书');
+                  }}>移出当前全局</button>}
+                  <button onClick={() => removeBook(book.id)} className="text-[#9b625b]">删除世界书</button>
+                </>}
               </div>
-            ))}
+            )}
             {localBooks.length === 0 && (
-              <div className="w-full py-8 text-center rounded-2xl border border-dashed border-[rgba(40,36,31,.18)] text-[10px] text-[#8b847d]">
-                {screenMode === 'online-global' ? '还没有加入线上全局的世界书。可以新建一本，或导入现有世界书。' : screenMode === 'offline-global' ? '还没有加入线下全局的世界书。可以新建一本，或导入现有世界书。' : screenMode === 'character-books' ? '还没有角色卡专属世界书。导入包含世界书的角色卡后，会显示在这里。' : '还没有世界书 · 可以从角色卡自动导入，或右上角 ＋ 新建'}
+              <div className="py-4 text-center text-[10px] text-[#8b847d]">
+                {screenMode === 'online-global' ? '还没有加入线上全局的世界书。' : screenMode === 'offline-global' ? '还没有加入线下全局的世界书。' : screenMode === 'character-books' ? '还没有角色卡专属世界书。' : '资料库还没有世界书。'}
                 <div className="mt-3 flex justify-center gap-2"><button onClick={addBook} className="px-3 py-2 rounded-full bg-[#292724] text-white text-[10px]">新建世界书</button><button onClick={() => importRef.current?.click()} className="px-3 py-2 rounded-full border border-[rgba(40,36,31,.15)] text-[10px]">导入世界书</button></div>
               </div>
             )}
