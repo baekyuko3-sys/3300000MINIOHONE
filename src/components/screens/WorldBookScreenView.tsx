@@ -48,6 +48,7 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
   const [selectedBookId, setSelectedBookId] = useState(books[0]?.id || '');
   const [selectedEntryId, setSelectedEntryId] = useState(books[0]?.entries[0]?.id || '');
   const [search, setSearch] = useState('');
+  const [bookSearch, setBookSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [notice, setNotice] = useState('');
   const [manageBooks, setManageBooks] = useState(false);
@@ -64,6 +65,10 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
   const offlineGlobals = books.filter(item => offlineGlobalIds.includes(item.id));
   const scopedBooks = screenMode === 'online-global' ? onlineGlobals : screenMode === 'offline-global' ? offlineGlobals : books;
   const book = scopedBooks.find(item => item.id === selectedBookId) || scopedBooks[0] || null;
+  const filteredBookList = scopedBooks.filter(item => {
+    const query = bookSearch.trim().toLowerCase();
+    return !query || item.name.toLowerCase().includes(query) || (item.description || '').toLowerCase().includes(query) || item.entries.some(entry => entry.name.toLowerCase().includes(query) || entry.keywords.some(keyword => keyword.toLowerCase().includes(query)));
+  });
   const isOnlineGlobal = !!book && onlineGlobalIds.includes(book.id);
   const isOfflineGlobal = !!book && offlineGlobalIds.includes(book.id);
   const toggleGlobalScope = (scope: 'online-chat' | 'offline-story') => {
@@ -103,7 +108,7 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
 
   const enabledCount = book?.entries.filter(entry => entry.enabled).length || 0;
   const globalIds = new Set([...onlineGlobalIds, ...offlineGlobalIds]);
-  const localBooks = screenMode === 'online-global' ? onlineGlobals : screenMode === 'offline-global' ? offlineGlobals : books.filter(item => !globalIds.has(item.id));
+  const localBooks = screenMode === 'library' ? books.filter(item => !globalIds.has(item.id)) : filteredBookList;
 
   const matchingEntries = useMemo(() => {
     if (!book) return [];
@@ -152,6 +157,8 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
       updatedAt: new Date().toISOString(),
     };
     setBooks(prev => [next, ...prev]);
+    if (screenMode === 'online-global') setOnlineGlobalIds(prev => Array.from(new Set([...prev, id])));
+    if (screenMode === 'offline-global') setOfflineGlobalIds(prev => Array.from(new Set([...prev, id])));
     setSelectedBookId(id);
     setSelectedEntryId('');
     setExpandedEntryId(null);
@@ -211,20 +218,6 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
     }
   };
 
-  if (screenMode !== 'library' && scopedBooks.length === 0) {
-    const title = screenMode === 'online-global' ? '线上全局世界书' : '线下全局世界书';
-    return <div className="relative w-full h-full min-w-0 flex flex-col overflow-hidden" style={{ background: 'var(--paper)', color: 'var(--ink)' }}>
-      <div className="absolute inset-0 opacity-15 bg-paper-noise pointer-events-none" />
-      <header className="relative z-10 px-5 pt-12 pb-3.5 border-b border-[rgba(40,36,31,.12)] bg-[color-mix(in_srgb,var(--paper)_92%,white_8%)] backdrop-blur-xl flex items-center justify-between">
-        <div className="flex items-center gap-3"><button onClick={() => setScreenMode('library')} className="w-8 h-8 rounded-full bg-white/40 border border-white/60 grid place-items-center text-xs text-[#242323]"><ArrowLeft className="w-4 h-4" /></button><div><div className="text-[8px] font-mono tracking-[2px] text-[#817a72] uppercase">LOREBOOK · GLOBAL</div><h2 className="font-serif font-bold text-base tracking-tight text-[#242323]">{title}</h2></div></div>
-        <button onClick={() => importRef.current?.click()} className="w-8 h-8 rounded-full bg-[#292724] text-white grid place-items-center"><Plus className="w-3.5 h-3.5" /></button>
-        <input ref={importRef} type="file" accept=".json,.yaml,.yml" className="hidden" onChange={e => importBook(e.target.files?.[0])} />
-      </header>
-      <div className="relative z-10 flex-1 min-h-0 flex flex-col items-center justify-center px-8 text-center"><div className="w-16 h-16 rounded-3xl border border-[rgba(40,36,31,.12)] bg-white/45 grid place-items-center"><BookOpen className="w-7 h-7 text-[#8b847d]" /></div><h3 className="mt-5 font-serif text-base font-bold text-[#302d29]">还没有世界书</h3><p className="mt-2 max-w-[250px] text-[11px] leading-relaxed text-[#8b847d]">导入后会自动加入{screenMode === 'online-global' ? '线上聊天' : '线下剧情'}全局，并默认启用。</p><button onClick={() => importRef.current?.click()} className="mt-5 inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#292724] text-white text-[10px]"><Plus className="w-3 h-3" />导入世界书</button></div>
-      {notice && <div className="absolute z-50 left-1/2 -translate-x-1/2 bottom-16 bg-[#292724] text-white px-3.5 py-2 rounded-full text-[10px]">{notice}</div>}
-    </div>;
-  }
-
   return (
     <div className="relative w-full h-full min-w-0 flex flex-col overflow-hidden" style={{ background: 'var(--paper)', color: 'var(--ink)' }}>
       <div className="absolute inset-0 opacity-15 bg-paper-noise pointer-events-none" />
@@ -242,9 +235,10 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
             <h2 className="font-serif font-bold text-base tracking-tight text-[#242323]">{screenMode === 'online-global' ? '线上全局世界书' : screenMode === 'offline-global' ? '线下全局世界书' : '世界书'}</h2>
           </div>
         </div>
-        <button onClick={() => screenMode === 'library' ? addBook() : importRef.current?.click()} className="w-8 h-8 rounded-full bg-[#292724] text-white grid place-items-center">
-          <Plus className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={addBook} className="w-8 h-8 rounded-full bg-[#292724] text-white grid place-items-center" aria-label="新建世界书" title="新建世界书"><Plus className="w-3.5 h-3.5" /></button>
+          <button onClick={() => importRef.current?.click()} className="w-8 h-8 rounded-full bg-white/60 border border-[rgba(40,36,31,.12)] text-[#514b45] grid place-items-center" aria-label="导入世界书" title="导入世界书"><BookOpen className="w-3.5 h-3.5" /></button>
+        </div>
       </header>
 
       <div className="relative z-10 flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
@@ -254,7 +248,7 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
               <div className="text-[8px] tracking-[1.8px] font-mono text-[#8b847d]">WORLD BOOKS</div>
               <div className="mt-1 text-sm font-serif font-bold text-[#302d29] truncate">{screenMode === 'online-global' ? '线上全局世界书' : screenMode === 'offline-global' ? '线下全局世界书' : '我的世界书'}</div>
             </div>
-            {screenMode === 'library' && <div className="grid grid-cols-3 gap-1.5 shrink-0">
+            {screenMode === 'library' ? <div className="grid grid-cols-3 gap-1.5 shrink-0">
               <button
                 onClick={() => toggleGlobalScope('online-chat')}
                 className={`h-7 min-w-[48px] px-2 rounded-full border text-[8px] inline-flex items-center justify-center gap-1 ${isOnlineGlobal ? 'bg-[#292724] text-white border-[#292724]' : 'bg-white/65 text-[#777] border-[rgba(40,36,31,.12)]'}`}
@@ -275,7 +269,14 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
               >
                 <Settings2 className="w-3 h-3" />{manageBooks ? '完成' : '管理'}
               </button>
+            </div> : <div className="flex items-center gap-1.5 shrink-0">
+              <button onClick={() => setManageBooks(value => !value)} className={`h-7 px-2.5 rounded-full border text-[8px] inline-flex items-center gap-1 ${manageBooks ? 'bg-[#292724] text-white border-[#292724]' : 'bg-white/65 text-[#655f59] border-[rgba(40,36,31,.12)]'}`}><Settings2 className="w-3 h-3" />{manageBooks ? '完成管理' : '管理'}</button>
             </div>}
+          </div>
+          <div className="mb-2 flex items-center gap-2 rounded-xl border border-[rgba(40,36,31,.12)] bg-white/65 px-3 py-2">
+            <BookOpen className="w-3.5 h-3.5 shrink-0 text-[#8b847d]" />
+            <input value={bookSearch} onChange={e => setBookSearch(e.target.value)} placeholder={screenMode === 'online-global' ? '搜索线上世界书 / 条目 / 关键词' : screenMode === 'offline-global' ? '搜索线下世界书 / 条目 / 关键词' : '搜索世界书 / 条目 / 关键词'} className="min-w-0 flex-1 bg-transparent text-[10px] outline-none text-[#302d29] placeholder:text-[#9a9289]" />
+            {bookSearch && <button onClick={() => setBookSearch('')} className="text-[9px] text-[#8b847d]">清除</button>}
           </div>
           <div className="space-y-2"><div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
             {localBooks.map(item => (
@@ -302,14 +303,21 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
                     >
                       {item.enabled ? '停用' : '启用'}
                     </button>
+                    {screenMode !== 'library' && <button onClick={() => {
+                      if (screenMode === 'online-global') setOnlineGlobalIds(prev => prev.filter(id => id !== item.id));
+                      else setOfflineGlobalIds(prev => prev.filter(id => id !== item.id));
+                      setManageBooks(false);
+                      showNotice('已移出当前全局，不会删除世界书');
+                    }} className="text-[8px] text-[#d7c39c]">移出全局</button>}
                     <button onClick={() => removeBook(item.id)} className="text-[8px] text-[#e3aaa2]">删除</button>
                   </div>
                 )}
               </div>
             ))}
-            {books.length === 0 && (
-              <div className="w-full py-5 text-center rounded-2xl border border-dashed border-[rgba(40,36,31,.18)] text-[9px] text-[#8b847d]">
-                还没有世界书 · 可以从角色卡自动导入，或右上角 ＋ 新建
+            {localBooks.length === 0 && (
+              <div className="w-full py-6 text-center rounded-2xl border border-dashed border-[rgba(40,36,31,.18)] text-[9px] text-[#8b847d]">
+                {bookSearch ? '没有找到匹配的世界书，试试其他关键词' : screenMode === 'online-global' ? '还没有加入线上全局的世界书。可以新建一本，或导入现有世界书。' : screenMode === 'offline-global' ? '还没有加入线下全局的世界书。可以新建一本，或导入现有世界书。' : '还没有世界书 · 可以从角色卡自动导入，或右上角 ＋ 新建'}
+                {!bookSearch && <div className="mt-3 flex justify-center gap-2"><button onClick={addBook} className="px-3 py-2 rounded-full bg-[#292724] text-white text-[9px]">新建世界书</button><button onClick={() => importRef.current?.click()} className="px-3 py-2 rounded-full border border-[rgba(40,36,31,.15)] text-[9px]">导入世界书</button></div>}
               </div>
             )}
           </div>
