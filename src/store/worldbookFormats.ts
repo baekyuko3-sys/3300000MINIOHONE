@@ -49,7 +49,11 @@ function normalizeEntry(raw: any, index: number): WorldBookEntry {
     caseSensitive: raw?.caseSensitive ?? raw?.case_sensitive,
     matchWholeWords: raw?.matchWholeWords ?? raw?.match_whole_words,
     order: Number(raw?.order ?? raw?.insertion_order ?? 100) || 0,
-    role: raw?.role === 'user' || raw?.role === 'assistant' ? raw.role : 'system',
+    role: raw?.role === 'user' || raw?.role === 'assistant'
+      ? raw.role
+      : Number(raw?.role) === 1 ? 'user'
+      : Number(raw?.role) === 2 ? 'assistant'
+      : 'system',
     outletName: String(raw?.outletName ?? raw?.outlet_name ?? ''),
     group: String(raw?.group ?? ''),
     groupWeight: Number(raw?.groupWeight ?? raw?.group_weight ?? 100) || 0,
@@ -69,14 +73,19 @@ function normalizeBook(raw: any, index: number): WorldBook {
   const source = embedded || raw;
   const entries = entriesFromRaw(source);
 
+  const isCharacterCardBook = Boolean(embedded);
   return {
-    id: String(raw?.id ?? raw?.name ?? id('worldbook', index)),
+    id: String(raw?.id ?? source?.id ?? raw?.name ?? id('worldbook', index)),
     name: String(source?.name ?? raw?.name ?? '导入世界书'),
     description: String(source?.description ?? raw?.description ?? ''),
     category: String(source?.category ?? raw?.category ?? ''),
     tags: asStringArray(source?.tags ?? raw?.tags),
     enabled: raw?.enabled !== false && raw?.disable !== true,
     updatedAt: new Date().toISOString(),
+    sourceType: raw?.sourceType ?? (isCharacterCardBook ? 'character-card' : 'imported'),
+    sourceCharacterId: raw?.sourceCharacterId,
+    sourceCharacterName: raw?.sourceCharacterName ?? (isCharacterCardBook ? String(raw?.name ?? '') : undefined),
+    globalScopes: Array.isArray(raw?.globalScopes) ? raw.globalScopes : undefined,
     entries: entries.map((entry, entryIndex) => normalizeEntry(entry, entryIndex)),
   };
 }
