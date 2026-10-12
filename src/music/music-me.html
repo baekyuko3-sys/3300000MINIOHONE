@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>音乐</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&display=swap">
+<style>
+:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#fff;--card:#f6f5f3;--ink:#2d2724;--mut:#857b73;--line:rgba(60,40,30,.1);--rose:#c4989a;--on:#fff;--shade:rgba(80,60,45,.16);--avl:86%;--avt:30%;--sg:#9dbcae;--rs:#dcb3ae}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+body{height:100%;width:100%;background:var(--bg);color:var(--ink);font-family:"Noto Serif SC","Source Han Serif SC","Songti SC","STSong",serif;display:block;user-select:none}
+button,input{font:inherit;color:inherit}button{background:0;border:0;cursor:pointer;display:grid;place-items:center;text-align:left}svg{display:block}
+.phone{position:relative;width:100%;height:100%;max-width:none;overflow:hidden;background:var(--bg);display:flex;flex-direction:column;transition:background .4s}
+
+.top{display:grid;grid-template-columns:40px 1fr 40px;align-items:center;padding:2px 14px 0;text-align:center}
+.top .ttl{display:grid;justify-items:center;gap:0;min-width:0}
+.top h1{font-family:"Noto Serif SC","Source Han Serif SC","Songti SC",serif;font-style:normal;font-weight:700;font-size:24px;letter-spacing:.04em;line-height:1.15}
+.top .sub{font-size:10px;letter-spacing:1.6px;color:var(--mut);font-weight:600;text-transform:uppercase;line-height:1.2}
+.ib{width:40px;height:40px;border-radius:50%;color:var(--ink)}
+#pg{flex:1;min-width:0;overflow-y:auto;padding:0 18px 40px;scrollbar-width:none}#pg::-webkit-scrollbar{display:none}
+.av{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-size:17px;font-weight:700;color:var(--k);background:linear-gradient(150deg,var(--x),var(--y))}
+.body{flex:1;display:flex;min-height:0;margin-top:0}
+.rail{width:64px;flex:none;display:flex;flex-direction:column;align-items:center;padding:8px 0 24px;border-right:1px solid var(--line);overflow:hidden;transition:width .32s cubic-bezier(.2,.8,.2,1),border-color .2s,opacity .2s,padding .32s}
+/* 完全隐藏侧栏：右上角用户符号再点展开 */
+.rail.c{width:0;padding:0;border-right-color:transparent;opacity:0;pointer-events:none}
+.rl{width:100%;display:flex;flex-direction:column;align-items:center;gap:18px;overflow-y:auto;overflow-x:hidden;scrollbar-width:none}.rl::-webkit-scrollbar{display:none}
+#ug.on{color:var(--rose)}
+.u{position:relative;display:grid;justify-items:center;gap:6px;font-size:11px;color:var(--mut);flex:none;width:56px;white-space:nowrap}.u span{max-width:56px;overflow:hidden;text-overflow:ellipsis}.u .av{opacity:.5;transition:.25s}.u.on{color:var(--ink);font-weight:700}.u.on .av{opacity:1;transform:scale(1.07)}
+.u.on:before{content:"";position:absolute;left:-3px;top:10px;width:3px;height:26px;border-radius:2px;background:var(--rose)}
+.u.add .av{background:none;border:1.5px dashed var(--mut);color:var(--mut);opacity:.7}
+.hd2{display:flex;gap:16px;align-items:flex-start;margin-top:10px;position:relative;transition:margin .3s}
+.sq .av{width:88px;height:88px;border-radius:30px;font-size:34px;transition:width .3s,height .3s,border-radius .3s,font-size .3s}
+.idb{flex:1;min-width:0;padding-top:6px}.idb small{font-size:11px;color:var(--mut);letter-spacing:1.4px;font-weight:600;text-transform:uppercase}
+.idn{display:grid;grid-auto-flow:column;gap:7px;align-items:center;padding:0;max-width:100%;justify-content:start}.idn b{font-size:23px;font-weight:700;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.idn svg{color:var(--mut);flex:none}
+.sig{display:block;width:100%;margin-top:5px;padding:0;border:0;background:0;font-size:12.5px;line-height:1.45;color:var(--mut);text-align:left;cursor:pointer;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.sig.ph{opacity:.5;font-style:italic}
+/* 方案 6：侧栏完全收起 → 居中小 hero */
+.phone.collapsed .hd2{flex-direction:column;align-items:center;text-align:center;gap:10px;margin-top:14px}
+.phone.collapsed .idb{padding-top:0;display:grid;justify-items:center;width:100%}
+.phone.collapsed .idn{justify-content:center;max-width:100%}
+.phone.collapsed .sig{text-align:center;max-width:260px;-webkit-line-clamp:2}
+.phone.collapsed .sq .av{width:96px;height:96px;border-radius:50%;font-size:34px}
+.phone.collapsed .sts{justify-content:center}
+/* 统计：头像+签名整块下面，横向小条 */
+.sts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;width:100%}
+.st{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border-radius:99px;font-size:11.5px;color:var(--mut);background:var(--card)}
+.st b{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.st svg{flex:none;color:var(--ink);opacity:.75}
+.st.a{background:color-mix(in srgb,var(--sg) 22%,var(--bg))}
+.st.b{background:color-mix(in srgb,var(--rs) 28%,var(--bg))}
+.st.c{background:color-mix(in srgb,#e6dccb 55%,var(--bg))}
+.chs{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}.ch{font-size:11.5px;padding:4px 10px;border-radius:99px;color:var(--mut)}.ch b{font-weight:700;color:var(--ink);margin-right:2px}
+.ch.a{background:color-mix(in srgb,var(--sg) 24%,var(--bg))}.ch.b{background:color-mix(in srgb,var(--rs) 32%,var(--bg))}.ch.c{background:color-mix(in srgb,#e6dccb 60%,var(--bg))}
+/* 入口：左爱心=我的音乐，右音符=听歌记录 */
+.ac{display:flex;gap:8px;margin-top:12px;width:100%}
+.ac button{flex:1;min-width:0;height:44px;border-radius:15px;background:var(--card);color:var(--ink);display:grid;place-items:center;padding:0}
+.ac .go{background:var(--ink);color:var(--bg)}
+.ac button:active{transform:scale(.98)}
+.tg{display:flex;align-items:center;gap:6px;margin-top:14px;width:100%;text-align:left;font-size:12.5px;color:var(--mut)}.tg svg{color:var(--rose);flex:none}.ch2{display:block;margin-left:auto;transform:rotate(-90deg);transition:transform .25s}.ch2.o{transform:rotate(90deg)}
+.pl{margin-top:8px;padding:6px 14px;border-radius:18px;background:color-mix(in srgb,var(--card) 70%,var(--bg))}.pi{display:flex;align-items:center;gap:12px;padding:8px 0}.pi+.pi{border-top:1px solid var(--line)}.pa{width:34px;height:34px;border-radius:12px;display:grid;place-items:center;font-size:14px;font-weight:700;color:var(--k);background:linear-gradient(150deg,var(--x),var(--y));flex:none}.pi .t{flex:1;min-width:0}.pi b{display:block;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pi small{font-size:11.5px;color:var(--mut)}.pi em{font-style:normal;font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums}
+.tb{display:flex;gap:24px;margin:16px 0 0;border-bottom:1px solid var(--line)}.tb button{padding:8px 0 9px;font-size:14px;color:var(--mut);border-bottom:2px solid transparent;margin-bottom:-1px}.tb button.on{color:var(--ink);font-weight:700;border-bottom-color:var(--rose)}
+.gd{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px 12px;margin-top:18px;width:100%}.tile{display:block;text-align:left;min-width:0;width:100%}
+.cv{width:50px;aspect-ratio:1;border-radius:14px;flex:none;background:radial-gradient(at 18% 12%,var(--a) 0,transparent 58%),radial-gradient(at 88% 28%,var(--b) 0,transparent 55%),radial-gradient(at 35% 100%,color-mix(in srgb,var(--a) 50%,var(--b)) 0,transparent 62%),var(--c)}.cv.im{background-size:cover;background-position:center}
+.cvw{position:relative;flex:none}.cnt{position:absolute;right:-4px;bottom:-4px;font-size:10px;font-weight:700;padding:2px 6px;border-radius:99px;background:var(--ink);color:var(--bg);box-shadow:0 0 0 2px var(--bg);font-variant-numeric:tabular-nums}
+.tile .cv{width:100%;border-radius:20px;box-shadow:0 12px 18px -14px var(--shade);background-size:cover;background-position:center}
+.tile b{display:block;font-size:12.5px;font-weight:700;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tile small{display:block;font-size:11px;color:var(--mut);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr{display:flex;align-items:center;gap:12px;padding:9px 0}.tr .t{flex:1;min-width:0}.tr b{display:block;font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tr small{font-size:12px;color:var(--mut);display:block;margin-top:2px}
+.tag{font-size:11px;padding:3px 9px;border-radius:99px;background:color-mix(in srgb,var(--rs) 32%,var(--bg));color:var(--ink);font-weight:600}.tag.s{background:color-mix(in srgb,var(--sg) 24%,var(--bg))}
+.more{width:100%;height:42px;margin-top:6px;font-size:13px;color:var(--mut);justify-content:center}
+.mt{font-size:13px;color:var(--mut);padding:36px 12px;text-align:center;line-height:1.7}
+.empty{margin-top:28px;padding:8px 12px 20px;text-align:center}
+.empty .ico{width:52px;height:52px;margin:0 auto;border-radius:18px;display:grid;place-items:center;color:color-mix(in srgb,var(--rose) 70%,var(--mut));opacity:.85}
+.empty b{display:block;margin-top:12px;font-size:15px;font-weight:700;color:var(--ink)}
+.empty p{margin-top:6px;font-size:12.5px;line-height:1.6;color:var(--mut)}
+.av.im,.pa.im{background:center/cover no-repeat;color:transparent}
+button.sq{display:block;padding:0;position:relative}.eb{position:absolute;right:-4px;bottom:-4px;width:26px;height:26px;border-radius:10px;background:var(--ink);color:var(--bg);display:grid;place-items:center;box-shadow:0 0 0 3px var(--bg)}
+.avo{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap}.sws{width:44px;height:44px;border-radius:15px;background:linear-gradient(150deg,var(--x),var(--y))}.upl{height:44px;padding:0 16px;border-radius:15px;background:var(--bg);display:grid;place-items:center;font-size:13px;font-weight:700;cursor:pointer}
+button.pi{width:100%;text-align:left}
+.cp{position:absolute;inset:0;z-index:15;background:var(--bg);display:flex;flex-direction:column;transform:translateX(102%);transition:transform .4s cubic-bezier(.2,.8,.2,1)}.cp.open{transform:none}.cb{flex:1;min-height:0;overflow-y:auto;padding:0 18px 40px;scrollbar-width:none}.cb::-webkit-scrollbar{display:none}
+.vs{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px}.vs span{font-size:11.5px;padding:4px 10px;border-radius:99px;background:var(--card);color:var(--mut)}.mm{font-size:12px;color:var(--mut);margin-top:8px;line-height:1.6}
+.fade{animation:fd .3s}@keyframes fd{from{opacity:.2;transform:translateY(5px)}}
+.shd{position:absolute;inset:0;z-index:30;background:rgba(30,24,20,.35);display:flex;align-items:flex-end}.sheet{width:100%;background:var(--card);border-radius:28px 28px 0 0;padding:18px 18px 30px}
+.sheet h3{font-size:16px;font-weight:700;margin-bottom:6px}.sheet p{font-size:12.5px;color:var(--mut);line-height:1.7}
+.sheet input,.sheet textarea{width:100%;padding:13px;border-radius:14px;border:0;background:var(--bg);font-size:14px;margin:12px 0;outline:0;user-select:text;font:inherit;color:inherit;resize:none}
+.sheet textarea{min-height:88px;line-height:1.5}.sv{width:100%;padding:13px;border-radius:99px;background:var(--ink);color:var(--bg);font-weight:700;text-align:center}
+.toast{position:absolute;left:50%;top:64px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:13px;z-index:40;white-space:nowrap;animation:f 2.4s forwards}@keyframes f{0%,85%{opacity:1}100%{opacity:0}}
+/* embed-full */html,body{width:100%!important;height:100%!important;margin:0!important;display:block!important;place-items:unset!important}.phone{max-width:none!important;width:100%!important;height:100%!important;border-radius:0!important;box-shadow:none!important}
+</style></head><body>
+<div class="phone" id="ph">
+<div class="top"><button class="ib" data-a="back" id="bk" aria-label="返回"></button><div class="ttl"><h1>Me</h1><span class="sub">MUSIC IDENTITY</span></div><button class="ib on" data-a="rail" id="ug" aria-label="收起身份栏"></button></div>
+<div class="body"><div class="rail" id="rail"><div class="rl" id="sw"></div></div><div id="pg"><div id="bd"></div></div></div>
+<section class="cp" id="cp"></section><div id="ly"></div>
+</div>
+<script>
+const ic=(p,z=20)=>`<svg viewBox="0 0 24 24" width="${z}" height="${z}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const BACK='<path d="m15 18-6-6 6-6"/>',PLUS='<path d="M12 5v14M5 12h14"/>',PEN='<path d="M4 20h4L19 9l-4-4L4 16z"/>';
+/* 与全站 lucide 风格一致：stroke 1.6 / round */
+const USER='<circle cx="12" cy="8" r="3.6"/><path d="M5.2 19.2c.8-3.2 3.2-5 6.8-5s6 1.8 6.8 5"/>';
+const USERS='<circle cx="9" cy="8" r="3.2"/><path d="M2.5 19c.7-2.8 2.8-4.4 6.5-4.4s5.8 1.6 6.5 4.4"/><circle cx="17" cy="8.5" r="2.6"/><path d="M21.5 19c-.4-2-1.6-3.3-3.8-3.9"/>';
+const HP='<path d="M4 14v-1.5a8 8 0 0 1 16 0V14"/><path d="M20 14.8a1.8 1.8 0 0 1-1.8 1.8H17v-4.2h1.2A1.8 1.8 0 0 1 20 14.2zM4 14.8a1.8 1.8 0 0 0 1.8 1.8H7v-4.2H5.8A1.8 1.8 0 0 0 4 14.2z"/>';
+const HEART='<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>';
+const HEART_FILL='<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" fill="currentColor" stroke="none"/>';
+const NOTE='<path d="M9 18V5.5l11-2V16"/><circle cx="7" cy="18" r="2.4"/><circle cx="18" cy="16" r="2.4"/>';
+const NOTE_SOFT='<path d="M10 17.5V7.2l8.5-1.6v9.8"/><circle cx="8.2" cy="17.5" r="2.2"/><circle cx="16.7" cy="15.4" r="2.2"/>';
+const $=q=>document.querySelector(q);
+const post=(type,payload={})=>{try{parent.postMessage({source:'sane333-music-me',type,...payload},'*')}catch(e){}};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const PAL=[['#a9c6b8','#eaf0ea','#4f6a5d'],['#e6bdb7','#f8ebe7','#8a5f59'],['#b9c9b6','#f3ddd8','#5f6b5a']];
+let profiles=[], activeId='', liked=[], records=[], companions=[], characters=[];
+let personas=[], activePersonaId='';
+let tab='g', pe=0, cn='', ctab='g', th={bg:'#ffffff',acc:'#c4989a'};
+
+const personaSelect=(selected='')=>{
+  const opts=[{id:'',name:'跟随 LINE 当前人设'}].concat(personas||[]);
+  return `<select id="ps" style="width:100%;padding:12px;border-radius:14px;border:0;background:var(--bg);font-size:13px;margin:8px 0 4px;outline:0">${opts.map(p=>`<option value="${esc(p.id)}" ${p.id===selected?'selected':''}>${esc(p.name)}</option>`).join('')}</select><p style="font-size:11.5px;color:var(--mut);line-height:1.5;margin-bottom:8px">音乐 ID 关联 LINE 人设头像，不会另建一份人设。</p>`;
+};
+const me=()=>profiles.find(p=>p.id===activeId)||profiles[0];
+const lum=h=>{try{const n=parseInt(String(h).slice(1),16);return(.299*(n>>16&255)+.587*(n>>8&255)+.114*(n&255))/255}catch(e){return .8}};
+function ap(){const S=document.documentElement.style,{bg,acc}=th,d=lum(bg)<.45,v=d?{bg,card:'color-mix(in srgb,'+bg+' 88%,#fff)',ink:'#f4eef2',mut:'#a89fa6',line:'rgba(255,255,255,.1)',avl:'30%',avt:'88%'}:{bg,card:lum(bg)>.985?'#f6f5f3':'color-mix(in srgb,'+bg+' 45%,#fff)',ink:'#2d2724',mut:'#857b73',line:'rgba(60,40,30,.1)',avl:'86%',avt:'30%'};for(const k in v)S.setProperty('--'+k,v[k]);S.setProperty('--rose',acc);S.setProperty('--on',lum(acc)>.62?'#2d2724':'#fff');S.colorScheme=d?'dark':'light'}
+const fixCoverUrl=u=>{if(!u||typeof u!=='string')return '';if(/^data:/i.test(u))return '';if(u.indexOf('music.126.net')===-1)return u;if(location.hostname==='localhost'||location.hostname==='127.0.0.1'||location.protocol==='http:')return '/__img?u='+encodeURIComponent(u);return u};
+const personaAvatarOf=p=>{
+  if(p&&p.personaAvatar)return p.personaAvatar;
+  const pid=(p&&p.personaId)||activePersonaId||'';
+  const hit=personas.find(x=>x.id===pid)||personas.find(x=>x.isDefault)||personas[0];
+  return (hit&&(hit.avatar||hit.av))||'';
+};
+const pav=p=>{
+  const img=(p&&p.img)||personaAvatarOf(p);
+  if(img)return `<div class="av im" style="background-image:url('${esc(fixCoverUrl(img))}')"></div>`;
+  const c=PAL[(p&&p.t!=null?p.t:0)%3];
+  return `<div class="av" style="--x:${c[0]};--y:${c[1]};--k:${c[2]}">${esc(((p&&p.name)||'?')[0])}</div>`;
+};
+const cv=t=>{const u=fixCoverUrl((t&&(t.cover||t.img))||'');if(u)return `<div class="cv im" style="background-image:url('${esc(u)}')"></div>`;const c=(t&&t.c)||(t&&t.colors)||['#e8b7b0','#a9c2ae','#f4e9dc'];return `<div class="cv" style="--a:${c[0]};--b:${c[1]};--c:${c[2]}"></div>`};
+/** 记录行：有专辑图才出图，否则纯文字 */
+const cvAlbumOrEmpty=t=>{const u=fixCoverUrl((t&&(t.cover||t.img))||'');return u?`<div class="cv im" style="background-image:url('${esc(u)}')"></div>`:''};
+const CAv=(n,cls,c,avatar)=>{if(avatar)return `<div class="${cls} im" style="background-image:url('${esc(fixCoverUrl(avatar))}')"></div>`;return `<div class="${cls}" style="--x:${c[0]};--y:${c[1]};--k:${c[2]}">${esc((n||'?')[0])}</div>`};
+const songKey=r=>{const id=String(r.trackId||'').trim();if(id)return 'id:'+id;return 'name:'+String(r.song||'').trim().toLowerCase()+'|'+String(r.artist||'').trim().toLowerCase()};
+function mergeSongs(items){
+  const m=new Map();
+  [...items].sort((a,b)=>new Date(a.at||0)-new Date(b.at||0)).forEach(it=>{
+    const k=songKey(it);const prev=m.get(k);
+    if(!prev){m.set(k,{...it,plays:Math.max(1,it.plays||1)});return}
+    m.set(k,{...prev,...it,id:prev.id,plays:Math.max(1,prev.plays||1)+Math.max(1,it.plays||1),keep:prev.keep||it.keep,cover:it.cover||prev.cover,trackId:it.trackId||prev.trackId});
+  });
+  return [...m.values()].sort((a,b)=>new Date(b.at||0)-new Date(a.at||0));
+}
+function groupSessions(recs){
+  const m=new Map();
+  (recs||[]).forEach(r=>{const k=r.sessionId||r.id;if(!m.has(k))m.set(k,[]);m.get(k).push(r)});
+  return [...m.values()].map(raw=>{
+    const items=mergeSongs(raw);
+    return {key:items[0].sessionId||items[0].id,primary:items[0],count:items.length,items};
+  }).sort((a,b)=>new Date(b.primary.at||0)-new Date(a.primary.at||0));
+}
+function sessionRow(g){
+  const r=g.primary,n=g.count,plays=Math.max(1,r.plays||1);
+  const title=n>1?`一起听了 ${n} 首`:r.song;
+  const sub=`${esc(r.timeLabel)} · 和 ${esc(r.name)}${n===1&&plays>1?' · ×'+plays:''}`;
+  const album=cvAlbumOrEmpty({cover:r.cover||''});
+  const cover=album?`<div class="cvw">${album}${n>1?`<span class="cnt">${n}</span>`:''}</div>`:(n>1?`<div class="cvw"><div class="cv" style="--a:#e8b7b0;--b:#a9c2ae;--c:#f4e9dc"></div><span class="cnt">${n}</span></div>`:'');
+  return `<div class="tr">${cover}<div class="t"><b>${esc(title)}${n===1&&plays>1?` · ×${plays}`:''}</b><small>${sub}</small></div><span class="tag ${r.kind=='f'?'':'s'}">${r.kind=='f'?'朋友':r.kind=='s'?'陌生人':'NPC'}</span></div>`;
+}
+function toast(x){const e=document.createElement('div');e.className='toast';e.textContent=x;$('#ph').append(e);setTimeout(()=>e.remove(),2400)}
+
+function render(f){
+  const p=me(); if(!p){$('#bd').innerHTML='<div class="mt">还没有音乐 ID</div>';$('#sw').innerHTML=`<button class="u add" data-a="new"><div class="av">${ic(PLUS,18)}</div>新 ID</button>`;return}
+  const sessions=groupSessions(records);
+  const n=sessions.length;
+  const fr=companions.filter(x=>x.f).length;
+  const lk=liked;
+  $('#sw').innerHTML=profiles.map(x=>`<button class="u ${x.id===activeId?'on':''}" data-a="pick" data-i="${esc(x.id)}">${pav(x)}<span>${esc(x.name)}</span></button>`).join('')+`<button class="u add" data-a="new"><div class="av">${ic(PLUS,18)}</div>新 ID</button>`;
+  const sigText=(p.sig||'').trim();
+  const list=tab=='g'
+    ?(lk.length?`<div class="gd">${lk.slice(0,9).map(t=>`<button class="tile" data-a="fav" data-tid="${esc(t.id)}">${cv(t)}<b>${esc(t.name||t.n)}</b><small>${esc(t.artist||t.a)}</small></button>`).join('')}</div>${lk.length>9?`<button class="more" data-a="fav">全部 ${lk.length} 首</button>`:''}`:'<div class="empty"><div class="ico">'+ic(NOTE_SOFT,26)+'</div><b>还没有喜欢的歌</b><p>搜索歌曲后，点亮爱心即可加入</p></div>')
+    :(n?sessions.slice(0,4).map(sessionRow).join('')+(sessions.length>4?`<button class="more" data-a="rec">全部 ${n} 场，分页查看</button>`:''):'<div class="empty"><div class="ico">'+ic(NOTE_SOFT,26)+'</div><b>还没有一起听过</b><p>邀请角色或随机遇见后，记录会出现在这里</p></div>');
+  const pp=companions;
+  $('#bd').className=f?'fade':'';
+  $('#bd').innerHTML=`<div class="hd2"><button class="sq" data-a="avs" aria-label="更换头像">${pav(p)}<span class="eb">${ic(PEN,12)}</span></button><div class="idb"><small>ID</small><button class="idn" data-a="eid"><b>${esc(p.name)}</b>${ic(PEN,13)}</button><button class="sig ${sigText?'':'ph'}" data-a="esig">${esc(sigText||'点这里写个性签名…')}</button></div></div>
+<div class="sts"><span class="st a"><b>${lk.length}</b> likes</span><span class="st b"><b>${n}</b>${ic(HP,14)}</span><span class="st c"><b>${fr}</b>${ic(USERS,14)}</span></div>
+<div class="ac"><button class="go" data-a="fav" aria-label="我喜欢的音乐">${ic(HEART_FILL,20)}</button><button data-a="rec" aria-label="听歌记录 · Together">${ic(NOTE,20)}</button></div>
+${pp.length?`<button class="tg" data-a="ppl">${ic(HEART_FILL,13)}<span>和 ${esc(pp.slice(0,2).map(x=>x.name).join('、'))}${pp.length>2?' 等 '+pp.length+' 位':''}一起听过</span><span class="ch2 ${pe?'o':''}">${ic(BACK,14)}</span></button>${pe?`<div class="pl">${pp.slice(0,6).map((x,j)=>{const c=PAL[j%3];return `<button class="pi" data-a="chr" data-n="${esc(x.name)}" data-cid="${esc(x.characterId||'')}">${CAv(x.name,'pa',c,x.avatar)}<div class="t"><b>${esc(x.name)}</b><small>${esc((x.variants||[]).join(' · '))}</small></div><span class="tag ${x.f?'':'s'}">${x.f?'朋友':x.kind=='s'?'陌生人':'NPC'}</span><em>${x.count} 次</em></button>`}).join('')}${pp.length>6?`<button class="more" data-a="rec">还有 ${pp.length-6} 位，在听歌记录里看</button>`:''}</div>`:''}`:''}
+<div class="tb"><button class="${tab=='g'?'on':''}" data-a="tab" data-k="g">喜欢 ${lk.length}</button><button class="${tab=='l'?'on':''}" data-a="tab" data-k="l">一起听 ${n}</button></div>${list}`;
+}
+
+function sheet(h){$('#ly').innerHTML=`<div class="shd" data-a="x"><div class="sheet">${h}</div></div>`}
+function cpR(name){
+  const rs=records.filter(r=>r.name===name||r.musicId===name);
+  if(!rs.length)return;
+  const sessions=groupSessions(rs);
+  const vs={};rs.forEach(r=>vs[r.variant]=r.kind);
+  const songs=mergeSongs(rs);
+  const f=rs.some(r=>r.kind==='f'), k=rs[0].kind, rel=f?'朋友':k==='s'?'陌生人':'NPC';
+  const vk=Object.keys(vs), c=PAL[[...name].reduce((a,ch)=>a+ch.charCodeAt(0),0)%3];
+  const companion=companions.find(x=>x.name===name);
+  const mem=f?'':k==='n'?'仅你可见 · 不在角色档案里，不会写进记忆':`只会记在「${esc(vk[0]||'')}」这个版本上`;
+  const body=ctab==='g'
+    ?`<div class="gd">${songs.map(r=>{const plays=Math.max(1,r.plays||1);const album=cvAlbumOrEmpty({cover:r.cover||''});return `<button class="tile" data-a="fav" data-tid="${esc(r.trackId||'')}">${album||'<div class="cv" style="--a:#e8b7b0;--b:#a9c2ae;--c:#f4e9dc"></div>'}<b>${esc(r.song)}${plays>1?` · ×${plays}`:''}</b><small>${esc(r.artist)}</small></button>`}).join('')}</div>`
+    :sessions.slice(0,5).map(sessionRow).join('')+(sessions.length>5?`<button class="more" data-a="crec">全部 ${sessions.length} 场，分页查看</button>`:'');
+  $('#cp').innerHTML=`<div class="top"><button class="ib" data-a="cpx">${ic(BACK,22)}</button><div class="ttl"><h1>TA</h1></div><i class="ib"></i></div><div class="cb"><div class="hd2"><div class="sq">${CAv(name,'av',c,companion&&companion.avatar)}</div><div class="idb"><small>${rel}</small><div class="idn"><b>${esc(name)}</b></div><div class="sig">${esc((companion&&companion.note)||'一起听歌')}</div><div class="chs"><span class="ch a"><b>${sessions.length}</b>一起听</span><span class="ch b"><b>${songs.length}</b>首歌</span><span class="ch c"><b>${vk.length}</b>个版本</span></div></div></div>
+<div class="vs">${vk.map(v=>`<span>${esc(v)}</span>`).join('')}</div>${mem?`<p class="mm">${mem}</p>`:''}
+<div class="ac"><button class="go" data-a="cinv" data-n="${esc(name)}" data-cid="${esc((companion&&companion.characterId)||'')}">邀请 TA 一起听</button><button data-a="crec">和 TA 的记录</button></div>
+<div class="tb"><button class="${ctab=='g'?'on':''}" data-a="ctab" data-k="g">一起听过的歌 ${songs.length}</button><button class="${ctab=='l'?'on':''}" data-a="ctab" data-k="l">记录 ${sessions.length}</button></div>${body}</div>`;
+}
+
+$('#bk').innerHTML=ic(BACK,22);$('#ug').innerHTML=ic(USER,21);
+
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-a]');if(!el)return;const a=el.dataset.a;
+  if(a=='x'&&e.target!==el)return;
+  if(a=='pick'){if(el.dataset.i===activeId)return;post('switch-profile',{id:el.dataset.i});toast('正在切换…')}
+  else if(a=='tab'){tab=el.dataset.k;render()}
+  else if(a=='new')sheet(`<h3>新建音乐 ID</h3><p>每个音乐 ID 有自己的喜欢列表、听歌记录和角色记忆，互不相通。</p><input id="nm" placeholder="音乐 ID" maxlength="8" autocomplete="off"><textarea id="ns" maxlength="40" placeholder="个性签名（可留空，之后也能改）"></textarea>${personaSelect(activePersonaId||'')}<button class="sv" data-a="mk">创建并切换</button>`);
+  else if(a=='mk'){const v=$('#nm').value.trim();if(!v)return;const sig=($('#ns')&&$('#ns').value||'').trim();const personaId=($('#ps')&&$('#ps').value)||'';$('#ly').innerHTML='';post('create-profile',{name:v,sig,personaId})}
+  else if(a=='x')$('#ly').innerHTML='';
+  else if(a=='eid'){const p=me();sheet(`<h3>ID</h3><p>一起听、随机遇见时，TA 看到的就是这个 ID。</p><input id="ei" value="${esc(p.name)}" maxlength="8" autocomplete="off" placeholder="你的音乐 ID">${personaSelect(p.personaId||'')}<button class="sv" data-a="sid">保存</button>`)}
+  else if(a=='esig'){const p=me();sheet(`<h3>个性签名</h3><p>写给自己的一句话，一起听时也可以让别人看见。随时能改。</p><textarea id="es" maxlength="40" placeholder="例如：通勤路上才有空听歌">${esc(p.sig||'')}</textarea><button class="sv" data-a="ssig">保存签名</button>`)}
+  else if(a=='sid'){const v=$('#ei').value.trim();if(!v)return;const personaId=($('#ps')&&$('#ps').value)||'';$('#ly').innerHTML='';post('rename-profile',{name:v,personaId})}
+  else if(a=='ssig'){const sig=($('#es')&&$('#es').value||'').trim();$('#ly').innerHTML='';post('rename-profile',{sig})}
+  else if(a=='fav')post('open-fav',{trackId:el.dataset.tid||''});
+  else if(a=='rec')post('open-history',{who:''});
+  else if(a=='ppl'){pe=!pe;render()}
+  else if(a=='avs'){const p=me();const linked=personaAvatarOf(p);sheet(`<h3>更换头像</h3><p>默认用 LINE「我的人设」头像。也可以上传图片覆盖；点还原会回到人设头像。</p>${linked?`<div style="display:flex;align-items:center;gap:10px;margin:10px 0 4px">${pav({...p,img:''})}<span style="font-size:12px;color:var(--mut)">当前人设头像</span></div>`:''}<div class="avo">${[0,1,2].map(i=>`<button class="sws" data-a="avc" data-v="${i}" style="--x:${PAL[i][0]};--y:${PAL[i][1]}"></button>`).join('')}<label class="upl">上传图片<input type="file" id="file" accept="image/*" hidden></label>${p.img?'<button class="upl" data-a="avr">还原为人设</button>':''}</div>`)}
+  else if(a=='avc'){post('avatar-palette',{t:+el.dataset.v});$('#ly').innerHTML=''}
+  else if(a=='avr'){post('avatar-clear');$('#ly').innerHTML=''}
+  else if(a=='chr'){cn=el.dataset.n;ctab='g';cpR(cn);$('#cp').classList.add('open')}
+  else if(a=='cpx')$('#cp').classList.remove('open');
+  else if(a=='ctab'){ctab=el.dataset.k;cpR(cn)}
+  else if(a=='cinv'){post('invite-character',{characterId:el.dataset.cid||'',name:el.dataset.n||cn});$('#cp').classList.remove('open')}
+  else if(a=='crec'){$('#cp').classList.remove('open');post('open-history',{who:cn})}
+  else if(a=='rail'){const r=$('#rail'),hide=r.classList.toggle('c');$('#ph').classList.toggle('collapsed',hide);$('#ug').classList.toggle('on',!hide);$('#ug').setAttribute('aria-label',hide?'展开身份栏':'收起身份栏')}
+  else if(a=='back')post('back');
+});
+
+function upl(f){if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const m=Math.min(im.width,im.height),c=document.createElement('canvas');c.width=c.height=256;c.getContext('2d').drawImage(im,(im.width-m)/2,(im.height-m)/2,m,m,0,0,256,256);post('avatar-image',{img:c.toDataURL('image/jpeg',.85)});$('#ly').innerHTML='';toast('头像已更换')};im.src=r.result};r.readAsDataURL(f)}
+document.addEventListener('change',e=>{if(e.target.id=='file')upl(e.target.files[0])});
+
+window.addEventListener('message',ev=>{
+  const m=ev.data;if(!m||m.source!=='sane333-music-shell')return;
+  if(m.type==='me-state'){
+    profiles=m.profiles||[];activeId=m.activeId||'';liked=m.liked||[];records=m.records||[];
+    companions=m.companions||[];characters=m.characters||[];
+    personas=m.personas||[];activePersonaId=m.activePersonaId||'';
+    if(m.theme){th=m.theme;ap()}
+    if(m.toast)toast(m.toast);
+    render();
+  }else if(m.type==='toast'){toast(m.text||'')}
+});
+ap();render();post('me-ready');
+</script></body></html>

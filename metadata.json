@@ -1,0 +1,6 @@
+{
+  "name": "小手机 UI 风格美学分析与互动实验室",
+  "description": "深度解构语C/OC角色扮演与小手机(Pocket Phone)视觉风格、沉浸式交互组件与主题实验室。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

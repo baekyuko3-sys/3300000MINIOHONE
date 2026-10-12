@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>角色歌单</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,600&family=Nunito:wght@600;700&family=Noto+Serif+TC:wght@600&display=swap">
+<style>
+:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#fff;--card:#f6f5f3;--ink:#2d2724;--mut:#857b73;--line:rgba(60,40,30,.1);--rose:#c4989a;--sg:#9dbcae;--rs:#dcb3ae;--shade:rgba(80,60,45,.16);--avl:86%;--avt:30%}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#1b1816;--card:#26221f;--ink:#f2ede6;--mut:#a09a90;--line:rgba(255,255,255,.1);--shade:rgba(0,0,0,.4);--avl:30%;--avt:88%}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#1b1816;--card:#26221f;--ink:#f2ede6;--mut:#a09a90;--line:rgba(255,255,255,.1);--shade:rgba(0,0,0,.4);--avl:30%;--avt:88%}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+body{height:100%;background:color-mix(in srgb,var(--bg) 90%,#000);color:var(--ink);font-family:"Nunito",-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC","Helvetica Neue",sans-serif;display:grid;place-items:center;user-select:none}
+button{font:inherit;color:inherit;background:0;border:0;cursor:pointer;display:grid;place-items:center;text-align:left}svg{display:block}
+.phone{position:relative;width:100%;height:100%;max-width:420px;overflow:hidden;background:var(--bg);display:flex;flex-direction:column}
+@media(min-width:500px){.phone{height:min(860px,96%);border-radius:46px;box-shadow:0 30px 80px var(--shade)}}
+.top{padding:12px 14px 0}.ib{width:40px;height:40px;border-radius:50%}
+#pg{flex:1;overflow-y:auto;padding:0 20px 40px;scrollbar-width:none}#pg::-webkit-scrollbar{display:none}
+h1{font-family:"Playfair Display",Georgia,serif;font-style:italic;font-weight:600;font-size:44px;letter-spacing:-.3px;line-height:1.1;margin-top:6px}h1.zh{font-family:"Noto Serif TC","Songti TC","Songti SC",serif;font-style:normal;font-size:36px;letter-spacing:3px;margin-top:10px}.sub{font-size:13px;color:var(--mut);margin-top:6px}
+.st{display:flex;gap:18px;margin-top:20px;overflow-x:auto;padding:4px 2px 12px;scrollbar-width:none}.st::-webkit-scrollbar{display:none}
+.u{display:grid;justify-items:center;gap:7px;font-size:12px;color:var(--mut);flex:none;width:58px}.u.on{color:var(--ink);font-weight:700}
+.av{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-size:18px;font-weight:700;background:hsl(var(--h) 22% var(--avl));color:hsl(var(--h) 30% var(--avt));opacity:.55;transition:.25s;background-size:cover;background-position:center;overflow:hidden}.av.im{color:transparent}.u.on .av{opacity:1;transform:scale(1.08);box-shadow:0 0 0 3px var(--bg),0 0 0 4.5px var(--rose)}
+.hd{position:relative;margin-top:30px;padding:16px;border-radius:24px;background:var(--card)}
+.hd q{display:block;font-size:15px;line-height:1.6;quotes:none}.hd small{display:block;margin-top:8px;font-size:12px;color:var(--mut)}
+.hd:before{content:"";position:absolute;top:-6px;left:26px;width:12px;height:12px;background:var(--card);transform:rotate(45deg);border-radius:3px}
+.chs{display:flex;gap:6px;margin-top:12px}.ch{font-size:11.5px;padding:4px 10px;border-radius:99px;color:var(--mut)}.ch b{color:var(--ink);margin-right:3px}.ch.a{background:color-mix(in srgb,var(--sg) 24%,var(--bg))}.ch.b{background:color-mix(in srgb,var(--rs) 32%,var(--bg))}
+.lst{margin-top:10px}.it{padding:14px 0}.it+.it{border-top:1px solid var(--line)}
+.row{display:flex;align-items:center;gap:14px;width:100%}.row>.t{flex:1;min-width:0}
+.stk{position:relative;width:64px;height:64px;flex:none}.stk i,.stk .cv{position:absolute;border-radius:16px}.stk i{left:8px;right:-8px;top:-5px;bottom:5px;background:var(--line)}.stk .cv{inset:0;box-shadow:0 10px 14px -10px var(--shade)}
+.cv{background:radial-gradient(at 18% 12%,var(--a) 0,transparent 58%),radial-gradient(at 88% 28%,var(--b) 0,transparent 55%),radial-gradient(at 35% 100%,color-mix(in srgb,var(--a) 50%,var(--b)) 0,transparent 62%),var(--c)}
+.t b{display:block;font-size:16px}.t em{display:block;font-style:normal;font-size:12.5px;line-height:1.5;color:var(--mut);margin-top:3px}.t small{display:block;font-size:11.5px;color:var(--mut);margin-top:5px;opacity:.85}
+.sv{width:38px;height:38px;border-radius:50%;background:var(--card);flex:none;color:var(--ink);transition:.2s}.sv.on{background:var(--rose);color:#fff}
+.it.lk{opacity:.6}.it.lk .cv{filter:saturate(.3)}.lkb{width:38px;height:38px;border-radius:50%;background:var(--card);color:var(--mut);flex:none}
+.tk{margin-top:12px;padding:4px 14px;border-radius:18px;background:color-mix(in srgb,var(--card) 70%,var(--bg));animation:fd .3s}@keyframes fd{from{opacity:.2;transform:translateY(5px)}}
+.tr{display:flex;align-items:center;gap:12px;padding:8px 0;width:100%;border-radius:12px}.tr+.tr{border-top:1px solid var(--line)}.tr:active{background:color-mix(in srgb,var(--rose) 10%,transparent)}.tr .cv{width:36px;height:36px;border-radius:11px;flex:none}.tr div{flex:1;min-width:0;text-align:left}.tr b{display:block;font-size:14px}.tr small{font-size:11.5px;color:var(--mut)}.tr .pl{color:var(--rose);flex:none;opacity:.85}.pa{margin:10px 0 4px;height:34px;padding:0 14px;border-radius:99px;background:color-mix(in srgb,var(--rose) 18%,transparent);color:var(--rose);font-size:12.5px;font-weight:700;gap:6px;display:inline-flex;align-items:center;justify-content:center}
+.toast{position:absolute;left:50%;top:64px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:13px;z-index:40;white-space:nowrap;animation:f 2.4s forwards}@keyframes f{0%,85%{opacity:1}100%{opacity:0}}
+.top{display:flex;justify-content:space-between;align-items:center}
+.gb{display:block;padding:2px 0 3px 3px;margin-right:6px;border-radius:0;font-family:"Noto Serif TC","Songti TC","Songti SC",serif;font-size:15px;font-weight:600;letter-spacing:3px;color:var(--ink);border-bottom:1px solid var(--ink);transition:opacity .2s}.gb:active{opacity:.45}.gb[disabled]{opacity:.6;pointer-events:none}.sp{display:block;animation:rt 1s linear infinite}@keyframes rt{to{transform:rotate(360deg)}}
+.mt{text-align:center;color:var(--mut);font-size:13px;line-height:1.7;padding:50px 0}
+.bn{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:12px;color:var(--mut)}.bn span{flex:1;text-align:center}.bn button{width:30px;height:30px;border-radius:50%;background:var(--card);color:var(--ink)}.bn button[disabled]{opacity:.3;pointer-events:none}
+.sm{margin-top:14px;padding:14px;border-radius:18px;background:var(--card);font-size:12.5px;line-height:1.7;color:var(--mut)}.sm b{display:block;color:var(--ink);font-size:13px;margin-bottom:4px}.sm p{white-space:pre-line}.sm button{margin-top:6px;font-size:12px;color:var(--rose)}
+.shd{position:absolute;inset:0;z-index:30;background:rgba(30,24,20,.35);display:flex;align-items:flex-end}.sheet{width:100%;background:var(--card);border-radius:28px 28px 0 0;padding:20px 18px 30px}.sheet h3{font-size:16px}.sheet p{font-size:12.5px;color:var(--mut);margin-top:4px;line-height:1.6}
+.cps{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 12px}.cps button{height:34px;padding:0 15px;border-radius:99px;font-size:13px;background:var(--bg);color:var(--mut)}.cps button.on{background:var(--ink);color:var(--bg)}
+.mtr{font-size:12px;color:var(--mut);margin-bottom:14px;line-height:1.6}
+.go{width:100%;height:46px;border-radius:99px;background:var(--ink);color:var(--bg);font-weight:700;text-align:center;justify-content:center}
+.opt{width:100%;padding:13px 14px;border-radius:16px;background:var(--bg);margin-top:10px}.opt b{font-size:14px;display:block}.opt small{font-size:12px;color:var(--mut);line-height:1.5}
+.lnk{width:100%;margin-top:12px;font-size:12.5px;color:var(--mut);text-align:center;justify-content:center}
+/* embed-full */html,body{width:100%!important;height:100%!important;margin:0!important;display:block!important;place-items:unset!important}.phone{max-width:none!important;width:100%!important;height:100%!important;border-radius:0!important;box-shadow:none!important}
+</style></head><body>
+<div class="phone" id="ph">
+<div class="top"><button class="ib" data-a="back" id="bk"></button><button class="gb" id="gb" data-a="gen"></button></div>
+<div id="pg"><h1 class="zh">角色歌單</h1><div class="sub">角色们收藏的歌，也许你们会喜欢同一首</div><div class="st" id="st"></div><div id="bd"></div></div>
+<div id="ly"></div>
+</div>
+<script>
+const ic=(p,z=20)=>`<svg viewBox="0 0 24 24" width="${z}" height="${z}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const BACK='<path d="m15 18-6-6 6-6"/>',NEXT='<path d="m9 18 6-6-6-6"/>',PLUS='<path d="M12 5v14M5 12h14"/>',CHK='<path d="m5 12.5 4.5 4.5L19 7.5"/>',LOCK='<rect x="5" y="11" width="14" height="9" rx="2.5"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/>',HEART='<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" fill="currentColor" stroke="none"/>',TRASH='<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/>',PLAY='<path d="M8 5.5v13l11-6.5L8 5.5z" fill="currentColor" stroke="none"/>';
+const FALL=[['#9dbcae','#dcb3ae','#eee8df'],['#9fb8d4','#e3bfd6','#efe7e1'],['#8ea3c0','#efd5ae','#dde3ea'],['#f0c48f','#cfb0d4','#f6eddf'],['#cdb5da','#a6cdd0','#f3ecea'],['#e8b7b0','#a9c2ae','#f4e9dc'],['#a6d8bb','#f7d3b8','#f6f0e6'],['#dda7a1','#ebddc6','#f1eae1']];
+const MAX=3;
+const $=q=>document.querySelector(q);
+const post=(type,payload={})=>{try{parent.postMessage({source:'sane333-music-charpl',type,...payload},'*')}catch(e){}};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=t=>{const d=new Date(t),p=v=>String(v).padStart(2,'0');return (d.getMonth()+1)+'月'+d.getDate()+'日 '+p(d.getHours())+':'+p(d.getMinutes())};
+let chars=[], archives={}, likedIds=[], collected=new Set(), cur=0, op=null, vi={}, tg='all', busy='', cf=0;
+const cv=(c)=>{const a=c&&c[0]||FALL[0][0],b=c&&c[1]||FALL[0][1],d=c&&c[2]||FALL[0][2];return `<div class="cv" style="--a:${a};--b:${b};--c:${d}"></div>`};
+function toast(x){const e=document.createElement('div');e.className='toast';e.textContent=x;$('#ph').append(e);setTimeout(()=>e.remove(),2400)}
+function curChar(){return chars[cur]||null}
+function arch(c){return c?archives[c.id]||{batches:[],summary:''}:{batches:[],summary:''}}
+function sheet(h){$('#ly').innerHTML=`<div class="shd" data-a="x"><div class="sheet" data-a="s">${h}</div></div>`}
+function gsheet(){if(!chars.length)return toast('还没有导入角色卡');sheet(`<h3>生成歌单</h3><p>按角色人设选歌；你的喜欢只作少量呼应。每位最多存 ${MAX} 次。</p><div class="cps">${['all',...chars.map(c=>c.id)].map(k=>{const label=k==='all'?'所有角色':(chars.find(c=>c.id===k)||{}).n||k;return `<button class="${tg==k?'on':''}" data-a="tg" data-k="${esc(k)}">${esc(label)}</button>`}).join('')}</div><div class="mtr">${chars.map(c=>{const a=arch(c);return esc(c.n)+' '+(a.batches||[]).length+'/'+MAX}).join(' · ')}</div><button class="go" data-a="go">开始生成</button><button class="lnk" data-a="clr">${cf?'再点一次，清空所有记录':'清空所有记录'}</button>`)}
+function go(m){if(busy)return;if(!chars.length)return toast('还没有导入角色卡');
+const list=tg==='all'?chars.map(c=>c.id):[tg];
+const full=list.filter(id=>(arch(chars.find(c=>c.id===id)||{id}).batches||[]).length>=MAX);
+if(full.length&&!m){const names=full.map(id=>(chars.find(c=>c.id===id)||{}).n||id).join('、');return sheet(`<h3>记录满了</h3><p>${esc(names)} 已经存满 ${MAX} 次。最旧的一次要怎么处理？</p><button class="opt" data-a="gm" data-m="sum"><b>总结后再生成</b><small>最旧的一次压缩成一两句话留下</small></button><button class="opt" data-a="gm" data-m="del"><b>直接删除</b><small>最旧的一次不再保留</small></button><button class="lnk" data-a="x">取消</button>`)}
+$('#ly').innerHTML='';post('generate',{characterIds:list,mode:m||''})}
+function render(){const c=curChar();
+$('#gb').innerHTML=busy?('生成中 '+busy):'生成';$('#gb').setAttribute('aria-label',busy?('生成中 '+busy):'生成歌单');$('#gb').disabled=!!busy;
+if(!chars.length){$('#st').innerHTML='';$('#bd').innerHTML='<div class="mt">还没有导入角色卡<br>先去角色档案导入，再回来生成歌单</div>';return}
+$('#st').innerHTML=chars.map((m,j)=>`<button class="u ${j==cur?'on':''}" data-a="pick" data-i="${j}"><div class="av ${m.avatar?'im':''}" style="--h:${m.h||200};${m.avatar?`background-image:url('${esc(m.avatar)}')`:''}">${m.avatar?'':esc((m.n||'?')[0])}</div>${esc(m.n)}</button>`).join('');
+const a=arch(c),B=a.batches||[],i=Math.min(vi[c.id]||0,Math.max(B.length-1,0)),x=B[i];
+const sc=a.summary?`<div class="sm"><b>更早的歌单（已总结）</b><p>${esc(a.summary)}</p><button data-a="ds">删除总结</button></div>`:'';
+if(!x){$('#bd').innerHTML=`<div class="mt">还没有 ${esc(c.n)} 的歌单<br>点右上角「生成」，按 TA 的性格挑几张</div>`+sc;return}
+const openPl=x.playlists.filter(p=>!p.locked);
+const likedSet=new Set(likedIds);
+const overlap=openPl.reduce((n,p)=>n+(p.tracks||[]).filter(t=>likedSet.has(t.id)).length,0);
+$('#bd').innerHTML=`<div class="hd"><q>${esc(x.sig)}</q><small>${esc(c.n)}的近况</small><div class="chs"><span class="ch a"><b>${openPl.length}</b>张歌单</span><span class="ch b"><b>${overlap}</b>首你也喜欢</span></div></div>
+<div class="bn"><button data-a="bp" ${i>=B.length-1?'disabled':''} aria-label="较早一次">${ic(BACK,16)}</button><span>${fmt(x.at)}${i?'':' · 最新'} · 已存 ${B.length}/${MAX}</span><button data-a="bn" ${i<=0?'disabled':''} aria-label="较新一次">${ic(NEXT,16)}</button><button data-a="dl" aria-label="删除这一次">${ic(TRASH,15)}</button></div>
+<div class="lst">${(x.playlists||[]).map((p,j)=>{const k=c.id+'|'+x.at+'|'+j,on=collected.has(k);
+if(p.locked)return `<div class="it lk"><button class="row" data-a="lock"><div class="stk"><i></i>${cv(p.colors)}</div><div class="t"><b>${esc(p.name)}</b><em>多聊几次，TA 才愿意给你看</em></div><span class="lkb" style="display:grid;place-items:center">${ic(LOCK,17)}</span></button></div>`;
+const m=(p.tracks||[]).filter(t=>likedSet.has(t.id)).length;
+return `<div class="it"><div class="row"><button class="row" data-a="op" data-k="${esc(k)}" style="flex:1;min-width:0"><div class="stk"><i></i>${cv(p.colors)}</div><div class="t"><b>${esc(p.name)}</b><em>${esc(p.blurb||'')}</em><small>${(p.tracks||[]).length} 首 · 你也喜欢 ${m} 首</small></div></button><button class="sv ${on?'on':''}" data-a="sv" data-k="${esc(k)}" aria-label="收藏到我的歌单">${ic(on?CHK:PLUS,18)}</button></div>${op==k?`<div class="tk"><button class="pa" data-a="pa" data-k="${esc(k)}">${ic(PLAY,13)}播放全部</button>${(p.tracks||[]).map(t=>`<button class="tr" data-a="play" data-k="${esc(k)}" data-tid="${esc(t.id)}" aria-label="播放 ${esc(t.name)}">${cv(t.colors)}<div><b>${esc(t.name)}</b><small>${esc(t.artist)}</small></div>${likedSet.has(t.id)?ic(HEART,14):`<span class="pl">${ic(PLAY,14)}</span>`}</button>`).join('')}</div>`:''}</div>`}).join('')}</div>`+sc}
+document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el)return;const a=el.dataset.a,k=el.dataset.k,c=curChar();
+if(a=='pick'){cur=+el.dataset.i;op=null;render();$('#pg').scrollTop=0}
+else if(a=='op'){op=op==k?null:k;render()}
+else if(a=='sv'){post('toggle-collect',{key:k});}
+else if(a=='play'){post('play-track',{key:k,trackId:el.dataset.tid||''})}
+else if(a=='pa'){post('play-playlist',{key:k})}
+else if(a=='lock')toast(c?'还没到时候，多和 '+c.n+' 聊聊':'还没到时候')
+else if(a=='back')post('back')
+else if(a=='gen'){cf=0;gsheet()}
+else if(a=='tg'){tg=el.dataset.k;gsheet()}
+else if(a=='go')go()
+else if(a=='gm')go(el.dataset.m)
+else if(a=='clr'){if(!cf){cf=1;gsheet();return}post('clear-all');cf=0;$('#ly').innerHTML=''}
+else if(a=='bp'||a=='bn'){if(!c)return;vi[c.id]=Math.max(0,Math.min((vi[c.id]||0)+(a=='bp'?1:-1),(arch(c).batches||[]).length-1));op=null;render()}
+else if(a=='dl'){if(!c)return;post('delete-batch',{characterId:c.id,index:vi[c.id]||0});vi[c.id]=0;op=null}
+else if(a=='ds'){if(!c)return;post('clear-summary',{characterId:c.id})}
+else if(a=='x'&&e.target==el){cf=0;$('#ly').innerHTML=''}});
+window.addEventListener('message',ev=>{const m=ev.data;if(!m||m.source!=='sane333-music-shell')return;
+if(m.type==='toast')toast(m.text||'');
+if(m.type==='generate-progress'){busy=m.text||'';render()}
+if(m.type==='charpl-state'){
+  chars=m.characters||[];archives=m.archives||{};likedIds=m.likedIds||[];
+  collected=new Set(m.collected||[]);busy=m.busy||'';
+  if(cur>=chars.length)cur=0;render();
+}});
+$('#bk').innerHTML=ic(BACK,22);render();post('charpl-ready');
+</script></body></html>

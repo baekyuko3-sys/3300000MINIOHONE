@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>红包 · 竖长方形 · 才像红包</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #eceae6;
+    --ink: #26221e;
+    --mut: #8a8178;
+    --line: rgba(50,40,30,.12);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    color: var(--ink);
+    background:
+      radial-gradient(ellipse 55% 40% at 82% 0%, rgba(212,170,181,.18), transparent 55%),
+      radial-gradient(ellipse 50% 35% at 8% 18%, rgba(230,210,190,.26), transparent 50%),
+      var(--bg);
+    font-family: "Noto Sans SC", "DM Sans", system-ui, sans-serif;
+    padding: 28px 16px 96px;
+  }
+  h1 {
+    margin: 0;
+    text-align: center;
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-size: 28px;
+    font-weight: 600;
+  }
+  .sub {
+    max-width: 460px;
+    margin: 8px auto 12px;
+    text-align: center;
+    color: var(--mut);
+    font-size: 12px;
+    line-height: 1.75;
+  }
+  .note {
+    max-width: 460px;
+    margin: 0 auto 18px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.72);
+    border: 1px solid var(--line);
+    font-size: 11px;
+    line-height: 1.7;
+    color: #5a5048;
+    text-align: center;
+  }
+  .note b { color: #26221e; }
+  .tap-hint {
+    text-align: center;
+    font-size: 10px;
+    color: var(--mut);
+    margin-bottom: 6px;
+  }
+  .grid { max-width: 460px; margin: 0 auto; display: grid; gap: 30px; }
+  .name {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .name span { font-size: 10px; font-weight: 400; color: var(--mut); }
+  .phone {
+    width: min(100%, 300px);
+    margin: 0 auto;
+    background: #f3f1ef;
+    border: 1px solid var(--line);
+    border-radius: 28px;
+    overflow: hidden;
+    box-shadow: 0 14px 36px rgba(60,45,30,.08);
+  }
+  .screen {
+    background: #fff;
+    min-height: 480px;
+    padding: 14px 12px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .chat-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #f0f0f1;
+  }
+  .chat-top .av {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: linear-gradient(145deg, #d8c4b8, #9a8578);
+  }
+  .chat-top b { font-size: 13px; }
+  .row-me {
+    align-self: flex-end;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+  .meta { font-size: 9px; color: #bbb; }
+  .pick {
+    max-width: 460px;
+    margin: 28px auto 0;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: rgba(255,255,255,.65);
+    border: 1px solid var(--line);
+    font-size: 12px;
+    line-height: 1.75;
+    color: #5a5048;
+  }
+  .pick b { color: #26221e; }
+
+  /* ===== 竖长红包本体 ===== */
+  .pkt {
+    --bg1: #e24a3c;
+    --bg2: #b91f1a;
+    --ink: #ffe9b0;
+    --muted: rgba(255,233,176,.55);
+    --seal: #f0c96a;
+    --seal-ink: #7a4810;
+    --open-bg: #fffdf9;
+    --open-ink: #3a2a2a;
+    --open-amt: #c45b5b;
+
+    width: 118px;
+    height: 178px;
+    border-radius: 10px;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    user-select: none;
+    box-shadow: 0 10px 24px rgba(80,20,15,.22);
+    transition: transform .15s ease;
+  }
+  .pkt:active { transform: scale(.98); }
+  .pkt .sealed { position: absolute; inset: 0; display: flex; flex-direction: column; }
+  .pkt .opened { position: absolute; inset: 0; display: none; flex-direction: column; }
+  .pkt.is-open .sealed { display: none; }
+  .pkt.is-open .opened { display: flex; }
+
+  .pkt .body {
+    flex: 1;
+    background: linear-gradient(165deg, var(--bg1), var(--bg2));
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 8px 10px;
+  }
+  /* 顶部折盖暗示 */
+  .pkt .flap {
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    height: 42px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--bg1) 70%, #fff 12%), transparent);
+    clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
+    opacity: .95;
+    pointer-events: none;
+  }
+  .pkt .edge {
+    position: absolute;
+    inset: 0;
+    border-radius: 10px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.12), inset 8px 0 16px rgba(0,0,0,.06), inset -8px 0 16px rgba(0,0,0,.06);
+    pointer-events: none;
+  }
+  .pkt .seal {
+    position: relative;
+    z-index: 2;
+    width: 36px; height: 36px;
+    margin-top: 22px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 32% 28%, #fff3c4, var(--seal) 50%, color-mix(in srgb, var(--seal) 70%, #000 20%));
+    color: var(--seal-ink);
+    display: grid;
+    place-items: center;
+    font-family: "Noto Serif SC", "Songti SC", serif;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 3px 8px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.45);
+  }
+  .pkt .vert {
+    position: relative;
+    z-index: 1;
+    margin-top: 14px;
+    writing-mode: vertical-rl;
+    font-family: "Noto Serif SC", "Songti SC", serif;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: .28em;
+    color: var(--ink);
+    height: 72px;
+    line-height: 1.15;
+  }
+  .pkt .cta {
+    position: relative;
+    z-index: 1;
+    margin-top: auto;
+    font-size: 9px;
+    letter-spacing: .14em;
+    color: var(--muted);
+  }
+
+  .pkt .opened {
+    background: var(--open-bg);
+    padding: 14px 10px 12px;
+    text-align: center;
+    justify-content: center;
+  }
+  .pkt .opened .tag {
+    font-size: 9px;
+    letter-spacing: .16em;
+    color: var(--open-amt);
+    font-weight: 600;
+  }
+  .pkt .opened .amt {
+    margin-top: 12px;
+    font-family: "DM Sans", sans-serif;
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--open-amt);
+    letter-spacing: -.5px;
+  }
+  .pkt .opened .from {
+    margin-top: 10px;
+    font-size: 10px;
+    color: #999;
+    line-height: 1.4;
+  }
+  .pkt .opened .again {
+    margin-top: 14px;
+    font-size: 9px;
+    color: #ccc;
+  }
+
+  /* 配色 */
+  .V1 { /* 经典朱红 */
+    --bg1: #e85a48; --bg2: #c12b24;
+    --ink: #ffe9b0; --muted: rgba(255,233,176,.55);
+    --seal: #f0c96a; --seal-ink: #7a4810;
+    --open-amt: #c12b24;
+  }
+  .V2 { /* 午夜酒红 */
+    --bg1: #6a2a34; --bg2: #3a141c;
+    --ink: #f3d7b0; --muted: rgba(243,215,176,.5);
+    --seal: #e0b878; --seal-ink: #6a4218;
+    --open-bg: #1a1214; --open-ink: #f3e8e4; --open-amt: #e8c4a0;
+  }
+  .V2 .opened .from { color: #9a8078; }
+  .V2 .opened .again { color: #5a4844; }
+
+  .V3 { /* App 玫瑰竖封 */
+    --bg1: #c4989f; --bg2: #9a6874;
+    --ink: #fff4f2; --muted: rgba(255,244,242,.55);
+    --seal: #f2d6c4; --seal-ink: #8a5a48;
+    --open-amt: #ae7e89;
+  }
+  .V4 { /* 墨玉 + 玫瑰印 */
+    --bg1: #2c2826; --bg2: #161412;
+    --ink: #f0e4e8; --muted: rgba(240,228,232,.45);
+    --seal: #d4aab5; --seal-ink: #5a3040;
+    --open-bg: #161412; --open-amt: #d4aab5;
+  }
+  .V4 .opened .from { color: #8a7e7a; }
+  .V4 .opened .again { color: #5a524e; }
+
+  .V5 { /* 暖金赤陶 */
+    --bg1: #d4895a; --bg2: #a85a32;
+    --ink: #fff1dc; --muted: rgba(255,241,220,.55);
+    --seal: #ffe2a8; --seal-ink: #8a5a20;
+    --open-amt: #a85a32;
+  }
+  .V6 { /* 朱红 + 竖纹暗纹 */
+    --bg1: #dc4a3c; --bg2: #a82018;
+    --ink: #ffe7a8; --muted: rgba(255,231,168,.5);
+    --seal: #f5d078; --seal-ink: #7a4810;
+    --open-amt: #c12b24;
+  }
+  .V6 .body::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      90deg,
+      transparent 0 10px,
+      rgba(0,0,0,.04) 10px 11px
+    );
+    pointer-events: none;
+  }
+
+  .V7 { /* 奶油纸 + 红印：浅底竖封 */
+    --bg1: #f3e8dc; --bg2: #e8d4c0;
+    --ink: #8a3030; --muted: rgba(138,48,48,.45);
+    --seal: #c12b24; --seal-ink: #ffe9b0;
+    --open-amt: #c12b24;
+    box-shadow: 0 10px 24px rgba(80,50,30,.12);
+  }
+  .V7 .seal {
+    background: radial-gradient(circle at 32% 28%, #e85848, #c12b24 60%, #8a1810);
+    color: #ffe9b0;
+  }
+</style>
+</head>
+<body>
+  <h1>Vertical Packet</h1>
+  <p class="sub">单独设计稿 · 不改 App<br>竖长方形 · 未拆不露金额 · 点开领取</p>
+  <div class="note">
+    横卡片本来就不像红包。这轮全部改成 <b>竖长封套</b>（约 118×178），竖排祝福 + 圆印。<br>
+    <b>点卡片拆开</b>才看见金额。回我编号。
+  </div>
+  <p class="tap-hint">点红包拆开 / 再点封回</p>
+
+  <div class="grid">
+    <section>
+      <div class="name">V1 · 经典朱红<span>最像传统红包</span></div>
+      <div class="phone"><div class="screen">
+        <div class="chat-top"><div class="av"></div><b>闻延</b></div>
+        <div class="row-me">
+          <div class="pkt V1" data-pkt>
+            <div class="sealed">
+              <div class="body">
+                <div class="flap"></div>
+                <div class="edge"></div>
+                <div class="seal">開</div>
+                <div class="vert">恭喜發財</div>
+                <div class="cta">轻点拆开</div>
+              </div>
+            </div>
+            <div class="opened">
+              <div class="tag">已领取</div>
+              <div class="amt">¥200</div>
+              <div class="from">来自你的红包</div>
+              <div class="again">再点封回</div>
+            </div>
+          </div>
+          <div class="meta">未读 · 刚刚</div>
+        </div>
+      </div></div>
+    </section>
+
+    <section>
+      <div class="name">V2 · 午夜酒红<span>深色竖封 · 香槟字</span></div>
+      <div class="phone"><div class="screen">
+        <div class="chat-top"><div class="av"></div><b>闻延</b></div>
+        <div class="row-me">
+          <div class="pkt V2" data-pkt>
+            <div class="sealed">
+              <div class="body">
+                <div class="flap"></div>
+                <div class="edge"></div>
+                <div class="seal">開</div>
+                <div class="vert">恭喜發財</div>
+                <div class="cta">轻点拆开</div>
+              </div>
+            </div>
+            <div class="opened">
+              <div class="tag">已领取</div>
+              <div class="amt">¥200</div>
+              <div class="from">来自你的红包</div>
+              <div class="again">再点封回</div>
+            </div>
+          </div>
+          <div class="meta">未读 · 刚刚</div>
+        </div>
+      </div></div>
+    </section>
+
+    <section>
+      <div class="name">V3 · App 玫瑰竖封<span>主色竖着的红包</span></div>
+      <div class="phone"><div class="screen">
+        <div class="chat-top"><div class="av"></div><b>闻延</b></div>
+        <div class="row-me">
+          <div class="pkt V3" data-pkt>
+            <div class="sealed">
+              <div class="body">
+                <div class="flap"></div>
+                <div class="edge"></div>
+                <div class="seal">開</div>
+                <div class="vert">恭喜發財</div>
+                <div class="cta">轻点拆开</div>
+              </div>
+            </div>
+            <div class="opened">
+              <div class="tag">已领取</div>
+              <div class="amt">¥200</div>
+              <div class="from">来自你的红包</div>
+              <div class="again">再点封回</div>
+            </div>
+          </div>
+          <div class="meta">未读 · 刚刚</div>
+        </div>
+      </div></div>
+    </section>
+
+    <section>
+      <div class="name">V4 · 墨玉竖封<span>跟转账 T2 成套</span></div>
+      <div class="phone"><div class="screen">
+        <div class="chat-top"><div class="av"></div><b>闻延</b></div>
+        <div class="row-me">
+          <div class="pkt V4" data-pkt>
+            <div class="sealed">
+              <div class="body">
+                <div class="flap"></div>
+                <div class="edge"></div>
+                <div class="seal">開</div>
+                <div class="vert">恭喜發財</div>
+                <div class="cta">轻点拆开</div>
+              </div>
+            </div>
+            <div class="opened">
+              <div class="tag">已领取</div>
+              <div class="amt">¥200</div>
+              <div class="from">来自你的红包</div>
+              <div class="again">再点封回</div>
+            </div>
+          </div>
+          <div class="meta">未读 · 刚刚</div>
+        </div>
+      </div></div>
+    </section>
+
+    <section>
+      <div class="name">V5 · 暖金赤陶<span>偏礼金 · 不那么节日</span></div>
+      <div class="phone"><div class="screen">
+        <div class="chat-top"><div class="av"></div><b>闻延</b></div>
+        <div class="row-me">
+          <div class="pkt V5" data-pkt>
+            <div class="sealed">
+              <div class="body">
+                <div class="flap"></div>
+                <div class="edge"></div>
+                <div class="seal">開</div>
+                <div class="vert">恭喜發財</div>
+                <div class="cta">轻点拆开</div>
+              </div>
+            </div>
+            <div class="opened">
+              <div class="tag">已领取</div>
+              <div class="amt">¥200</div>
+              <div class="from">来自你的红包</div>
+              <div class="again">再点封回</div>
+            </div>
+          </div>
+          <div class="meta">未读 · 刚刚</div>
+        </div>
+      </div></div>
+    </section>
+
+    <section>
+      <div class="name">V6 · 朱红暗纹<span>竖纹质感 · 更厚</span></div>
+      <div class="phone"><div class="screen">
+        <div class="chat-top"><div class="av"></div><b>闻延</b></div>
+        <div class="row-me">
+          <div class="pkt V6" data-pkt>
+            <div class="sealed">
+              <div class="body">
+                <div class="flap"></div>
+                <div class="edge"></div>
+                <div class="seal">開</div>
+                <div class="vert">恭喜發財</div>
+                <div class="cta">轻点拆开</div>
+              </div>
+            </div>
+            <div class="opened">
+              <div class="tag">已领取</div>
+              <div class="amt">¥200</div>
+              <div class="from">来自你的红包</div>
+              <div class="again">再点封回</div>
+            </div>
+          </div>
+          <div class="meta">未读 · 刚刚</div>
+        </div>
+      </div></div>
+    </section>
+
+    <section>
+      <div class="name">V7 · 奶油纸 + 红印<span>浅底竖封 · 红圆印</span></div>
+      <div class="phone"><div class="screen">
+        <div class="chat-top"><div class="av"></div><b>闻延</b></div>
+        <div class="row-me">
+          <div class="pkt V7" data-pkt>
+            <div class="sealed">
+              <div class="body">
+                <div class="flap"></div>
+                <div class="edge"></div>
+                <div class="seal">開</div>
+                <div class="vert">恭喜發財</div>
+                <div class="cta">轻点拆开</div>
+              </div>
+            </div>
+            <div class="opened">
+              <div class="tag">已领取</div>
+              <div class="amt">¥200</div>
+              <div class="from">来自你的红包</div>
+              <div class="again">再点封回</div>
+            </div>
+          </div>
+          <div class="meta">未读 · 刚刚</div>
+        </div>
+      </div></div>
+    </section>
+  </div>
+
+  <div class="pick">
+    回我例如：<b>就 V1</b>（经典朱红） / <b>V2</b> / <b>V3</b>（App 玫瑰） / <b>V4</b>（跟转账成套） / <b>V6</b> / <b>V7</b><br>
+    确认后再接到单聊。
+  </div>
+
+<script>
+document.querySelectorAll('[data-pkt]').forEach(el => {
+  el.addEventListener('click', () => el.classList.toggle('is-open'));
+});
+</script>
+</body>
+</html>

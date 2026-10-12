@@ -1,0 +1,10 @@
+{
+  "name": "Sane333 · Private Virtual Phone",
+  "short_name": "Sane333",
+  "description": "Private roleplay virtual phone with chat, memory, world books and offline stories.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f4ee",
+  "theme_color": "#292724",
+  "icons": []
+}
