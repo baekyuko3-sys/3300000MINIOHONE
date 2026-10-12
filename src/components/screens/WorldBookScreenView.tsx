@@ -44,7 +44,7 @@ function createEntry(): WorldBookEntry {
 export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) {
   const importRef = useRef<HTMLInputElement>(null);
   const [books, setBooks] = usePersistentState<WorldBook[]>('phone:worldbooks', []);
-  const [screenMode, setScreenMode] = useState<'library' | 'online-global' | 'offline-global'>('library');
+  const [screenMode, setScreenMode] = useState<'home' | 'library' | 'online-global' | 'offline-global' | 'character-books'>('home');
   const [selectedBookId, setSelectedBookId] = useState(books[0]?.id || '');
   const [selectedEntryId, setSelectedEntryId] = useState(books[0]?.entries[0]?.id || '');
   const [search, setSearch] = useState('');
@@ -62,7 +62,7 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
 
   const onlineGlobals = books.filter(item => onlineGlobalIds.includes(item.id));
   const offlineGlobals = books.filter(item => offlineGlobalIds.includes(item.id));
-  const scopedBooks = screenMode === 'online-global' ? onlineGlobals : screenMode === 'offline-global' ? offlineGlobals : books;
+  const scopedBooks = screenMode === 'online-global' ? onlineGlobals : screenMode === 'offline-global' ? offlineGlobals : screenMode === 'character-books' ? books.filter(item => item.sourceType === 'character-card') : books;
   const book = scopedBooks.find(item => item.id === selectedBookId) || scopedBooks[0] || null;
   const isOnlineGlobal = !!book && onlineGlobalIds.includes(book.id);
   const isOfflineGlobal = !!book && offlineGlobalIds.includes(book.id);
@@ -209,17 +209,29 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
     <div className="relative w-full h-full min-w-0 flex flex-col overflow-hidden" style={{ background: 'var(--paper)', color: 'var(--ink)' }}>
       <div className="absolute inset-0 opacity-15 bg-paper-noise pointer-events-none" />
 
-      <header className="relative z-10 px-5 pt-12 pb-3.5 border-b border-[rgba(40,36,31,.12)] bg-[color-mix(in_srgb,var(--paper)_92%,white_8%)] backdrop-blur-xl flex items-center justify-between">
+      {screenMode === 'home' && <div className="absolute inset-0 z-30 overflow-y-auto px-5 pt-12 pb-8" style={{ background: 'var(--paper)' }}>
+        <div className="text-[8px] font-mono tracking-[2px] text-[#817a72]">LOREBOOK · CONTEXT</div>
+        <h2 className="mt-2 font-serif font-bold text-2xl tracking-tight text-[#242323]">世界书</h2>
+        <p className="mt-1 text-[11px] leading-relaxed text-[#817a72]">管理故事背景、角色设定与聊天上下文</p>
+        <div className="mt-6 space-y-3">
+          <button type="button" onClick={() => { setScreenMode('online-global'); setSelectedBookId(onlineGlobals[0]?.id || ''); setSelectedEntryId(onlineGlobals[0]?.entries[0]?.id || ''); }} className="w-full rounded-2xl border border-[rgba(40,36,31,.1)] bg-white/65 p-4 text-left"><div className="flex items-center justify-between"><span className="text-sm font-serif font-bold text-[#302d29]">线上世界书</span><BookOpen className="w-4 h-4 text-[#8b7560]" /></div><p className="mt-1 text-[10px] text-[#8b847d]">供 LINE 在线聊天调用的全局设定</p><div className="mt-3 text-[9px] text-[#8b7560]">{onlineGlobals.length} 本已绑定　→</div></button>
+          <button type="button" onClick={() => { setScreenMode('offline-global'); setSelectedBookId(offlineGlobals[0]?.id || ''); setSelectedEntryId(offlineGlobals[0]?.entries[0]?.id || ''); }} className="w-full rounded-2xl border border-[rgba(40,36,31,.1)] bg-white/65 p-4 text-left"><div className="flex items-center justify-between"><span className="text-sm font-serif font-bold text-[#302d29]">线下世界书</span><BookOpen className="w-4 h-4 text-[#8b7560]" /></div><p className="mt-1 text-[10px] text-[#8b847d]">供线下剧情独立调用的全局设定</p><div className="mt-3 text-[9px] text-[#8b7560]">{offlineGlobals.length} 本已绑定　→</div></button>
+          <button type="button" onClick={() => setScreenMode('library')} className="w-full rounded-2xl border border-[rgba(40,36,31,.1)] bg-white/65 p-4 text-left"><div className="flex items-center justify-between"><span className="text-sm font-serif font-bold text-[#302d29]">我的世界书</span><BookOpen className="w-4 h-4 text-[#8b7560]" /></div><p className="mt-1 text-[10px] text-[#8b847d]">导入、创建、编辑和管理世界书资料库</p><div className="mt-3 text-[9px] text-[#8b7560]">{books.filter(item => !globalIds.has(item.id)).length} 本资料　→</div></button>
+          <button type="button" onClick={() => setScreenMode('character-books')} className="w-full rounded-2xl border border-[rgba(40,36,31,.1)] bg-white/65 p-4 text-left"><div className="flex items-center justify-between"><span className="text-sm font-serif font-bold text-[#302d29]">角色世界书</span><BookOpen className="w-4 h-4 text-[#8b7560]" /></div><p className="mt-1 text-[10px] text-[#8b847d]">查看从角色卡导入的专属设定</p><div className="mt-3 text-[9px] text-[#8b7560]">{books.filter(item => item.sourceType === 'character-card').length} 本角色设定　→</div></button>
+        </div>
+        <div className="mt-5 rounded-xl bg-white/40 border border-[rgba(40,36,31,.08)] p-3 text-[9px] leading-relaxed text-[#8b847d]">线上与线下全局绑定相互独立；在资料库管理中可将现有世界书加入对应全局。</div>
+      </div>}
+      <header className={`${screenMode === 'home' ? 'hidden' : 'relative z-10 px-5 pt-12 pb-3.5 border-b border-[rgba(40,36,31,.12)] bg-[color-mix(in_srgb,var(--paper)_92%,white_8%)] backdrop-blur-xl flex items-center justify-between'}`}>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => screenMode === 'library' ? onNavigate('home') : setScreenMode('library')}
+            onClick={() => setScreenMode('home')}
             className="w-8 h-8 rounded-full bg-white/40 border border-white/60 grid place-items-center text-xs text-[#242323]"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
             <div className="text-[8px] font-mono tracking-[2px] text-[#817a72] uppercase">LOREBOOK · CONTEXT</div>
-            <h2 className="font-serif font-bold text-base tracking-tight text-[#242323]">{screenMode === 'online-global' ? '线上全局世界书' : screenMode === 'offline-global' ? '线下全局世界书' : '世界书'}</h2>
+            <h2 className="font-serif font-bold text-base tracking-tight text-[#242323]">{screenMode === 'online-global' ? '线上全局世界书' : screenMode === 'offline-global' ? '线下全局世界书' : screenMode === 'character-books' ? '角色世界书' : '我的世界书'}</h2>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -228,7 +240,7 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
         </div>
       </header>
 
-      <div className="relative z-10 flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
+      <div className={`${screenMode === 'home' ? 'hidden' : 'relative z-10 flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden'}`}>
         <div className="shrink-0 px-4 pt-3 pb-2">
           <div className="flex items-center justify-between gap-2 mb-2">
             <div className="min-w-0">
@@ -301,7 +313,7 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
             ))}
             {localBooks.length === 0 && (
               <div className="w-full py-8 text-center rounded-2xl border border-dashed border-[rgba(40,36,31,.18)] text-[10px] text-[#8b847d]">
-                {screenMode === 'online-global' ? '还没有加入线上全局的世界书。可以新建一本，或导入现有世界书。' : screenMode === 'offline-global' ? '还没有加入线下全局的世界书。可以新建一本，或导入现有世界书。' : '还没有世界书 · 可以从角色卡自动导入，或右上角 ＋ 新建'}
+                {screenMode === 'online-global' ? '还没有加入线上全局的世界书。可以新建一本，或导入现有世界书。' : screenMode === 'offline-global' ? '还没有加入线下全局的世界书。可以新建一本，或导入现有世界书。' : screenMode === 'character-books' ? '还没有角色卡专属世界书。导入包含世界书的角色卡后，会显示在这里。' : '还没有世界书 · 可以从角色卡自动导入，或右上角 ＋ 新建'}
                 <div className="mt-3 flex justify-center gap-2"><button onClick={addBook} className="px-3 py-2 rounded-full bg-[#292724] text-white text-[10px]">新建世界书</button><button onClick={() => importRef.current?.click()} className="px-3 py-2 rounded-full border border-[rgba(40,36,31,.15)] text-[10px]">导入世界书</button></div>
               </div>
             )}
