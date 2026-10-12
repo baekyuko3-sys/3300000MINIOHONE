@@ -698,15 +698,6 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
         </div>}
       </div>
 
-      {book && books.length > 1 && (
-        <button
-          onClick={() => removeBook()}
-          className="absolute z-30 right-4 bottom-12 px-3 py-1.5 rounded-full bg-[#292724] text-white text-[9px]"
-        >
-          删除当前世界书
-        </button>
-      )}
-
       {notice && (
         <div className="absolute z-50 left-1/2 -translate-x-1/2 bottom-16 bg-[#292724] text-white px-3.5 py-2 rounded-full text-[10px]">
           {notice}
