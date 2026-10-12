@@ -376,6 +376,10 @@ export function MusicHtmlView({ active = true, onNavigate }: MusicHtmlViewProps)
   const myPlRef = useRef<HTMLIFrameElement>(null);
   const charPlRef = useRef<HTMLIFrameElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    // React 的 AudioHTMLAttributes 类型未声明 referrerPolicy；通过 DOM 属性保留无 Referer 播放行为。
+    audioRef.current?.setAttribute('referrerpolicy', 'no-referrer');
+  }, []);
   const searchTimer = useRef<number | null>(null);
   const historyFilterWho = useRef('');
 
@@ -2810,7 +2814,7 @@ export function MusicHtmlView({ active = true, onNavigate }: MusicHtmlViewProps)
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-[#ffffff]">
-      <audio ref={audioRef} preload="metadata" referrerPolicy="no-referrer" />
+      <audio ref={audioRef} preload="metadata" />
       <iframe
         ref={meRef}
         title="Music Me"
