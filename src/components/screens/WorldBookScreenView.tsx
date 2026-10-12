@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, BookOpen, Download, Plus, Trash2, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, BookOpen, Download, Plus, Trash2, Settings2, ChevronDown, ChevronUp, ToggleRight, ToggleLeft } from 'lucide-react';
 import { ScreenType, WorldBook, WorldBookEntry } from '../../types';
 import { usePersistentState } from '../../store/usePersistentState';
 import { exportNativeWorldBook, exportSillyTavernWorldBook, importWorldBooks } from '../../store/worldbookFormats';
