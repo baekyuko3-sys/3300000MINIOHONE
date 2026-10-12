@@ -313,8 +313,6 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
                     }} className="text-[10px]">加入线下</button>}
                     {screenMode === 'library' && <button onClick={() => { setCharacterBookIds(prev => Array.from(new Set([...prev, item.id]))); showNotice('已加入角色世界书'); }} className="text-[10px] text-[#89739a]">加入角色书</button>}
                     {screenMode === 'character' && <button onClick={() => { setCharacterBookIds(prev => prev.filter(id => id !== item.id)); showNotice('已移出角色世界书，原书保留'); }} className="text-[10px] text-[#89739a]">移出角色书</button>}
-                    {screenMode === 'library' && <button onClick={() => {
-                    }} className="text-[10px]">加入线下</button>}
                     <button onClick={() => removeBook(item.id)} className="text-[10px] text-[#9b625b]">删除</button>
                   </div>
                 )}
