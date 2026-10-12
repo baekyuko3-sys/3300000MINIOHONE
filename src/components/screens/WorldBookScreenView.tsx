@@ -43,6 +43,7 @@ function createEntry(): WorldBookEntry {
 
 export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) {
   const importRef = useRef<HTMLInputElement>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const [books, setBooks] = usePersistentState<WorldBook[]>('phone:worldbooks', []);
   const [screenMode, setScreenMode] = useState<'home' | 'library' | 'online-global' | 'offline-global' | 'character-books'>('home');
   const [selectedBookId, setSelectedBookId] = useState(books[0]?.id || '');
@@ -206,7 +207,23 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
   };
 
   return (
-    <div className="relative w-full h-full min-w-0 flex flex-col overflow-hidden" style={{ background: 'var(--paper)', color: 'var(--ink)' }}>
+    <div
+      className="relative w-full h-full min-w-0 flex flex-col overflow-hidden"
+      style={{ background: 'var(--paper)', color: 'var(--ink)' }}
+      onTouchStart={event => {
+        const touch = event.touches[0];
+        touchStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+      }}
+      onTouchEnd={event => {
+        const start = touchStartRef.current;
+        const touch = event.changedTouches[0];
+        touchStartRef.current = null;
+        if (!start || !touch || screenMode === 'home') return;
+        const dx = touch.clientX - start.x;
+        const dy = touch.clientY - start.y;
+        if (dx > 85 && Math.abs(dy) < 70) setScreenMode('home');
+      }}
+    >
       <div className="absolute inset-0 opacity-15 bg-paper-noise pointer-events-none" />
 
       {screenMode === 'home' && <div className="absolute inset-0 z-30 overflow-y-auto px-5 pt-12 pb-8" style={{ background: 'var(--paper)' }}>
@@ -703,6 +720,7 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
           {notice}
         </div>
       )}
+      <div aria-hidden="true" className="absolute z-[60] bottom-1.5 left-1/2 -translate-x-1/2 w-28 h-1 rounded-full bg-[#292724]/75 pointer-events-none" />
     </div>
   );
 }
