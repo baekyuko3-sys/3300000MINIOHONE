@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, BookOpen, Download, Plus, Trash2, ToggleLeft, ToggleRight, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, BookOpen, Download, Plus, Trash2, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
 import { ScreenType, WorldBook, WorldBookEntry } from '../../types';
 import { usePersistentState } from '../../store/usePersistentState';
 import { exportNativeWorldBook, exportSillyTavernWorldBook, importWorldBooks } from '../../store/worldbookFormats';
@@ -64,16 +64,6 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
   const offlineGlobals = books.filter(item => offlineGlobalIds.includes(item.id));
   const scopedBooks = screenMode === 'online-global' ? onlineGlobals : screenMode === 'offline-global' ? offlineGlobals : books;
   const book = scopedBooks.find(item => item.id === selectedBookId) || scopedBooks[0] || null;
-  const isOnlineGlobal = !!book && onlineGlobalIds.includes(book.id);
-  const isOfflineGlobal = !!book && offlineGlobalIds.includes(book.id);
-  const toggleGlobalScope = (scope: 'online-chat' | 'offline-story') => {
-    if (!book) return;
-    const setter = scope === 'online-chat' ? setOnlineGlobalIds : setOfflineGlobalIds;
-    setter(prev => prev.includes(book.id) ? prev.filter(id => id !== book.id) : [...prev, book.id]);
-    setBooks(prev => prev.map(item => item.id === book.id
-      ? { ...item, globalScopes: Array.from(new Set([...(item.globalScopes || []).filter(v => v !== scope), ...(scope === 'online-chat' ? (!onlineGlobalIds.includes(item.id) ? [scope] : []) : (!offlineGlobalIds.includes(item.id) ? [scope] : []))])) as WorldBook['globalScopes'], updatedAt: new Date().toISOString() }
-      : item));
-  };
   const selectedEntry = book?.entries.find(item => item.id === selectedEntryId) || book?.entries[0] || null;
 
   useEffect(() => {
