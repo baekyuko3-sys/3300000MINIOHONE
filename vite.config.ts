@@ -43,7 +43,7 @@ export default defineConfig(() => {
   return {
     // GitHub Pages serves this project from /333oookkkkkkkkk/.
     // Vercel keeps the normal root path.
-    base: process.env.GITHUB_ACTIONS === 'true' ? '/333oookkkkkkkkk/' : '/',
+    base: process.env.GITHUB_ACTIONS === 'true' ? '/3300000MINIOHONE/' : '/',
     plugins: [react(), tailwindcss(), neteaseImageProxy()],
     resolve: {
       alias: {
