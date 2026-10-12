@@ -328,23 +328,23 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
             </button>
             {globalPanelOpen && (
               <div className="px-2.5 pb-2.5 grid grid-cols-2 gap-2">
-                <div className="rounded-xl bg-white/55 p-2">
-                  <div className="text-[7px] font-mono text-[#8b847d]">ONLINE CHAT</div>
+                <button type="button" onClick={() => { setScreenMode('online-global'); setSelectedBookId(onlineGlobals[0]?.id || ''); setSelectedEntryId(onlineGlobals[0]?.entries[0]?.id || ''); setExpandedEntryId(null); }} className="rounded-xl bg-white/55 p-2 text-left hover:bg-white/80 transition-colors">
+                  <div className="text-[7px] font-mono text-[#8b847d]">ONLINE CHAT · 打开页面 ↗</div>
                   <div className="mt-1 text-[8px] text-[#716a63]">{onlineGlobals.length ? '已加入全局' : '暂无'}</div>
                   {onlineGlobals.length > 0 && <div className="mt-1.5 flex flex-wrap gap-1">{onlineGlobals.map(item => <button key={item.id} onClick={() => { setSelectedBookId(item.id); setSelectedEntryId(item.entries[0]?.id || ''); setExpandedEntryId(null); }} className="max-w-full truncate px-2 py-1 rounded-full bg-[#292724] text-white text-[7px]">{item.name}</button>)}</div>}
-                </div>
-                <div className="rounded-xl bg-white/55 p-2">
-                  <div className="text-[7px] font-mono text-[#8b847d]">OFFLINE STORY</div>
+                </button>
+                <button type="button" onClick={() => { setScreenMode('offline-global'); setSelectedBookId(offlineGlobals[0]?.id || ''); setSelectedEntryId(offlineGlobals[0]?.entries[0]?.id || ''); setExpandedEntryId(null); }} className="rounded-xl bg-white/55 p-2 text-left hover:bg-white/80 transition-colors">
+                  <div className="text-[7px] font-mono text-[#8b847d]">OFFLINE STORY · 打开页面 ↗</div>
                   <div className="mt-1 text-[8px] text-[#716a63]">{offlineGlobals.length ? '已加入全局' : '暂无'}</div>
                   {offlineGlobals.length > 0 && <div className="mt-1.5 flex flex-wrap gap-1">{offlineGlobals.map(item => <button key={item.id} onClick={() => { setSelectedBookId(item.id); setSelectedEntryId(item.entries[0]?.id || ''); setExpandedEntryId(null); }} className="max-w-full truncate px-2 py-1 rounded-full bg-[#292724] text-white text-[7px]">{item.name}</button>)}</div>}
-                </div>
+                </button>
               </div>
             )}
           </div>}
           </div>
         </div>
 
-        <div className="shrink-0 px-4 pb-2">
+        {book && <div className="shrink-0 px-4 pb-2">
           <button
             onClick={() => setBookInfoOpen(value => !value)}
             className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-white/55 border border-[rgba(40,36,31,.1)] text-[9px] text-[#6d665f]"
@@ -389,9 +389,9 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
               </label>
             </div>
           )}
-        </div>
+        </div>}
 
-        <div className="shrink-0 px-4 pb-2 space-y-2">
+        {book && <div className="shrink-0 px-4 pb-2 space-y-2">
           <div className="rounded-2xl bg-[#292724] text-white overflow-hidden">
             <button onClick={() => setActiveNowOpen(value => !value)} className="w-full p-3 flex items-center justify-between text-left">
               <div>
@@ -444,9 +444,9 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
             </button>
             <input ref={importRef} type="file" accept=".json,.yaml,.yml" className="hidden" onChange={e => importBook(e.target.files?.[0])} />
           </div>
-        </div>
+        </div>}
 
-        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden no-scrollbar px-4 pb-24 space-y-1.5">
+        {book && <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden no-scrollbar px-4 pb-24 space-y-1.5">
           <div className="sticky top-0 z-10 px-2 py-1.5 rounded-xl bg-[color-mix(in_srgb,var(--paper)_95%,white_5%)] backdrop-blur text-[8px] font-mono tracking-[1.2px] text-[#8b847d] border border-[rgba(40,36,31,.08)]">
             <div className="flex items-center justify-between">
               <span>条目 · {filteredEntries.length} · 点开即可修改</span>
@@ -691,7 +691,7 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
           <button type="button" onClick={addEntry} className="w-full p-2.5 rounded-xl border border-dashed border-[#8b7560]/40 text-[10px] text-[#8b7560]">
             ＋ 新条目
           </button>
-        </div>
+        </div>}
       </div>
 
       {book && books.length > 1 && (
