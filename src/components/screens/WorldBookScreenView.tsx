@@ -64,6 +64,8 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
   const offlineGlobals = books.filter(item => offlineGlobalIds.includes(item.id));
   const scopedBooks = screenMode === 'online-global' ? onlineGlobals : screenMode === 'offline-global' ? offlineGlobals : books;
   const book = scopedBooks.find(item => item.id === selectedBookId) || scopedBooks[0] || null;
+  const isOnlineGlobal = !!book && onlineGlobalIds.includes(book.id);
+  const isOfflineGlobal = !!book && offlineGlobalIds.includes(book.id);
   const selectedEntry = book?.entries.find(item => item.id === selectedEntryId) || book?.entries[0] || null;
 
   useEffect(() => {
@@ -333,7 +335,6 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
             )}
           </div>}
           </div>
-        </div>
 
         {book && <div className="shrink-0 px-4 pb-2">
           <button
