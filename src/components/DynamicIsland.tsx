@@ -174,7 +174,7 @@ export function DynamicIsland({ enabled, onOpenMusic, island }: DynamicIslandPro
 
   const soloOpen = open && Boolean(track) && !isTogether;
   const togetherOpen = open && Boolean(track) && isTogether;
-  const peerName = strangerDisplayName(togetherSession);
+  const peerName = strangerDisplayName(readStrangerSession());
 
   const toggleOpen = () => {
     if (!track) {
