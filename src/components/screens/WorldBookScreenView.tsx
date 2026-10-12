@@ -311,7 +311,16 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
             <div className="flex items-center gap-2">
               <input
                 value={bookSearch}
-                onChange={e => setBookSearch(e.target.value)}
+                onChange={e => {
+                  const query = e.target.value;
+                  setBookSearch(query);
+                  const matches = localBooks.filter(item => item.name.toLowerCase().includes(query.trim().toLowerCase()));
+                  if (matches.length && !matches.some(item => item.id === book?.id)) {
+                    setSelectedBookId(matches[0].id);
+                    setSelectedEntryId(matches[0].entries[0]?.id || '');
+                    setExpandedEntryId(null);
+                  }
+                }}
                 placeholder="搜索世界书名称…"
                 aria-label="搜索世界书"
                 className="min-w-0 flex-1 bg-white/75 border border-[rgba(40,36,31,.12)] rounded-xl px-3 py-2 text-[11px] outline-none text-[#444]"
