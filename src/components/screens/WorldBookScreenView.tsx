@@ -128,7 +128,7 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
 
   const openEntry = (entryId: string) => {
     setSelectedEntryId(entryId);
-    setExpandedEntryId(current => current === entryId ? null : entryId);
+    setExpandedEntryId(entryId);
     setAdvancedOpen(false);
   };
 
@@ -490,32 +490,32 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
                       : 'bg-white/55 text-[#5e5852] border-[rgba(40,36,31,.12)]'
                 }`}
               >
-                <button
-                  type="button"
-                  onClick={() => openEntry(entry.id)}
-                  className="w-full text-left p-2.5"
-                >
-                  <div className="flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      checked={entry.enabled}
-                      onChange={() => {
-                        setSelectedEntryId(entry.id);
-                        patchEntry({ enabled: !entry.enabled }, entry.id);
-                      }}
-                      onClick={event => event.stopPropagation()}
-                      className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[#8b7560]"
-                      aria-label={entry.enabled ? '停用条目' : '启用条目'}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[10px] font-semibold truncate">{entry.name}</div>
-                      <div className={`mt-1 text-[8px] font-mono ${expanded ? 'text-[#8b847d]' : 'opacity-70'}`}>
-                        {entry.priority} · {entry.keywords.length} key · {entry.enabled ? 'ON' : 'OFF'}
-                      </div>
+                <div className="flex items-start gap-2 p-2.5">
+                  <input
+                    type="checkbox"
+                    checked={entry.enabled}
+                    onChange={() => {
+                      setSelectedEntryId(entry.id);
+                      patchEntry({ enabled: !entry.enabled }, entry.id);
+                    }}
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[#8b7560]"
+                    aria-label={entry.enabled ? '停用条目' : '启用条目'}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => openEntry(entry.id)}
+                    className="min-w-0 flex-1 text-left"
+                    aria-expanded={expanded}
+                  >
+                    <div className="text-[10px] font-semibold break-words">{entry.name}</div>
+                    <div className={`mt-1 text-[8px] font-mono ${expanded ? 'text-[#8b847d]' : 'opacity-70'}`}>
+                      {entry.priority} · {entry.keywords.length} key · {entry.enabled ? 'ON' : 'OFF'}
                     </div>
-                    {expanded ? <ChevronUp className="w-3.5 h-3.5 shrink-0 mt-0.5 opacity-70" /> : <ChevronDown className="w-3.5 h-3.5 shrink-0 mt-0.5 opacity-70" />}
-                  </div>
-                </button>
+                  </button>
+                  <button type="button" onClick={() => openEntry(entry.id)} aria-label={expanded ? '收起条目' : '查看并编辑条目'} className="shrink-0 mt-0.5">
+                    {expanded ? <ChevronUp className="w-3.5 h-3.5 opacity-70" /> : <ChevronDown className="w-3.5 h-3.5 opacity-70" />}
+                  </button>
+                </div>
                 {expanded && (
                   <div className="px-2.5 pb-2.5 space-y-2 border-t border-[rgba(40,36,31,.08)] pt-2">
                     <input
