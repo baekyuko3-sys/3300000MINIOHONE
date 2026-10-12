@@ -105,6 +105,19 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
     return book.entries.filter(entry => entry.enabled && (Boolean(entry.constant) || entry.keywords.some(keyword => keyword.trim() && text.includes(keyword.trim().toLowerCase()))));
   }, [book, activeNowText]);
 
+  const handleBack = () => {
+    if (expandedEntryId) {
+      setExpandedEntryId(null);
+      setAdvancedOpen(false);
+      return;
+    }
+    if (manageBooks) {
+      setManageBooks(false);
+      return;
+    }
+    setScreenMode('home');
+  };
+
   const showNotice = (message: string) => {
     setNotice(message);
     window.setTimeout(() => setNotice(''), 1800);
@@ -191,7 +204,11 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
     try {
       const normalized = importWorldBooks(await file.text());
       setBooks(prev => [
-        ...normalized.map(item => ({ ...item, enabled: screenMode === 'library' ? item.enabled : true })),
+        ...normalized.map(item => ({
+          ...item,
+          sourceType: item.sourceType || 'imported',
+          enabled: screenMode === 'library' ? item.enabled : true,
+        })),
         ...prev.filter(existing => !normalized.some(item => item.id === existing.id)),
       ]);
       if (screenMode === 'online-global') setOnlineGlobalIds(prev => Array.from(new Set([...prev, ...normalized.map(item => item.id)])));
@@ -221,7 +238,7 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
         if (!start || !touch || screenMode === 'home') return;
         const dx = touch.clientX - start.x;
         const dy = touch.clientY - start.y;
-        if (dx > 85 && Math.abs(dy) < 70) setScreenMode('home');
+        if (dx > 85 && Math.abs(dy) < 70) handleBack();
       }}
     >
       <input ref={importRef} type="file" accept=".json,.yaml,.yml,.txt,application/json,text/yaml" className="hidden" onChange={e => importBook(e.target.files?.[0])} />
@@ -243,7 +260,7 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
       <header className={`${screenMode === 'home' ? 'hidden' : 'relative z-10 px-5 pt-12 pb-3.5 border-b border-[rgba(40,36,31,.12)] bg-[color-mix(in_srgb,var(--paper)_92%,white_8%)] backdrop-blur-xl flex items-center justify-between'}`}>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setScreenMode('home')}
+            onClick={handleBack}
             className="w-8 h-8 rounded-full bg-white/40 border border-white/60 grid place-items-center text-xs text-[#242323]"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -724,9 +741,9 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
       )}
       <button
         type="button"
-        aria-label="返回世界书首页"
-        title="返回世界书首页"
-        onClick={() => setScreenMode('home')}
+        aria-label="返回上一级"
+        title="返回上一级"
+        onClick={handleBack}
         className="absolute z-[60] bottom-0 left-1/2 -translate-x-1/2 w-32 h-6 flex items-center justify-center bg-transparent"
       >
         <span aria-hidden="true" className="block w-28 h-1 rounded-full bg-[#292724]/75" />
