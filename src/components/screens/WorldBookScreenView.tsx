@@ -722,7 +722,15 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
           {notice}
         </div>
       )}
-      <div aria-hidden="true" className="absolute z-[60] bottom-1.5 left-1/2 -translate-x-1/2 w-28 h-1 rounded-full bg-[#292724]/75 pointer-events-none" />
+      <button
+        type="button"
+        aria-label="返回世界书首页"
+        title="返回世界书首页"
+        onClick={() => setScreenMode('home')}
+        className="absolute z-[60] bottom-0 left-1/2 -translate-x-1/2 w-32 h-6 flex items-center justify-center bg-transparent"
+      >
+        <span aria-hidden="true" className="block w-28 h-1 rounded-full bg-[#292724]/75" />
+      </button>
     </div>
   );
 }
