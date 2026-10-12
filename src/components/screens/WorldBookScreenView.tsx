@@ -331,12 +331,12 @@ export function WorldBookScreenView({ onNavigate }: { onNavigate: (screen: Scree
                 <button type="button" onClick={() => { setScreenMode('online-global'); setSelectedBookId(onlineGlobals[0]?.id || ''); setSelectedEntryId(onlineGlobals[0]?.entries[0]?.id || ''); setExpandedEntryId(null); }} className="rounded-xl bg-white/55 p-2 text-left hover:bg-white/80 transition-colors">
                   <div className="text-[7px] font-mono text-[#8b847d]">ONLINE CHAT · 打开页面 ↗</div>
                   <div className="mt-1 text-[8px] text-[#716a63]">{onlineGlobals.length ? '已加入全局' : '暂无'}</div>
-                  {onlineGlobals.length > 0 && <div className="mt-1.5 flex flex-wrap gap-1">{onlineGlobals.map(item => <button key={item.id} onClick={() => { setSelectedBookId(item.id); setSelectedEntryId(item.entries[0]?.id || ''); setExpandedEntryId(null); }} className="max-w-full truncate px-2 py-1 rounded-full bg-[#292724] text-white text-[7px]">{item.name}</button>)}</div>}
+                  {onlineGlobals.length > 0 && <div className="mt-1.5 flex flex-wrap gap-1">{onlineGlobals.map(item => <span key={item.id} className="max-w-full truncate px-2 py-1 rounded-full bg-[#292724] text-white text-[7px]">{item.name}</span>)}</div>}
                 </button>
                 <button type="button" onClick={() => { setScreenMode('offline-global'); setSelectedBookId(offlineGlobals[0]?.id || ''); setSelectedEntryId(offlineGlobals[0]?.entries[0]?.id || ''); setExpandedEntryId(null); }} className="rounded-xl bg-white/55 p-2 text-left hover:bg-white/80 transition-colors">
                   <div className="text-[7px] font-mono text-[#8b847d]">OFFLINE STORY · 打开页面 ↗</div>
                   <div className="mt-1 text-[8px] text-[#716a63]">{offlineGlobals.length ? '已加入全局' : '暂无'}</div>
-                  {offlineGlobals.length > 0 && <div className="mt-1.5 flex flex-wrap gap-1">{offlineGlobals.map(item => <button key={item.id} onClick={() => { setSelectedBookId(item.id); setSelectedEntryId(item.entries[0]?.id || ''); setExpandedEntryId(null); }} className="max-w-full truncate px-2 py-1 rounded-full bg-[#292724] text-white text-[7px]">{item.name}</button>)}</div>}
+                  {offlineGlobals.length > 0 && <div className="mt-1.5 flex flex-wrap gap-1">{offlineGlobals.map(item => <span key={item.id} className="max-w-full truncate px-2 py-1 rounded-full bg-[#292724] text-white text-[7px]">{item.name}</span>)}</div>}
                 </button>
               </div>
             )}
