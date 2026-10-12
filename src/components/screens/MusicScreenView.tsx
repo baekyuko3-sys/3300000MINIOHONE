@@ -39,6 +39,10 @@ type LineUserPersona = { id: string; name?: string; avatar?: string; [key: strin
 
 export function MusicScreenView({ onNavigate }: MusicScreenViewProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    // 网易云部分音源校验 Referer；用 DOM 属性设置，兼容当前 React 音频类型定义。
+    audioRef.current?.setAttribute('referrerpolicy', 'no-referrer');
+  }, []);
   const [characters] = usePersistentState<ImportedCharacter[]>('phone:characters', []);
   const [linePersonas] = usePersistentState<LineUserPersona[]>('line:user-personas', []);
   const [lineActivePersonaId] = usePersistentState<string | null>('line:active-persona', null);
@@ -1009,11 +1013,6 @@ export function MusicScreenView({ onNavigate }: MusicScreenViewProps) {
       <audio
         ref={audioRef}
         preload="metadata"
-        // 网易云 m801.music.126.net 等域名的 mp3 会校验 Referer。
-        // 设为 no-referrer 让浏览器不发送 Referer 头，避免被防盗链拦下。
-        // 注意：不能加 crossOrigin="anonymous"，否则会触发 CORS 预检；
-        // 而 m801 域名的 CORS 头通常不开放，会导致播放失败。
-        referrerPolicy="no-referrer"
         onTimeUpdate={event => setPlaybackTime(event.currentTarget.currentTime || 0)}
         onLoadedMetadata={event => setPlaybackDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
         onDurationChange={event => setPlaybackDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
