@@ -8348,9 +8348,9 @@ export function LineConversationView({
 
                 <div className="flex items-center justify-between py-3 border-t border-[#eee8e6]">
                   <div className="min-w-0 pr-4">
-                    <div className="text-[12px] font-semibold text-[#353438]">在聊天里显示预设流程</div>
+                    <div className="text-[12px] font-semibold text-[#353438]">启用群聊预设流程</div>
                     <div className="mt-1 text-[9.5px] leading-[1.45] text-[#a2a0a4]">
-                      开启后，角色回复上方会出现可折叠的预设流程摘要；关闭只是不显示，不影响预设规则执行。
+                      开启：执行预设 App 启用的规则并输出流程记录；关闭：完全停用这套预设规则与流程格式，角色卡、世界书、记忆和群成员设定仍正常生效。
                     </div>
                   </div>
                   <button
