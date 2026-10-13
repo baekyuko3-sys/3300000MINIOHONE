@@ -52,7 +52,11 @@ function getCardPayload(raw: any): any {
   return raw || {};
 }
 
-function extractEmbeddedWorldBooks(data: any): WorldBook[] {
+function extractEmbeddedWorldBooks(
+  data: any,
+  characterId: string,
+  characterName: string,
+): WorldBook[] {
   const candidates: any[] = [];
   const pushBook = (value: unknown) => {
     if (value && typeof value === 'object') candidates.push(value);
@@ -76,26 +80,36 @@ function extractEmbeddedWorldBooks(data: any): WorldBook[] {
 
   const books: WorldBook[] = [];
   const seen = new Set<string>();
-  for (const candidate of candidates) {
+  candidates.forEach((candidate, index) => {
     try {
-      const imported = importWorldBooks(JSON.stringify(candidate));
+      const imported = importWorldBooks(JSON.stringify(candidate), {
+        sourceCharacterId: characterId,
+        sourceCharacterName: characterName,
+        forceCharacterCard: true,
+      });
       for (const book of imported) {
-        const fingerprint = JSON.stringify({ name: book.name, entries: book.entries });
+        const stamped: WorldBook = {
+          ...book,
+          id: book.id && !book.id.startsWith(characterName) ? book.id : `${characterId}-lore-${index}`,
+          sourceType: 'character-card',
+          sourceCharacterId: characterId,
+          sourceCharacterName: characterName,
+        };
+        const fingerprint = JSON.stringify({ name: stamped.name, entries: stamped.entries });
         if (seen.has(fingerprint)) continue;
         seen.add(fingerprint);
-        books.push(book);
+        books.push(stamped);
       }
     } catch {
       // Ignore malformed optional lorebook blocks while preserving the character card.
     }
-  }
+  });
   return books;
 }
 
 function normalizeCharacter(raw: any, sourceFormat: ImportedCharacter['sourceFormat']): ImportedCharacter {
   const data = getCardPayload(raw);
   const now = new Date().toISOString();
-  const embeddedWorldBooks = extractEmbeddedWorldBooks(data);
   const extensions =
     data.extensions && typeof data.extensions === 'object'
       ? (data.extensions as Record<string, unknown>)
@@ -113,10 +127,12 @@ function normalizeCharacter(raw: any, sourceFormat: ImportedCharacter['sourceFor
     cleanString(data.typingHabit) ||
     cleanString(extensions.typingHabit);
   const name = cleanString(data.name) || '未命名角色';
+  const id = cleanString(data.id) || `char-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const embeddedWorldBooks = extractEmbeddedWorldBooks(data, id, name);
   const variantLabel = cleanString(data.variantLabel) || cleanString(data.variant_label) || cleanString(data.lifeStage) || cleanString(data.life_stage) || cleanString(data.timeline) || cleanString(data.characterVersion) || cleanString(data.character_version) || '默认版本';
 
   return {
-    id: cleanString(data.id) || `char-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id,
     name,
     variantLabel,
     avatar: cleanString(data.avatar) || cleanString(data.avatar_url),
@@ -144,6 +160,7 @@ function normalizeCharacter(raw: any, sourceFormat: ImportedCharacter['sourceFor
     typingHabit: typingHabit || undefined,
     embeddedWorldBook: embeddedWorldBooks[0],
     embeddedWorldBooks,
+    worldBookIds: embeddedWorldBooks.map(book => book.id),
     groupId: cleanString(data.groupId) || cleanString(data.group_id) || null,
     sourceFormat,
     importedAt: now,

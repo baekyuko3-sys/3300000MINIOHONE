@@ -14,6 +14,7 @@ import {
   deleteSavedFont,
   type SavedFont,
 } from '../../store/appearance';
+import { putMedia } from '../../store/mediaVault';
 
 interface AppearanceScreenViewProps {
   currentTheme: ThemeMode;
@@ -415,9 +416,70 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                   <input value={appearance.globalBackground || '#f7f4ee'} onChange={event => update('globalBackground', event.target.value)} className="flex-1 p-2.5 rounded-xl bg-white/80 text-[9px] outline-none font-mono" />
                 </div>
               </label>
-              <label className="text-[9px] block">壁纸 / 背景图片 URL
-                <input value={appearance.wallpaper} onChange={event => update('wallpaper', event.target.value)} placeholder="留空使用当前背景色" className="mt-1 w-full p-2.5 rounded-xl bg-white/80 text-[9px] outline-none" />
-              </label>
+              <div className="space-y-2">
+                <div>
+                  <div className="text-[9px] font-semibold">桌面壁纸</div>
+                  <div className="mt-0.5 text-[8px] text-[#777069]">可上传本地图片，或填图片链接；显示在手机桌面首页。</div>
+                </div>
+                {appearance.wallpaper ? (
+                  <div className="relative h-28 rounded-xl overflow-hidden border border-black/5 bg-[#f0ebe4]">
+                    <div
+                      className="absolute inset-0 bg-cover bg-center"
+                      style={{ backgroundImage: `url(${JSON.stringify(appearance.wallpaper)})` }}
+                    />
+                    <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/45 to-transparent flex items-end justify-between gap-2">
+                      <span className="text-[8px] text-white/90 truncate">
+                        {appearance.wallpaper.startsWith('data:') ? '本地图片已应用' : '链接壁纸已应用'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => { update('wallpaper', ''); notify('已移除桌面壁纸'); }}
+                        className="shrink-0 px-2 py-1 rounded-full bg-white/90 text-[8px] text-[#555]"
+                      >
+                        移除
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-20 rounded-xl border border-dashed border-[#d7d2ca] bg-white/45 grid place-items-center text-[8px] text-[#aaa]">
+                    还没有壁纸 · 上传后会出现在桌面
+                  </div>
+                )}
+                <label className="block p-3 rounded-xl border border-dashed border-[#d7d2ca] bg-white/45 cursor-pointer">
+                  <div className="text-[9px] font-medium">{appearance.wallpaper ? '更换壁纸图片' : '上传壁纸图片'}</div>
+                  <div className="text-[8px] text-[#aaa] mt-1">支持 jpg / png / webp · 保存在本机浏览器</div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={event => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 8 * 1024 * 1024) {
+                        notify('图片太大了，请选 8MB 以内的');
+                        event.currentTarget.value = '';
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        update('wallpaper', String(reader.result || ''));
+                        notify('桌面壁纸已更新');
+                      };
+                      reader.onerror = () => notify('壁纸读取失败');
+                      reader.readAsDataURL(file);
+                      event.currentTarget.value = '';
+                    }}
+                  />
+                </label>
+                <label className="text-[9px] block">或使用图片链接
+                  <input
+                    value={appearance.wallpaper.startsWith('data:') ? '' : appearance.wallpaper}
+                    onChange={event => update('wallpaper', event.target.value.trim())}
+                    placeholder="https://… 留空则用背景色"
+                    className="mt-1 w-full p-2.5 rounded-xl bg-white/80 text-[9px] outline-none"
+                  />
+                </label>
+              </div>
             </div>
             <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-3">
               <div>
@@ -428,7 +490,13 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
               <label className="block text-[9px]">字体链接
                 <input
                   value={appearance.customFontUrl || ''}
-                  onChange={event => update('customFontUrl', event.target.value)}
+                  onChange={event => {
+                    const url = event.target.value.trim();
+                    // 填链接时清空本地上传，避免互相盖住
+                    const next = saveAppearance({ customFontUrl: url, customFont: url ? '' : appearance.customFont, customFontName: url ? (appearance.customFontName || '远程字体') : appearance.customFontName });
+                    setAppearance(next);
+                    setAppBeauty(next.appBeauty || {});
+                  }}
                   placeholder="https://example.com/font.woff2"
                   className="mt-1 w-full p-2.5 rounded-xl bg-white/80 text-[9px] outline-none font-mono"
                 />
@@ -436,20 +504,52 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
               </label>
               <label className="block p-3 rounded-xl border border-dashed border-[#d7d2ca] bg-white/45 cursor-pointer">
                 <div className="text-[9px] font-medium">{appearance.customFontName || '选择字体文件'}</div>
-                <div className="text-[8px] text-[#aaa] mt-1">点击上传并立即预览</div>
+                <div className="text-[8px] text-[#aaa] mt-1">点击上传并立即应用（会覆盖字体链接）</div>
                 <input type="file" accept=".woff,.woff2,.ttf,.otf,font/woff,font/woff2,font/ttf,font/otf" className="hidden" onChange={event => {
                   const file = event.target.files?.[0];
                   if (!file) return;
+                  if (file.size > 12 * 1024 * 1024) {
+                    notify('字体文件太大（请小于 12MB）');
+                    event.currentTarget.value = '';
+                    return;
+                  }
                   const reader = new FileReader();
-                  reader.onload = () => {
-                    update('customFont', String(reader.result || ''));
-                    update('customFontName', file.name);
-                    notify('字体已保存并应用');
+                  reader.onload = async () => {
+                    try {
+                      const dataUrl = String(reader.result || '');
+                      if (!dataUrl) { notify('字体读取为空'); return; }
+                      // dataURL 动辄几 MB，直接进 localStorage 必爆 quota：存 IndexedDB，只存 media: 引用
+                      let ref = dataUrl;
+                      if (dataUrl.startsWith('data:')) {
+                        const id = await putMedia(dataUrl);
+                        ref = 'media:' + id;
+                      }
+                      const next = saveAppearance({
+                        customFont: ref,
+                        customFontName: file.name,
+                        customFontUrl: '',
+                      });
+                      setAppearance(next);
+                      setAppBeauty(next.appBeauty || {});
+                      window.dispatchEvent(new CustomEvent('sane333:appearance-changed'));
+                      notify('字体已保存并应用');
+                    } catch {
+                      notify('字体保存失败：本地存储空间可能不足');
+                    }
                   };
+                  reader.onerror = () => notify('字体读取失败');
                   reader.readAsDataURL(file);
                   event.currentTarget.value = '';
                 }} />
               </label>
+              {(appearance.customFont || appearance.customFontUrl) && (
+                <div className="p-3 rounded-xl bg-[#f7f4ee] border border-[#e5dfd6]">
+                  <div className="text-[9px] text-[#777069]">当前字体预览</div>
+                  <div className="mt-1.5 text-[16px] leading-relaxed" style={{ fontFamily: 'Sane333Custom, Georgia, serif' }}>
+                    你好 · Hello · 123 · {appearance.customFontName || '自定义字体'}
+                  </div>
+                </div>
+              )}
               <div className="p-3 rounded-xl bg-[#f7f4ee] border border-[#e5dfd6] space-y-2">
                 <div className="flex items-center justify-between">
                   <div>
@@ -481,14 +581,22 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                   <div className="text-[8px] text-[#aaa] mt-1">.woff / .woff2 / .ttf / .otf</div>
                   <input type="file" accept=".woff,.woff2,.ttf,.otf,font/woff,font/woff2,font/ttf,font/otf" className="hidden" onChange={e=>{const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{setFontDraftSource('upload');setFontDraftValue(String(reader.result||''));setFontDraftName(file.name.replace(/\.(woff2?|ttf|otf)$/i,''));};reader.readAsDataURL(file);e.currentTarget.value='';}}/>
                 </label>
-                <button onClick={()=>{if(!fontDraftName.trim()||!fontDraftValue.trim()){notify('请填写名称并提供字体');return;}saveFont({name:fontDraftName.trim(),source:fontDraftSource,value:fontDraftValue.trim()});setSavedFonts(getSavedFonts());setFontDraftName('');setFontDraftValue('');setFontDraftSource('url');notify('字体已保存');}} className="w-full py-2.5 rounded-xl bg-[#292724] text-white text-[9px]">保存到字体库</button>
+                <button onClick={async ()=>{if(!fontDraftName.trim()||!fontDraftValue.trim()){notify('请填写名称并提供字体');return;}let value=fontDraftValue.trim();let source=fontDraftSource;if(value.startsWith('data:')){try{const id=await putMedia(value);value='media:'+id;source='upload';}catch{notify('字体太大，保存失败');return;}}saveFont({name:fontDraftName.trim(),source,value});setSavedFonts(getSavedFonts());setFontDraftName('');setFontDraftValue('');setFontDraftSource('url');notify('字体已保存');}} className="w-full py-2.5 rounded-xl bg-[#292724] text-white text-[9px]">保存到字体库</button>
               </div>
               <div className="space-y-1.5">
                 {savedFonts.length===0&&<div className="rounded-xl border border-dashed border-black/10 p-4 text-center text-[8px] text-[#aaa]">还没有保存的字体</div>}
                 {savedFonts.map(font=>{const active=(appearance.customFontUrl||appearance.customFont)===font.value;return <div key={font.id} className="rounded-xl bg-white/75 border border-black/5 p-2.5 flex items-center gap-2">
                   <div className="w-9 h-9 rounded-lg bg-[#f2f4f7] grid place-items-center text-[9px] font-semibold">Aa</div>
                   <div className="min-w-0 flex-1"><div className="text-[9px] font-semibold truncate">{font.name}</div><div className="text-[7px] text-[#aaa] mt-0.5">{font.source==='url'?'URL':'本地上传'}{active?' · 当前使用':''}</div></div>
-                  <button onClick={()=>{if(font.source==='url'){update('customFontUrl',font.value);update('customFont','')}else{update('customFont',font.value);update('customFontUrl','')}notify('字体已应用')}} className={active?'px-2 py-1.5 rounded-lg bg-[#292724] text-white text-[8px]':'px-2 py-1.5 rounded-lg bg-[#f1efeb] text-[#555] text-[8px]'}>{active?'已应用':'应用'}</button>
+                  <button onClick={()=>{
+                    const isRemote = font.value.startsWith('http') || font.value.startsWith('blob:');
+                    const next = isRemote
+                      ? saveAppearance({ customFontUrl: font.value, customFont: '', customFontName: font.name })
+                      : saveAppearance({ customFont: font.value, customFontUrl: '', customFontName: font.name });
+                    setAppearance(next);
+                    window.dispatchEvent(new CustomEvent('sane333:appearance-changed'));
+                    notify('字体已应用');
+                  }} className={active?'px-2 py-1.5 rounded-lg bg-[#292724] text-white text-[8px]':'px-2 py-1.5 rounded-lg bg-[#f1efeb] text-[#555] text-[8px]'}>{active?'已应用':'应用'}</button>
                   <button onClick={()=>{deleteSavedFont(font.id);setSavedFonts(getSavedFonts());if(active){update('customFont','');update('customFontUrl','')}notify('字体已删除')}} className="p-1.5 rounded-lg bg-[#f5f3ef] text-[#999]"><Trash2 className="w-3 h-3"/></button>
                 </div>})}
               </div>

@@ -7,6 +7,7 @@ import { generateSpeech, transcribeAudio } from '../../ai/mediaEngine';
 import { readAppSettings } from '../../store/appSettings';
 import type { ChannelAiSettings } from '../../store/appSettings';
 import { getMedia, putMedia } from '../../store/mediaVault';
+import { VroomImage } from '../VroomImage';
 import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
 import { getCharacterProfile } from '../../data/characterProfiles';
@@ -164,6 +165,23 @@ function parseMusicInviteDecision(raw: string): { decision: 'accept' | 'decline'
   return { decision: 'accept', reason: text.slice(0, 60) };
 }
 
+async function readImageFileAsAvatar(file: File): Promise<string> {
+  const raw = await readImageFileAsDataUrl(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = raw; });
+    const maxSize = 256;
+    const sc = Math.min(1, maxSize / Math.max(img.width || 1, img.height || 1));
+    const cw = document.createElement('canvas');
+    cw.width = Math.max(1, Math.round((img.width||maxSize)*sc));
+    cw.height = Math.max(1, Math.round((img.height||maxSize)*sc));
+    const cx = cw.getContext('2d');
+    if (cx) { cx.drawImage(img, 0, 0, cw.width, cw.height);
+      const small = cw.toDataURL('image/jpeg', 0.82);
+      try { const { putMedia } = await import('../../store/mediaVault'); const id = await putMedia(small); return 'media:' + id; } catch { return small; }
+    }
+  } catch {}
+  return raw;
+}
 function readImageFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -5557,7 +5575,7 @@ export function LineConversationView({
                   </div>
                 )}
 
-                {/* 3. 酒馆分支重抽滑动选择器 & 更多操作 (长按/点击展开) */}
+                {/* HIDDEN 3. 酒馆分支重抽滑动选择器 & 更多操作 (长按/点击展开) */}
                 <div className="flex items-center gap-2 text-[10px] text-[#bbb] px-1 pt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                   {hasVariants && (
                     <div className="flex items-center gap-1 bg-black/5 px-1.5 py-0.5 rounded-full text-[#666]">
@@ -6996,7 +7014,7 @@ export function LineConversationView({
               <div className="px-3.5 pb-3.5 space-y-3 border-t border-[#f2f2f3] pt-3">
                 <div className="flex items-center gap-3">
                   <div className="w-[68px] h-[68px] rounded-[18px] bg-[#f4f1f2] border border-[#eee5e7] overflow-hidden shrink-0 flex items-center justify-center">
-                    {activeGroup?.avatar ? <img src={activeGroup.avatar} alt="群头像" className="w-full h-full object-cover" /> : <Users className="w-7 h-7 text-[#b9a7ac]" />}
+                    {activeGroup?.avatar ? <VroomImage src={activeGroup.avatar} alt="群头像" className="w-full h-full object-cover" /> : <Users className="w-7 h-7 text-[#b9a7ac]" />}
                   </div>
                   <div className="flex-1 min-w-0 space-y-2">
                     <label className="block space-y-1">
@@ -7090,14 +7108,14 @@ export function LineConversationView({
               </summary>
               <div className="border-t border-[#f2f2f3]">
                 <div className="px-3.5 pt-3 flex items-center gap-2 overflow-x-auto no-scrollbar">
-                  {(activeGroup?.members || []).map((m: any) => {
+                  {(activeGroup?.members || []).filter((mm: any) => mm && mm.kind !== 'user' && mm.name !== currentUserNameFallback()).map((m: any) => {
                     const c = resolveGroupMemberCharacter(m);
                     const npc = m.npcId ? allNpcs.find(n => n.id === m.npcId) : null;
                     const av = c?.avatar || npc?.avatar || m.avatar;
                     return (
                       <button key={m.id || m.characterId || m.npcId || m.name} type="button" title={m.nickname || m.name} onClick={() => setExpandedGroupMemberEditId(m.id)} className="shrink-0 flex flex-col items-center gap-1 w-12">
                         <div className={`w-10 h-10 rounded-full overflow-hidden border-2 grid place-items-center bg-[#f5f2f3] ${m.muted ? 'border-[#ddd] opacity-60' : 'border-white shadow-sm'}`}>
-                          {av ? <img src={av} alt="" className="w-full h-full object-cover" /> : <span className="text-[11px] text-[#999]">{(m.nickname || m.name || '?').slice(0, 1)}</span>}
+                          {av ? <VroomImage src={av} alt="" className="w-full h-full object-cover" /> : <span className="text-[11px] text-[#999]">{(m.nickname || m.name || '?').slice(0, 1)}</span>}
                         </div>
                         <span className="text-[8px] text-[#888] truncate w-full text-center">{m.nickname || m.name}</span>
                       </button>
@@ -7120,7 +7138,7 @@ export function LineConversationView({
 
                 <div className="p-3.5">
                   <div className="rounded-[12px] border border-[#ebe6e8] bg-[#faf9fa] max-h-56 overflow-y-auto overscroll-contain space-y-2 p-2">
-                    {(activeGroup?.members || []).map((m: any) => {
+                    {(activeGroup?.members || []).filter((mm: any) => mm && mm.kind !== 'user' && mm.name !== currentUserNameFallback()).map((m: any) => {
                       const c = resolveGroupMemberCharacter(m);
                       const npc = m.npcId ? allNpcs.find(n => n.id === m.npcId) : null;
                       const av = c?.avatar || npc?.avatar || m.avatar;
@@ -7132,7 +7150,7 @@ export function LineConversationView({
                         <div key={m.id || m.characterId || m.npcId || m.name} className="rounded-[12px] border border-[#f0edef] bg-white overflow-hidden">
                           <button type="button" onClick={() => setExpandedGroupMemberEditId(cur => cur === m.id ? null : m.id)} className="w-full flex items-center gap-2.5 p-2.5 text-left hover:bg-[#faf7f8]">
                             <div className="w-11 h-11 rounded-full overflow-hidden bg-[#f5f2f3] border border-[#eee7e9] shrink-0 grid place-items-center">
-                              {av ? <img src={av} alt="" className="w-full h-full object-cover" /> : <span className="text-[12px] text-[#999]">{(m.nickname || m.name || '?').slice(0, 1)}</span>}
+                              {av ? <VroomImage src={av} alt="" className="w-full h-full object-cover" /> : <span className="text-[12px] text-[#999]">{(m.nickname || m.name || '?').slice(0, 1)}</span>}
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5 flex-wrap">
@@ -7178,10 +7196,10 @@ export function LineConversationView({
               </div>
             </details>
 
-            {/* 3. 我的人设 */}
+            {/* HIDDEN 3. 我的人设 */}
             <details className="bg-white rounded-[14px] border border-[#f0f0f1] overflow-hidden">
-              <summary className="list-none cursor-pointer p-3.5 flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
-                <div className="min-w-0 flex items-center gap-2.5">
+              <summary style={{display:"none"}} className="list-none cursor-pointer p-3.5 items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+                <div className="min-w-0 items-center gap-2.5" style={{display:"none"}}>
                   <div className="w-9 h-9 rounded-full overflow-hidden bg-[#faf1f3] border border-[#eee5e7] shrink-0 grid place-items-center">
                     {activePersona?.avatar ? <img src={activePersona.avatar} alt="" className="w-full h-full object-cover" /> : <UserCheck className="w-4 h-4 text-[#ae7e89]" />}
                   </div>
@@ -9374,7 +9392,7 @@ export function LineConversationView({
                   <button key={item.key} type="button" onClick={() => toggleInviteKey(item.key)} className="shrink-0 flex flex-col items-center gap-1 w-14" title="点击取消选择">
                     <div className="relative">
                       <div className="w-12 h-12 rounded-full overflow-hidden bg-[#f5f2f3] border border-[#eee7e9] grid place-items-center">
-                        {item.avatar ? <img src={item.avatar} alt="" className="w-full h-full object-cover" /> : <span className="text-[12px] text-[#999]">{item.name.slice(0, 1)}</span>}
+                        {item.avatar ? <VroomImage src={item.avatar} alt="" className="w-full h-full object-cover" /> : <span className="text-[12px] text-[#999]">{item.name.slice(0, 1)}</span>}
                       </div>
                       <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-[#666] text-white text-[9px] grid place-items-center">×</span>
                     </div>
@@ -9414,7 +9432,7 @@ export function LineConversationView({
                           {checked ? <Check className="w-3 h-3 text-white" /> : null}
                         </div>
                         <div className="w-11 h-11 rounded-full overflow-hidden bg-[#f5f2f3] border border-[#eee7e9] shrink-0 grid place-items-center">
-                          {c.avatar ? <img src={c.avatar} alt="" className="w-full h-full object-cover" /> : <span className="text-[12px] text-[#999]">{(c.name || '?').slice(0, 1)}</span>}
+                          {c.avatar ? <VroomImage src={c.avatar} alt="" className="w-full h-full object-cover" /> : <span className="text-[12px] text-[#999]">{(c.name || '?').slice(0, 1)}</span>}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="text-[13px] font-medium text-[#333] truncate">{c.name}</div>
@@ -9446,7 +9464,7 @@ export function LineConversationView({
                           {checked ? <Check className="w-3 h-3 text-white" /> : null}
                         </div>
                         <div className="w-11 h-11 rounded-full overflow-hidden bg-[#f0f3f8] border border-[#e4e9f0] shrink-0 grid place-items-center">
-                          {av ? <img src={av} alt="" className="w-full h-full object-cover" /> : <span className="text-[12px] text-[#7a8aa0]">{(npc.name || '?').slice(0, 1)}</span>}
+                          {av ? <VroomImage src={av} alt="" className="w-full h-full object-cover" /> : <span className="text-[12px] text-[#7a8aa0]">{(npc.name || '?').slice(0, 1)}</span>}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="text-[13px] font-medium text-[#333] truncate">{npc.name}</div>
@@ -9490,7 +9508,7 @@ export function LineConversationView({
             <div className="bg-white px-4 pt-5 pb-4 border-b border-[#f0f0f1]">
               <div className="flex flex-col items-center gap-3">
                 <div className="w-[76px] h-[76px] rounded-[22px] bg-[#f4f1f2] border border-[#eee5e7] overflow-hidden flex items-center justify-center">
-                  {activeGroup?.avatar ? <img src={activeGroup.avatar} alt="群头像" className="w-full h-full object-cover" /> : <Users className="w-8 h-8 text-[#b9a7ac]" />}
+                  {activeGroup?.avatar ? <VroomImage src={activeGroup.avatar} alt="群头像" className="w-full h-full object-cover" /> : <Users className="w-8 h-8 text-[#b9a7ac]" />}
                 </div>
                 <div className="w-full max-w-[280px] space-y-1.5">
                   <div className="text-[10px] text-[#999] text-center">群聊名称（可修改）</div>
@@ -9523,7 +9541,7 @@ export function LineConversationView({
                       className="shrink-0 px-3 rounded-[12px] bg-[#06C755] text-white text-[11px] font-medium"
                     >保存</button>
                   </div>
-                  <div className="text-[11px] text-[#999] text-center">{(activeGroup?.members || groupMembers).length} 位成员</div>
+                  <div className="text-[11px] text-[#999] text-center">{(activeGroup?.members || groupMembers).filter((m: any) => m && m.kind !== 'user' && m.name !== currentUserNameFallback()).length} 位成员</div>
                 </div>
               </div>
             </div>
@@ -9531,14 +9549,14 @@ export function LineConversationView({
             <div className="bg-white mt-2 border-y border-[#f0f0f1] px-3 py-3">
               <div className="text-[11px] font-semibold text-[#888] px-1 mb-2">成员</div>
               <div className="grid grid-cols-4 gap-x-2 gap-y-3">
-                {(activeGroup?.members || groupMembers).slice(0, 11).map((m: any) => {
+                {(activeGroup?.members || groupMembers).filter((m: any) => m && m.kind !== 'user' && m.name !== currentUserNameFallback()).slice(0, 11).map((m: any) => {
                   const c = resolveGroupMemberCharacter(m);
                   const npc = m.npcId ? allNpcs.find(n => n.id === m.npcId) : null;
                   const av = c?.avatar || npc?.avatar || m.avatar;
                   return (
                     <div key={m.id || m.characterId || m.npcId || m.name} className="flex flex-col items-center gap-1 min-w-0">
                       <div className="w-14 h-14 rounded-full overflow-hidden bg-[#f5f2f3] border border-[#eee7e9] grid place-items-center">
-                        {av ? <img src={av} alt="" className="w-full h-full object-cover" /> : <span className="text-[13px] text-[#999]">{(m.nickname || m.name || '?').slice(0, 1)}</span>}
+                        {av ? <VroomImage src={av} alt="" className="w-full h-full object-cover" /> : <span className="text-[13px] text-[#999]">{(m.nickname || m.name || '?').slice(0, 1)}</span>}
                       </div>
                       <span className="text-[10px] text-[#555] truncate w-full text-center">{m.nickname || m.name}</span>
                     </div>
@@ -9572,7 +9590,7 @@ export function LineConversationView({
               </summary>
               <div className="px-3 pb-3">
                 <div className="rounded-[12px] border border-[#ebe6e8] bg-[#faf9fa] max-h-72 overflow-y-auto overscroll-contain space-y-2 p-2">
-                  {(activeGroup?.members || groupMembers).map((member: any) => {
+                  {(activeGroup?.members || groupMembers).filter((mm: any) => mm && mm.kind !== 'user' && mm.name !== currentUserNameFallback()).map((member: any) => {
                     const character = resolveGroupMemberCharacter(member);
                     const npc = member.npcId ? allNpcs.find(n => n.id === member.npcId) : null;
                     const isMeMember = member.name === currentUserNameFallback() || member.kind === 'user';
@@ -9582,7 +9600,7 @@ export function LineConversationView({
                       <div key={member.id || member.characterId || member.npcId || member.name} className="rounded-[12px] border border-[#f0e9ec] bg-white p-3">
                         <div className="flex items-center gap-3">
                           <div className="w-11 h-11 rounded-full bg-[#f5f2f3] border border-[#eee7e9] overflow-hidden shrink-0 flex items-center justify-center text-sm text-[#888]">
-                            {avatar ? <img src={avatar} alt="" className="w-full h-full object-cover" /> : (member.nickname || member.name || '?').slice(0, 1)}
+                            {avatar ? <VroomImage src={avatar} alt="" className="w-full h-full object-cover" /> : (member.nickname || member.name || '?').slice(0, 1)}
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5 flex-wrap">

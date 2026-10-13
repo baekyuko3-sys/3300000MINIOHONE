@@ -286,11 +286,19 @@ export function CharacterProfileView({ onNavigate }: CharacterProfileViewProps) 
         }));
         setWorldBooks(prev => [
           ...importedBooks,
-          ...prev.filter(book => !embeddedWorldBooks.some(imported => imported.id === book.id)),
+          ...prev.filter(book => !importedBooks.some(imported => imported.id === book.id)),
         ]);
         setCharacters(prev => prev.map(item =>
           item.id === normalizedParsed.id
-            ? { ...item, worldBookIds: Array.from(new Set([...(item.worldBookIds || []), ...importedBooks.map(book => book.id)])) }
+            ? {
+                ...item,
+                embeddedWorldBooks: importedBooks,
+                embeddedWorldBook: importedBooks[0],
+                worldBookIds: Array.from(new Set([
+                  ...(item.worldBookIds || []),
+                  ...importedBooks.map(book => book.id),
+                ])),
+              }
             : item
         ));
       }
@@ -892,38 +900,58 @@ export function CharacterProfileView({ onNavigate }: CharacterProfileViewProps) 
                     <span className="text-[9px] text-[#8b847d]">{worldBookPickerOpen ? '收起' : '选择'}</span>
                   </button>
                   {worldBookPickerOpen && (
-                    <div className="mt-3 space-y-1.5 max-h-[240px] overflow-y-auto">
-                      {worldBooks.length === 0 && (
-                        <div className="py-4 text-center text-[9px] text-[#8b847d]">还没有世界书</div>
-                      )}
-                      {worldBooks.map(book => {
-                        const selectedIds = selected?.worldBookIds || [];
-                        const checked = selectedIds.includes(book.id);
-                        const toggle = () => {
-                          if (!selected) return;
-                          const next = checked
-                            ? selectedIds.filter(id => id !== book.id)
-                            : [...selectedIds, book.id];
-                          patchSelected({ worldBookIds: next });
-                        };
-                        return (
-                          <button
-                            key={book.id}
-                            onClick={toggle}
-                            className={`w-full flex items-center gap-3 p-2.5 rounded-xl border text-left transition-all ${checked ? 'bg-[#292724] text-white border-[#292724]' : 'bg-white/65 text-[#4f4943] border-[rgba(40,36,31,.1)]'}`}
-                          >
-                            <span className={`w-4 h-4 rounded-md border grid place-items-center shrink-0 ${checked ? 'bg-white text-[#292724] border-white' : 'border-[#bdb5ab]'}`}>
-                              {checked ? '✓' : ''}
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block text-[10px] font-serif font-bold truncate">{book.name || '未命名世界书'}</span>
-                              <span className={`block mt-0.5 text-[8px] truncate ${checked ? 'text-white/60' : 'text-[#918980]'}`}>
-                                {book.entries.length} 条 · {book.sourceType === 'character-card' ? `角色卡 · ${book.sourceCharacterName || '角色'}` : '全局世界书'}
+                    <div className="mt-3 space-y-2">
+                      <select
+                        aria-label="快速选择世界书"
+                        className="w-full bg-white border border-[rgba(40,36,31,.12)] rounded-xl px-3 py-2.5 text-[11px] text-[#302d29] outline-none"
+                        value=""
+                        onChange={e => {
+                          if (!selected || !e.target.value) return;
+                          const bookId = e.target.value;
+                          const selectedIds = selected.worldBookIds || [];
+                          if (selectedIds.includes(bookId)) return;
+                          patchSelected({ worldBookIds: [...selectedIds, bookId] });
+                        }}
+                      >
+                        <option value="">从下拉添加世界书…</option>
+                        {worldBooks
+                          .filter(book => !(selected?.worldBookIds || []).includes(book.id))
+                          .map(book => (
+                            <option key={book.id} value={book.id}>
+                              {book.name} · {book.entries.length} 条
+                              {book.sourceType === 'character-card' ? ` · ${book.sourceCharacterName || '角色卡'}` : ''}
+                            </option>
+                          ))}
+                      </select>
+                      <div className="space-y-1.5 max-h-[240px] overflow-y-auto">
+                        {(selected?.worldBookIds || []).length === 0 && (
+                          <div className="py-3 text-center text-[9px] text-[#8b847d]">尚未勾选专属世界书；线上/线下全局仍会按各自绑定生效</div>
+                        )}
+                        {(selected?.worldBookIds || []).map(bookId => {
+                          const book = worldBooks.find(item => item.id === bookId);
+                          if (!book) return null;
+                          return (
+                            <div
+                              key={book.id}
+                              className="w-full flex items-center gap-3 p-2.5 rounded-xl border bg-[#292724] text-white border-[#292724]"
+                            >
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-[10px] font-serif font-bold truncate">{book.name || '未命名世界书'}</span>
+                                <span className="block mt-0.5 text-[8px] truncate text-white/60">
+                                  {book.entries.length} 条 · {book.sourceType === 'character-card' ? `角色卡 · ${book.sourceCharacterName || '角色'}` : '资料库世界书'}
+                                </span>
                               </span>
-                            </span>
-                          </button>
-                        );
-                      })}
+                              <button
+                                type="button"
+                                onClick={() => patchSelected({ worldBookIds: (selected?.worldBookIds || []).filter(id => id !== book.id) })}
+                                className="shrink-0 text-[9px] text-white/80 px-2 py-1 rounded-full bg-white/10"
+                              >
+                                移除
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>

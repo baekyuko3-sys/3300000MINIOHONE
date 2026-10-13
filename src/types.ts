@@ -104,6 +104,7 @@ export interface WorldBookEntry {
   scanDepth?: number;
   caseSensitive?: boolean;
   matchWholeWords?: boolean;
+  useRegex?: boolean;
   order?: number;
   role?: 'system' | 'user' | 'assistant';
   outletName?: string;

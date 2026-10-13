@@ -280,8 +280,12 @@ export function SaneHomeScreenView({ onNavigate, onOpenSheet, onToggleTheme }: S
     );
   };
 
+  const wallpaperCss = appearance.wallpaper
+    ? `url(${JSON.stringify(appearance.wallpaper)})`
+    : undefined;
+
   return (
-    <div className="relative w-full h-full overflow-hidden select-none" onTouchStart={(e) => { pageTouchStartX.current = e.touches[0]?.clientX ?? null; }} onTouchEnd={(e) => { const start = pageTouchStartX.current; const end = e.changedTouches[0]?.clientX ?? null; pageTouchStartX.current = null; if (desktopEditing || start === null || end === null) return; const dx = end - start; if (Math.abs(dx) < 55) return; setCurrentPage((page) => dx < 0 ? 2 : 1); }} style={{ background: 'var(--screen, #fff)', color: 'var(--ink, #242323)', backgroundImage: appearance.wallpaper ? `url(${appearance.wallpaper})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+    <div className="relative w-full h-full overflow-hidden select-none" onTouchStart={(e) => { pageTouchStartX.current = e.touches[0]?.clientX ?? null; }} onTouchEnd={(e) => { const start = pageTouchStartX.current; const end = e.changedTouches[0]?.clientX ?? null; pageTouchStartX.current = null; if (desktopEditing || start === null || end === null) return; const dx = end - start; if (Math.abs(dx) < 55) return; setCurrentPage((page) => dx < 0 ? 2 : 1); }} style={{ background: appearance.globalBackground || 'var(--screen, #fff)', color: 'var(--ink, #242323)', backgroundImage: wallpaperCss, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}>
       
       {desktopEditing && <>
         <button onClick={() => resetDesktopLayout(currentPage)} className="absolute z-30 top-[70px] left-[18px] px-3 h-8 rounded-full bg-white/80 border border-black/5 text-[9px] font-mono text-[#777]">重置</button>
@@ -306,19 +310,19 @@ export function SaneHomeScreenView({ onNavigate, onOpenSheet, onToggleTheme }: S
         </defs>
       </svg>
 
-      {/* Pure White Background with subtle clean paper noise */}
+      {/* 无壁纸：纸感底；有壁纸：轻遮罩保证图标可读，不再盖死画面 */}
       <div 
         className="absolute inset-0 pointer-events-none"
         style={{
           background: appearance.wallpaper
-          ? 'linear-gradient(180deg, rgba(255,255,255,.64) 0%, rgba(255,255,255,.78) 100%)'
+          ? 'linear-gradient(180deg, rgba(0,0,0,0.12) 0%, rgba(0,0,0,0.08) 45%, rgba(0,0,0,0.28) 100%)'
           : `
             radial-gradient(circle at 75% 15%, rgba(245, 242, 236, 0.5) 0%, transparent 35%),
             linear-gradient(180deg, var(--screen, #ffffff) 0%, var(--screen, #ffffff) 100%)
           `
         }}
       >
-        <div className="absolute inset-0 opacity-[0.03] bg-paper-noise" />
+        {!appearance.wallpaper && <div className="absolute inset-0 opacity-[0.03] bg-paper-noise" />}
       </div>
 
       {/* Top Header Identity (Persists across pages) */}

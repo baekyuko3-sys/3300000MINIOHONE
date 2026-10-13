@@ -144,8 +144,16 @@ export function readAppearance(): AppearanceScheme {
 export function saveAppearance(value: Partial<AppearanceScheme>): AppearanceScheme {
   const next = normalizeAppearance({ ...readAppearance(), ...value, updatedAt: new Date().toISOString() });
   if (typeof window !== 'undefined') {
-    window.localStorage.setItem(KEY, JSON.stringify(next));
-    window.dispatchEvent(new CustomEvent('sane333:appearance-changed'));
+    try {
+      window.localStorage.setItem(KEY, JSON.stringify(next));
+      window.dispatchEvent(new CustomEvent('sane333:appearance-changed'));
+    } catch (error) {
+      // 大字体 data URL 容易撞配额；抛出让 UI 提示，避免静默失败
+      const message = error instanceof Error ? error.message : 'appearance save failed';
+      throw new Error(message.includes('Quota') || message.includes('quota')
+        ? '本地存储空间不足，字体可能过大'
+        : message);
+    }
   }
   return next;
 }

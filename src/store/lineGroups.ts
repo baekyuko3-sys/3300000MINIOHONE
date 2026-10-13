@@ -95,6 +95,8 @@ export function createLineGroup(input: {
   ownerName: string;
   memberNames: string[];
   characterIds?: Record<string, string>;
+  /** 创建时带入 NPC App 成员（按显示名索引） */
+  npcMembers?: Record<string, { npcId: string; boundCharacterId?: string; avatar?: string }>;
   announcement?: string;
 }): LineGroup {
   const now = new Date().toISOString();
@@ -103,14 +105,32 @@ export function createLineGroup(input: {
     id: 'group-' + Date.now().toString(36),
     name: input.name.trim(),
     ownerId: input.ownerId,
-    members: uniqueNames.map((name, index) => ({
-      id: input.characterIds?.[name] || 'member-' + name,
-      name,
-      characterId: input.characterIds?.[name] || null,
-      role: name === input.ownerName ? 'owner' : index === 1 ? 'admin' : 'member',
-      nickname: name,
-      muted: false,
-    })),
+    members: uniqueNames.map((name, index) => {
+      const npc = input.npcMembers?.[name];
+      if (npc?.npcId && name !== input.ownerName) {
+        return {
+          id: npc.npcId,
+          name,
+          kind: 'npc' as const,
+          npcId: npc.npcId,
+          characterId: npc.boundCharacterId || null,
+          role: (index === 1 ? 'admin' : 'member') as LineGroupMember['role'],
+          nickname: name,
+          muted: false,
+          avatar: npc.avatar || '',
+        };
+      }
+      return {
+        id: input.characterIds?.[name] || 'member-' + name,
+        name,
+        kind: name === input.ownerName ? 'user' as const : 'character' as const,
+        characterId: input.characterIds?.[name] || null,
+        npcId: null,
+        role: (name === input.ownerName ? 'owner' : index === 1 ? 'admin' : 'member') as LineGroupMember['role'],
+        nickname: name,
+        muted: false,
+      };
+    }),
     announcement: input.announcement || '',
     description: '',
     relationships: [],

@@ -51,13 +51,18 @@ function worldBookKeyMatches(keyword: string, haystack: string, entry: WorldBook
   if (!raw) return false;
 
   const caseSensitive = Boolean(entry.caseSensitive);
+  const delimited = raw.startsWith('/') && raw.lastIndexOf('/') > 0;
+  const asRegex = Boolean(entry.useRegex) || delimited;
 
-  if (raw.startsWith('/') && raw.lastIndexOf('/') > 0) {
-    const lastSlash = raw.lastIndexOf('/');
+  if (asRegex) {
     try {
-      const pattern = raw.slice(1, lastSlash);
-      const flags = raw.slice(lastSlash + 1) || (caseSensitive ? '' : 'i');
-      return new RegExp(pattern, flags).test(haystack);
+      if (delimited) {
+        const lastSlash = raw.lastIndexOf('/');
+        const pattern = raw.slice(1, lastSlash);
+        const flags = raw.slice(lastSlash + 1) || (caseSensitive ? '' : 'i');
+        return new RegExp(pattern, flags).test(haystack);
+      }
+      return new RegExp(raw, caseSensitive ? '' : 'i').test(haystack);
     } catch {
       // Invalid regex keys fall back to literal matching.
     }
@@ -74,50 +79,48 @@ function worldBookKeyMatches(keyword: string, haystack: string, entry: WorldBook
   return source.includes(key);
 }
 
-export function selectWorldBookEntries(worldbooks: WorldBook[], inputText: string, scanTextForEntry?: (entry: WorldBook['entries'][number]) => string) {
-  if (!getGlobalWorldBookEnabled()) return [];
+type WorldBookCandidate = {
+  book: WorldBook;
+  entry: WorldBook['entries'][number];
+  matchedKeywords: string[];
+};
 
-  const candidates = worldbooks.flatMap(book => {
-    if (!book.enabled) return [];
+function matchEntryAgainstText(
+  book: WorldBook,
+  entry: WorldBook['entries'][number],
+  matchText: string,
+): WorldBookCandidate | null {
+  if (!entry.enabled || entry.outletName) return null;
 
-    return book.entries
-      .filter(entry => entry.enabled && !entry.outletName)
-      .map(entry => {
-        const matchText = scanTextForEntry ? scanTextForEntry(entry) : inputText;
-        const matchedKeywords = entry.constant
-          ? ['[constant]']
-          : entry.keywords.filter(keyword => worldBookKeyMatches(keyword, matchText, entry));
+  const matchedKeywords = entry.constant
+    ? ['[constant]']
+    : entry.keywords.filter(keyword => worldBookKeyMatches(keyword, matchText, entry));
 
-        if (!entry.constant && !matchedKeywords.length) return null;
+  if (!entry.constant && !matchedKeywords.length) return null;
 
-        const secondary = entry.secondaryKeywords || [];
-        if (entry.selective && secondary.length) {
-          const matchedSecondary = secondary.filter(keyword => worldBookKeyMatches(keyword, matchText, entry));
-          const logic = entry.selectiveLogic ?? 0;
-          const passes =
-            logic === 1 ? matchedSecondary.length < secondary.length :
-            logic === 2 ? matchedSecondary.length === 0 :
-            logic === 3 ? matchedSecondary.length === secondary.length :
-            matchedSecondary.length > 0;
-          if (!passes) return null;
-        }
+  const secondary = entry.secondaryKeywords || [];
+  if (entry.selective && secondary.length) {
+    const matchedSecondary = secondary.filter(keyword => worldBookKeyMatches(keyword, matchText, entry));
+    const logic = entry.selectiveLogic ?? 0;
+    const passes =
+      logic === 1 ? matchedSecondary.length < secondary.length :
+      logic === 2 ? matchedSecondary.length === 0 :
+      logic === 3 ? matchedSecondary.length === secondary.length :
+      matchedSecondary.length > 0;
+    if (!passes) return null;
+  }
 
-        if (entry.useProbability || entry.probability !== undefined) {
-          const probability = Math.max(0, Math.min(100, Number(entry.probability ?? 100)));
-          if (probability <= 0 || stableRoll(entry.id + '|' + matchText) >= probability) return null;
-        }
+  if (entry.useProbability || entry.probability !== undefined) {
+    const probability = Math.max(0, Math.min(100, Number(entry.probability ?? 100)));
+    if (probability <= 0 || stableRoll(entry.id + '|' + matchText) >= probability) return null;
+  }
 
-        return { book, entry, matchedKeywords };
-      })
-      .filter(Boolean) as Array<{
-        book: WorldBook;
-        entry: WorldBook['entries'][number];
-        matchedKeywords: string[];
-      }>;
-  });
+  return { book, entry, matchedKeywords };
+}
 
+function applyGroupBlocking(candidates: WorldBookCandidate[], inputText: string): Set<string> {
   const blocked = new Set<string>();
-  const groups = new Map<string, typeof candidates>();
+  const groups = new Map<string, WorldBookCandidate[]>();
   candidates.forEach(candidate => {
     const labels = String(candidate.entry.group || '')
       .split(',')
@@ -162,7 +165,45 @@ export function selectWorldBookEntries(worldbooks: WorldBook[], inputText: strin
     });
   });
 
-  return candidates
+  return blocked;
+}
+
+export function selectWorldBookEntries(worldbooks: WorldBook[], inputText: string, scanTextForEntry?: (entry: WorldBook['entries'][number]) => string) {
+  if (!getGlobalWorldBookEnabled()) return [];
+
+  const primary = worldbooks.flatMap(book => {
+    if (!book.enabled) return [];
+    return book.entries
+      .map(entry => {
+        const matchText = scanTextForEntry ? scanTextForEntry(entry) : inputText;
+        return matchEntryAgainstText(book, entry, matchText);
+      })
+      .filter(Boolean) as WorldBookCandidate[];
+  });
+
+  // Recursion: activated entry content may trigger more entries, unless blocked.
+  const selectedIds = new Set(primary.map(item => item.entry.id));
+  const recursiveScan = primary
+    .filter(item => !item.entry.preventRecursion && item.entry.content.trim())
+    .map(item => item.entry.content)
+    .join('\n');
+
+  if (recursiveScan) {
+    worldbooks.forEach(book => {
+      if (!book.enabled) return;
+      book.entries.forEach(entry => {
+        if (selectedIds.has(entry.id) || entry.excludeRecursion || entry.constant) return;
+        const matched = matchEntryAgainstText(book, entry, recursiveScan);
+        if (!matched) return;
+        selectedIds.add(entry.id);
+        primary.push({ ...matched, matchedKeywords: ['[recursion]', ...matched.matchedKeywords] });
+      });
+    });
+  }
+
+  const blocked = applyGroupBlocking(primary, inputText);
+
+  return primary
     .filter(candidate => !blocked.has(candidate.entry.id))
     .sort((a, b) =>
       Number(Boolean(b.entry.constant)) - Number(Boolean(a.entry.constant)) ||
@@ -173,11 +214,12 @@ export function selectWorldBookEntries(worldbooks: WorldBook[], inputText: strin
 }
 
 function resolveWorldBook(worldbooks: WorldBook[], scannedText: string, scanTextForEntry?: (entry: WorldBook['entries'][number]) => string) {
-  const selected = selectWorldBookEntries(worldbooks, scannedText, scanTextForEntry)
-    .filter(({ entry }) => entry.insertion !== 'depth');
+  const selected = selectWorldBookEntries(worldbooks, scannedText, scanTextForEntry);
 
+  // Depth entries are not mixed into the chat turn stream (that confuses models).
+  // Inject them with after-character lore so imported ST depth content is not dropped.
   const before = selected.filter(({ entry }) => entry.insertion === 'before');
-  const after = selected.filter(({ entry }) => entry.insertion === 'after');
+  const after = selected.filter(({ entry }) => entry.insertion === 'after' || entry.insertion === 'depth');
 
   const render = (items: typeof selected, position: string) => items.map(({ book, entry, matchedKeywords }) => [
     '[WORLD BOOK · ' + position + ']',

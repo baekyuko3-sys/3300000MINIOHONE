@@ -6,6 +6,7 @@ import { getCharacterProfile } from '../../data/characterProfiles';
 import { getCharacterMemory } from '../../store/characterMemory';
 import { readPersistentState, usePersistentState } from '../../store/usePersistentState';
 import type { WorldBook } from '../../types';
+import { collectScopedWorldBooks } from '../../store/worldbookRuntime';
 import {
   addTrackToCharacterPlaylist,
   getCharacterPlaylists,
@@ -185,15 +186,10 @@ function resolveMusicPersonaContext(character: ImportedCharacter) {
     || personas[0]
     || null;
   const storedWorldbooks = readPersistentState<WorldBook[]>('phone:worldbooks', []);
-  const embedded =
-    character.embeddedWorldBooks
-    || (character.embeddedWorldBook ? [character.embeddedWorldBook] : []);
-  const seen = new Set<string>();
-  const worldbooks = [...embedded, ...(Array.isArray(storedWorldbooks) ? storedWorldbooks : [])].filter((book) => {
-    const key = book.id || `book:${book.name}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+  const worldbooks = collectScopedWorldBooks({
+    books: Array.isArray(storedWorldbooks) ? storedWorldbooks : [],
+    scope: 'online-chat',
+    character,
   });
   const profile = getCharacterProfile(character.name, character.id);
   const characterProfile = {

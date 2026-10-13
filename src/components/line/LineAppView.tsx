@@ -20,6 +20,10 @@ import {
 } from './TextMediaCards';
 import { LineConversationErrorBoundary } from './LineConversationErrorBoundary';
 import { createLineGroup } from '../../store/lineGroups';
+import { getNpcs, updateNpc, type SaneNpc } from '../../store/npcs';
+import { NpcAvatar } from '../NpcAvatar';
+import { VroomImage } from '../VroomImage';
+import { putMedia } from '../../store/mediaVault';
 import { markCharacterRead } from '../../store/worldRuntime';
 import { getLineConversationMeta, markLineConversationRead, markLineNotificationsReadForConversation } from '../../store/lineRuntime';
 import { generateCreativeText, listOpenAiCompatibleModels, resolveChannelAiSettings, testAiConnection, type AiSettings } from '../../ai/aiEngine';
@@ -31,12 +35,16 @@ import {
   appendMomentComment,
   countMomentComments,
   flattenMomentComments,
+  generateCommentsForPost,
+  listPostableNpcs,
   normalizeMomentComments,
   spawnBatchCommentsForPost,
   spawnInstantReply,
   type MomentComment,
   type MomentsCommentSettings,
 } from '../../store/momentsComments';
+import { generateNpcMomentNow } from '../../store/momentsAfterChat';
+import { edgePair, isAllowedEdge as isVroomAllowedEdge, isBlockedEdge as isVroomBlockedEdge, readVroomScopeSettings, setFriendEdge as setVroomFriendEdge } from '../../store/vroomScope';
 import {
   Pin, Bell, BellOff, Bookmark, Heart, MessageCircle, Share2, Plus, Search,
   Check, Trash2, X, Sliders, SlidersHorizontal, ChevronRight, UserCheck, Shield, Volume2,
@@ -60,6 +68,8 @@ interface LineChatItem {
   id: string;
   name: string;
   characterId?: string;
+  /** NPC App 人物 id；有值时私聊按 NPC 发言 */
+  npcId?: string;
   variantLabel?: string;
   chatLabel?: string;
   relationship?: 'new-friend' | 'old-friend' | 'readded';
@@ -82,6 +92,9 @@ interface LineChatItem {
 interface LineFriend {
   name: string;
   characterId?: string;
+  /** NPC App 人物；characterId 存其绑定角色，用于人设过滤 */
+  npcId?: string;
+  kind?: 'character' | 'npc';
   variantLabel?: string;
   note: string;
   online: boolean;
@@ -89,6 +102,40 @@ interface LineFriend {
   relationship?: 'new-friend' | 'old-friend' | 'readded';
   deleted?: boolean;
   deletionVisibility?: 'visible' | 'hidden';
+}
+
+/** VROOM 可见/屏蔽/@ 用的稳定 key；NPC 必须用 npc:，不能落成绑定角色 id */
+function friendAudienceKey(f: { npcId?: string; characterId?: string; name?: string }): string {
+  if (f.npcId) return 'npc:' + f.npcId;
+  if (f.characterId) return 'character:' + f.characterId;
+  return String(f.name || '');
+}
+
+function friendMatchesAudienceKey(
+  f: { npcId?: string; characterId?: string; name?: string },
+  key: string,
+): boolean {
+  if (!key) return false;
+  if (friendAudienceKey(f) === key) return true;
+  // 兼容旧帖：裸 id / 名字
+  if (f.npcId) return key === f.npcId || key === f.name;
+  if (f.characterId) return key === f.characterId || key === f.name;
+  return key === f.name;
+}
+
+function resolveAudienceLabel(
+  key: string,
+  friends: Array<{ npcId?: string; characterId?: string; name?: string }>,
+  npcs: Array<{ id: string; name: string }>,
+): string {
+  const hit = friends.find(f => friendMatchesAudienceKey(f, key));
+  if (hit?.name) return hit.name;
+  if (key.startsWith('npc:')) {
+    const npc = npcs.find(n => n.id === key.slice(4));
+    if (npc) return npc.name;
+  }
+  if (key.startsWith('character:')) return key.slice('character:'.length);
+  return key;
 }
 
 interface LineUserProfile {
@@ -269,9 +316,30 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
 
   const generateMomentsPost = async () => {
     const allowed = importedCharacters.filter(character => momentsSettings.enabledCharacterIds.length === 0 || momentsSettings.enabledCharacterIds.includes(character.id));
+    const allowedNpcs = listPostableNpcs(momentsSettings);
+    if (!allowed.length && !allowedNpcs.length) {
+      showToast('请先在 VROOM 设置里允许至少一个角色或 NPC 发动态');
+      return;
+    }
+    const useNpc = allowedNpcs.length > 0 && (allowed.length === 0 || Math.random() < 0.4);
+    if (useNpc) {
+      setIsRefreshingMoments(true);
+      showToast('正在让 NPC 发朋友圈…');
+      try {
+        const msg = await generateNpcMomentNow();
+        try { setMomentsPosts(JSON.parse(window.localStorage.getItem(MOMENTS_POSTS_KEY) || '[]')); } catch { /* ignore */ }
+        showToast(msg);
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : 'NPC 朋友圈生成失败');
+      } finally {
+        setIsRefreshingMoments(false);
+      }
+      return;
+    }
     const source = allowed[Math.floor(Math.random() * allowed.length)];
     if (!source) { showToast('请先在朋友圈设置里允许至少一个角色发动态'); return; }
     setIsRefreshingMoments(true);
+    showToast('正在生成朋友圈…');
     try {
       const settings = channelSettings.moments.enabled ? channelAsAiSettings('moments') : resolveChannelAiSettings('moments');
       const text = await generateCreativeText({
@@ -304,13 +372,70 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
           characterId: source.id,
         };
         setMomentsPosts(prev => [newAiPost, ...prev]);
-        showToast(source.name + ' 发布了一条朋友圈');
+        showToast('生成成功：' + source.name + ' 发布了一条朋友圈');
         applyBatchCommentsAfterPost(newAiPost);
+      } else {
+        showToast('生成失败：AI 返回空内容');
       }
     } catch (e) {
       showToast(e instanceof Error ? e.message : '朋友圈 AI 请求失败');
     } finally {
       setIsRefreshingMoments(false);
+    }
+  };
+
+  const generateNpcMomentsPost = async () => {
+    setIsRefreshingMoments(true);
+    showToast('正在让 NPC 发朋友圈…');
+    try {
+      const msg = await generateNpcMomentNow();
+      try { setMomentsPosts(JSON.parse(window.localStorage.getItem(MOMENTS_POSTS_KEY) || '[]')); } catch { /* ignore */ }
+      showToast(msg);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'NPC 朋友圈生成失败');
+    } finally {
+      setIsRefreshingMoments(false);
+    }
+  };
+
+  const onGenerateCommentsForPost = async (post: Record<string, any>) => {
+    if (generatingCommentsPostId) return;
+    setGeneratingCommentsPostId(post.id);
+    showToast('正在生成评论…');
+    try {
+      const caption = String(post.text || '').trim();
+      const { comments, skippedReason } = await generateCommentsForPost({
+        post: {
+          id: post.id,
+          name: post.name,
+          text: caption,
+          characterId: post.characterId,
+          npcId: post.npcId,
+          personaId: post.personaId,
+          isMine: post.isMine,
+          visibility: post.visibility,
+          allowedIds: post.allowedIds,
+          blockedIds: post.blockedIds,
+        },
+        meName: meNameForMoments(),
+        settings: momentsSettings,
+      });
+      if (comments.length) {
+        setMomentsPosts(prev =>
+          prev.map(p => {
+            if (p.id !== post.id) return p;
+            const tree = normalizeMomentComments(p.commentsList);
+            return { ...p, commentsList: [...tree, ...comments] };
+          }),
+        );
+        showToast('已生成 ' + comments.length + ' 条评论');
+      } else {
+        showToast(skippedReason || '没有生成出评论');
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '评论生成失败');
+    } finally {
+      setGeneratingCommentsPostId(null);
     }
   };
 
@@ -354,9 +479,13 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedGroupFriends, setSelectedGroupFriends] = useState<string[]>([]);
+  /** 建群时从 NPC App 直选（尚未是好友也可），id 列表 */
+  const [selectedGroupNpcIds, setSelectedGroupNpcIds] = useState<string[]>([]);
+  const [groupModalExpandedChars, setGroupModalExpandedChars] = useState<string[]>([]);
 
   const [showFriendModal, setShowFriendModal] = useState(false);
   const [friendSearchQuery, setFriendSearchQuery] = useState('');
+  const [friendModalExpandedChars, setFriendModalExpandedChars] = useState<string[]>([]);
   const [showCreateFriendDrawer, setShowCreateFriendDrawer] = useState(false);
   const [newFriendName, setNewFriendName] = useState('');
   const [newFriendNote, setNewFriendNote] = useState('');
@@ -369,6 +498,9 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     'line:moments-settings',
     DEFAULT_MOMENTS_SETTINGS,
   );
+  const [vroomScope, setVroomScope] = useState(() => readVroomScopeSettings());
+  const [vroomFriendPersonaId, setVroomFriendPersonaId] = useState<string>('');
+  const [vroomRev, setVroomRev] = useState(0);
   const [isPublishingPost, setIsPublishingPost] = useState(false);
 
   // Moments interactive comments drawer
@@ -467,6 +599,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
 
   // Moments refresh state
   const [isRefreshingMoments, setIsRefreshingMoments] = useState(false);
+  const [generatingCommentsPostId, setGeneratingCommentsPostId] = useState<string | null>(null);
 
   // User / Mask State
   const [importedCharactersRaw, setImportedCharacters] = usePersistentState<ImportedCharacter[]>('phone:characters', []);
@@ -719,6 +852,8 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         if (!Array.isArray(prev)) return [];
         const importedIds = new Set(importedCharacters.map(character => character.id));
         return prev.filter(friend =>
+          // NPC 好友用绑定角色 id 占 characterId，不能按「未导入角色卡」清掉
+          Boolean(friend.npcId) ||
           !friend.characterId ||
           !importedIds.has(friend.characterId) ||
           friend.online !== false
@@ -792,8 +927,10 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   const boundSet = new Set(boundIds);
   // 核心规则：切换用户 = 整个 LINE 只剩这个人设绑定的好友。
   // 私聊：personaId 必须匹配，且 characterId 必须在绑定集合里（无绑定时不过滤）。
+  // NPC 好友的 characterId = 绑定角色 id，因此同样走人设连接过滤。
   // 群聊：不过滤绑定，只跟随 persona。
   // 好友 / 朋友圈同样只显示绑定角色。
+  const allLineNpcs = getNpcs();
   const personaChats = chatItems.filter((c) => {
     if (c.isGroup) return !effectivePersonaId || c.personaId === effectivePersonaId || !c.personaId;
     if (effectivePersonaId && c.personaId && c.personaId !== effectivePersonaId) return false;
@@ -802,9 +939,116 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     return true;
   });
   const visibleFriends = hasBounds
-    ? friendsList.filter((f) => (f.characterId ? boundSet.has(f.characterId) : true))
+    ? friendsList.filter((f) => {
+        if (f.npcId) return Boolean(f.characterId && boundSet.has(f.characterId));
+        return f.characterId ? boundSet.has(f.characterId) : true;
+      })
     : friendsList;
+
+  const resolveFriendAvatar = (friend: LineFriend) => {
+    if (friend.npcId) {
+      const npc = allLineNpcs.find(item => item.id === friend.npcId);
+      if (npc?.avatar) return npc.avatar;
+      const bound = importedCharacters.find(c => c.id === (npc?.boundCharacterId || friend.characterId));
+      return bound?.avatar || '';
+    }
+    return importedCharacters.find(c => c.id === friend.characterId)?.avatar
+      || importedCharacters.find(c => c.name === friend.name)?.avatar
+      || '';
+  };
+
+  const resolveChatAvatar = (item: LineChatItem) => {
+    if (item.npcId) {
+      const npc = allLineNpcs.find(n => n.id === item.npcId);
+      if (npc?.avatar) return npc.avatar;
+      const bound = importedCharacters.find(c => c.id === (npc?.boundCharacterId || item.characterId));
+      return bound?.avatar || '';
+    }
+    return importedCharacters.find(c => c.id === item.characterId)?.avatar
+      || importedCharacters.find(c => c.name === item.name)?.avatar
+      || '';
+  };
+
+  const addableNpcsForPersona = (() => {
+    const q = friendSearchQuery.trim().toLowerCase();
+    return allLineNpcs
+      .filter(npc => npc.active !== false)
+      .filter(npc => Boolean(npc.boundCharacterId))
+      .filter(npc => !hasBounds || boundSet.has(npc.boundCharacterId))
+      .filter(npc => !friendsList.some(f => f.npcId === npc.id))
+      .filter(npc => {
+        if (!q) return true;
+        return [npc.name, npc.boundCharacterName, npc.identity, npc.relationship]
+          .filter(Boolean)
+          .some(v => String(v).toLowerCase().includes(q));
+      });
+  })();
+
+  const addableNpcGroups = (() => {
+    const map = new Map<string, { characterId: string; characterName: string; avatar: string; npcs: SaneNpc[] }>();
+    for (const npc of addableNpcsForPersona) {
+      const bound = importedCharacters.find(c => c.id === npc.boundCharacterId);
+      const characterName = npc.boundCharacterName || bound?.name || '未命名角色';
+      const existing = map.get(npc.boundCharacterId);
+      if (existing) existing.npcs.push(npc);
+      else map.set(npc.boundCharacterId, {
+        characterId: npc.boundCharacterId,
+        characterName,
+        avatar: bound?.avatar || '',
+        npcs: [npc],
+      });
+    }
+    return Array.from(map.values()).sort((a, b) => a.characterName.localeCompare(b.characterName, 'zh'));
+  })();
+
+  /** 建群：人设已连接角色下的 NPC（含已是好友的，避免漏选；好友区勾选过的会去重） */
+  const creatableNpcsForPersona = allLineNpcs
+    .filter(npc => npc.active !== false)
+    .filter(npc => Boolean(npc.boundCharacterId))
+    .filter(npc => !hasBounds || boundSet.has(npc.boundCharacterId));
+
+  const creatableNpcGroups = (() => {
+    const map = new Map<string, { characterId: string; characterName: string; avatar: string; npcs: SaneNpc[] }>();
+    for (const npc of creatableNpcsForPersona) {
+      const bound = importedCharacters.find(c => c.id === npc.boundCharacterId);
+      const characterName = npc.boundCharacterName || bound?.name || '未命名角色';
+      const existing = map.get(npc.boundCharacterId);
+      if (existing) existing.npcs.push(npc);
+      else map.set(npc.boundCharacterId, {
+        characterId: npc.boundCharacterId,
+        characterName,
+        avatar: bound?.avatar || '',
+        npcs: [npc],
+      });
+    }
+    return Array.from(map.values()).sort((a, b) => a.characterName.localeCompare(b.characterName, 'zh'));
+  })();
+
+  const closeGroupModal = () => {
+    setShowGroupModal(false);
+    setSelectedGroupFriends([]);
+    setSelectedGroupNpcIds([]);
+    setGroupModalExpandedChars([]);
+    setNewGroupName('');
+  };
+
+  const selectNpcAsFriendCandidate = (npc: SaneNpc) => {
+    setAddCharacterChatFriend({
+      name: npc.name,
+      characterId: npc.boundCharacterId,
+      npcId: npc.id,
+      kind: 'npc',
+      note: 'NPC · 绑定 ' + (npc.boundCharacterName || '角色'),
+      variantLabel: npc.boundCharacterName || 'NPC',
+      online: true,
+      pinyin: npc.name[0] || '',
+    });
+    setShowFriendModal(false);
+    setOpeningMode('none');
+    setOpeningGreetingIndex(0);
+  };
   const isOwnMoment = (p: Record<string, any>) => {
+    if (p?.npcId) return false;
     if (p?.characterId) return false;
     if (p?.isMine === true) return true;
     if (p?.personaId && effectivePersonaId && p.personaId === effectivePersonaId) return true;
@@ -812,6 +1056,12 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     return myNames.has(p?.name);
   };
   const resolveMomentAvatar = (p: Record<string, any>) => {
+    if (p?.npcId) {
+      const npc = allLineNpcs.find(n => n.id === p.npcId);
+      if (npc?.avatar) return npc.avatar;
+      const bound = importedCharacters.find(c => c.id === (npc?.boundCharacterId || p.characterId));
+      return bound?.avatar || '';
+    }
     if (p?.characterId) {
       return importedCharacters.find(c => c.id === p.characterId)?.avatar || '';
     }
@@ -824,14 +1074,21 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     );
   };
   const visibleMoments = hasBounds
-    ? momentsPosts.filter((p) => (
-      isOwnMoment(p)
-      || !p.characterId
-      || boundSet.has(p.characterId)
-      || p.name === activePersonaForFilter?.name
-      || p.name === currentUser.name
-      || (p.personaId && p.personaId === effectivePersonaId)
-    ))
+    ? momentsPosts.filter((p) => {
+      if (isOwnMoment(p)) return true;
+      if (p.npcId) {
+        const npc = allLineNpcs.find(n => n.id === p.npcId);
+        const bound = npc?.boundCharacterId || p.characterId;
+        return !bound || boundSet.has(bound);
+      }
+      return (
+        !p.characterId
+        || boundSet.has(p.characterId)
+        || p.name === activePersonaForFilter?.name
+        || p.name === currentUser.name
+        || (p.personaId && p.personaId === effectivePersonaId)
+      );
+    })
     : momentsPosts;
   const myMoments = visibleMoments.filter(isOwnMoment);
 
@@ -874,9 +1131,9 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     else setMentionSuggest(null);
   };
 
-  const applyMentionPick = (friend: { name: string; characterId?: string }) => {
+  const applyMentionPick = (friend: { name: string; characterId?: string; npcId?: string }) => {
     if (!mentionSuggest) return;
-    const key = friend.characterId || friend.name;
+    const key = friendAudienceKey(friend);
     const el = postTextareaRef.current;
     const caret = el?.selectionStart ?? newPostText.length;
     const before = newPostText.slice(0, mentionSuggest.start);
@@ -892,11 +1149,33 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     });
   };
 
+  /** 发帖「谁可以看 / 不给谁看 / @」：LINE 好友 + 尚未加好友的 NPC 都可选 */
+  const vroomAudienceFriends: LineFriend[] = (() => {
+    const base = friendsList.filter(f => !f.deleted);
+    const haveNpc = new Set(base.map(f => f.npcId).filter(Boolean) as string[]);
+    const extras: LineFriend[] = allLineNpcs
+      .filter(n => !haveNpc.has(n.id))
+      .map(n => ({
+        name: n.name,
+        characterId: n.boundCharacterId,
+        npcId: n.id,
+        kind: 'npc' as const,
+        note: 'NPC',
+        online: true,
+        pinyin: '',
+      }));
+    return [...base, ...extras];
+  })();
+
   const mentionCandidates = mentionSuggest
-    ? friendsList.filter(f => {
+    ? vroomAudienceFriends.filter(f => {
         const q = mentionSuggest.query.trim().toLowerCase();
         if (!q) return true;
-        return f.name.toLowerCase().includes(q) || (f.characterId || '').toLowerCase().includes(q);
+        return (
+          f.name.toLowerCase().includes(q)
+          || (f.characterId || '').toLowerCase().includes(q)
+          || (f.npcId || '').toLowerCase().includes(q)
+        );
       })
     : [];
   const filteredChats = personaChats.filter((c) =>
@@ -946,6 +1225,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         <LineConversationView
           contactName={activeChatName}
           characterId={activeCharacterId}
+          npcId={activeItem.npcId}
           conversationId={conversationId}
           personaId={effectivePersonaId || undefined}
           personaOptions={userPersonas.map((p: any) => ({ id: p.id, name: p.name, avatar: p.avatar }))}
@@ -953,7 +1233,11 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
             if (!nextPersonaId || nextPersonaId === effectivePersonaId) return;
             const target = chatItems.find((chat) =>
               !chat.isGroup &&
-              (activeItem.characterId ? chat.characterId === activeItem.characterId : chat.name === activeItem.name) &&
+              (activeItem.npcId
+                ? chat.npcId === activeItem.npcId
+                : activeItem.characterId
+                  ? chat.characterId === activeItem.characterId && !chat.npcId
+                  : chat.name === activeItem.name) &&
               chat.personaId === nextPersonaId
             );
             setActivePersonaId(nextPersonaId);
@@ -1048,6 +1332,8 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               <button
                 onClick={() => {
                   setSelectedGroupFriends([]);
+                  setSelectedGroupNpcIds([]);
+                  setGroupModalExpandedChars([]);
                   setNewGroupName('');
                   setShowGroupModal(true);
                 }}
@@ -1120,19 +1406,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 {/* Default Avatar SVG from template */}
                 <div className="relative">
                   <div className="w-[49px] h-[49px] rounded-full bg-[#f1f1f2] border border-[#e8e8e9] flex items-center justify-center shrink-0 overflow-hidden">
-                    {importedCharacters.find(character => character.id === item.characterId)?.avatar || importedCharacters.find(character => character.name === item.name)?.avatar ? (
-                      <img
-                        src={importedCharacters.find(character => character.id === item.characterId)?.avatar || importedCharacters.find(character => character.name === item.name)?.avatar}
-                        alt={item.name}
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <svg className="w-[31px] h-[31px] text-[#b7b7b9]" viewBox="0 0 48 48" fill="currentColor">
-                        <circle cx="24" cy="17" r="8" />
-                        <path d="M10 40c1.8-8.1 6.8-12 14-12s12.2 3.9 14 12" />
-                      </svg>
-                    )}
+                    <NpcAvatar name={item.name} avatar={resolveChatAvatar(item)} className="w-full h-full" textClassName="text-[18px]" />
                   </div>
                   {item.isPinned && (
                     <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[#ae7e89] text-white flex items-center justify-center text-[7px] shadow-2xs">
@@ -1251,24 +1525,12 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               )
               .map((friend, idx) => (
                 <div
-                  key={friend.characterId || friend.name + '-' + idx}
+                  key={friend.npcId || friend.characterId || friend.name + '-' + idx}
                   onClick={() => { setFriendSettingsOpen(false); setFriendEditing(false); setCharacterProfileStyleOpen(false); setCharacterProfileManageOpen(false); setFriendProfile(friend); }}
                   className="h-[67px] px-5 flex items-center cursor-pointer hover:bg-[#fafafa] active:bg-[#f5f5f5] transition-colors"
                 >
                   <div className="w-[49px] h-[49px] rounded-full bg-[#f1f1f2] border border-[#e8e8e9] flex items-center justify-center shrink-0 overflow-hidden">
-                    {(importedCharacters.find(character => character.id === friend.characterId)?.avatar || importedCharacters.find(character => character.name === friend.name)?.avatar) ? (
-                      <img
-                        src={importedCharacters.find(character => character.id === friend.characterId)?.avatar || importedCharacters.find(character => character.name === friend.name)?.avatar}
-                        alt={friend.name}
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <svg className="w-[31px] h-[31px] text-[#b7b7b9]" viewBox="0 0 48 48" fill="currentColor">
-                        <circle cx="24" cy="17" r="8" />
-                        <path d="M10 40c1.8-8.1 6.8-12 14-12s12.2 3.9 14 12" />
-                      </svg>
-                    )}
+                    <NpcAvatar name={friend.name} avatar={resolveFriendAvatar(friend)} className="w-full h-full" textClassName="text-[18px]" />
                   </div>
 
                   <div className="ml-3 flex-1 min-w-0">
@@ -1367,7 +1629,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               const videoCard = getPostVideoCard(post);
               const mentionLabels = Array.isArray((post as any).mentionIds)
                 ? (post as any).mentionIds
-                    .map((id: string) => friendsList.find(f => (f.characterId || f.name) === id)?.name)
+                    .map((id: string) => resolveAudienceLabel(id, vroomAudienceFriends, allLineNpcs))
                     .filter(Boolean)
                 : [];
               const avatarSrc = resolveMomentAvatar(post);
@@ -1405,7 +1667,10 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   <div className="w-[49px] h-[49px] rounded-full bg-[#f1f1f2] border border-[#e8e8e9] flex items-center justify-center shrink-0 overflow-hidden">
                     {avatarSrc ? <img src={avatarSrc} alt="" className="w-full h-full object-cover" /> : <span className="text-sm text-[#aaa]">{post.name?.[0] || '·'}</span>}
                   </div>
-                  <span className="ml-2.5 text-[13px] font-semibold">{post.name}</span>
+                  <span className="ml-2.5 text-[13px] font-semibold">
+                    {post.name}
+                    {post.npcId ? <span className="ml-1 text-[9px] font-normal text-[#ae7e89]">NPC</span> : null}
+                  </span>
                   <span className="ml-auto text-[9px] text-[#aaa]">{post.time}</span>
                 </div>
 
@@ -1427,7 +1692,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 )}
                 {((post as any).images?.length ? (post as any).images : (post.image ? [post.image] : [])).length > 0 && (
                   <div className="ml-[59px] mt-3 max-w-[68%]">
-                    <img
+                    <VroomImage
                       src={((post as any).images?.length ? (post as any).images : [post.image])[0]}
                       alt=""
                       className="w-full aspect-square rounded-[12px] object-cover border border-[#eeeeef]"
@@ -1475,6 +1740,17 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                           className="hover:text-[#555] cursor-pointer"
                         >
                           评论
+                        </button>
+                        <button
+                          type="button"
+                          disabled={generatingCommentsPostId === post.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void onGenerateCommentsForPost(post);
+                          }}
+                          className="hover:text-[#ae7e89] cursor-pointer disabled:opacity-50"
+                        >
+                          {generatingCommentsPostId === post.id ? '生成中…' : '生成评论'}
                         </button>
                       </div>
                       {count > 0 && likerLine && (
@@ -2588,6 +2864,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
           <div className="w-full max-h-[82%] overflow-y-auto bg-white rounded-t-[24px] p-5 pb-8 space-y-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between"><div><div className="text-[8px] font-mono tracking-[1.5px] text-[#aaa]">VROOM · SETTINGS</div><div className="mt-1 font-semibold text-[15px]">朋友圈设置</div></div><button onClick={() => setShowMomentsSettings(false)} className="text-xl text-[#aaa]">×</button></div>
             <label className="flex items-center justify-between p-3 rounded-2xl bg-[#f8f8f9]"><div><div className="text-xs font-medium">允许角色自主发朋友圈</div><div className="text-[9px] text-[#aaa] mt-1">关闭后，角色不会通过主动生活事件发布动态。</div></div><input type="checkbox" checked={momentsSettings.allowCharacterAutoPost} onChange={e => setMomentsSettings(prev => ({...prev, allowCharacterAutoPost: e.target.checked}))} /></label>
+            <label className="flex items-center justify-between p-3 rounded-2xl bg-[#f8f8f9]"><div><div className="text-xs font-medium">允许 NPC 发朋友圈</div><div className="text-[9px] text-[#aaa] mt-1">关闭后，NPC 不会一键发帖 / 出现在刷新池里。</div></div><input type="checkbox" checked={momentsSettings.allowNpcAutoPost !== false} onChange={e => setMomentsSettings(prev => ({...prev, allowNpcAutoPost: e.target.checked}))} /></label>
             <label className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-[#faf8f9] border border-[#f0e4e7]">
               <div>
                 <div className="text-xs font-medium text-[#333]">图片卡 / 视频卡 · AI 润色</div>
@@ -2599,6 +2876,66 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 onChange={e => setMomentsSettings(prev => ({ ...prev, aiPolishTextCard: e.target.checked }))}
               />
             </label>
+
+            <div className="space-y-2.5 pt-1">
+              <div className="text-[10px] font-semibold text-[#555]">好友与可见 · 角色 / NPC</div>
+              <div className="text-[9px] text-[#aaa] leading-relaxed">勾选 = 与该人设互为好友，能看见动态、能评论。取消 = 屏蔽：看不见、也不能评。默认跟随 LINE 好友列表。</div>
+              <label className="flex items-center justify-between p-3 rounded-2xl bg-[#f8f8f9]">
+                <div><div className="text-xs font-medium">严格好友模式</div><div className="text-[9px] text-[#aaa] mt-1">开：角色/NPC 之间必须同群（或下面手动加为好友）才能互评；关：同为我的好友也能互评。</div></div>
+                <input type="checkbox" checked={vroomScope.strictFriendsOnly} onChange={e => { const next = { ...vroomScope, strictFriendsOnly: e.target.checked }; try { window.localStorage.setItem('vroom:scope-settings', JSON.stringify(next)); } catch { /* ignore */ } setVroomScope(next); }} />
+              </label>
+              <div className="p-3 rounded-2xl bg-[#f8f8f9] space-y-2">
+                <div className="text-[10px] font-medium text-[#555]">正在管理的人设</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(userPersonas.length ? userPersonas : [{ id: effectivePersonaId || 'default', name: activePersona?.name || currentUser.name || '我' }]).map((persona: any) => (
+                    <button key={persona.id} type="button" onClick={() => setVroomFriendPersonaId(persona.id)} className={vroomFriendPersonaId === persona.id || (!vroomFriendPersonaId && persona.id === effectivePersonaId) ? 'px-2.5 py-1.5 rounded-full bg-[#292724] text-white text-[10px]' : 'px-2.5 py-1.5 rounded-full bg-white border border-[#e3e3e5] text-[#666] text-[10px]'}>
+                      {persona.name || '未命名'}
+                    </button>
+                  ))}
+                </div>
+                <div className="text-[9px] font-medium text-[#666] pt-1">角色</div>
+                <div className="max-h-[160px] overflow-y-auto space-y-1">
+                  {importedCharacters.map(character => {
+                    const personaId = vroomFriendPersonaId || effectivePersonaId || 'default';
+                    const pkey = 'persona:' + personaId;
+                    const ckey = 'character:' + (character.id || character.name);
+                    const defaultFriend = friendsList.some(f => !f.npcId && (f.characterId === character.id || f.name === character.name));
+                    const blocked = isVroomBlockedEdge(pkey, ckey);
+                    const allowed = isVroomAllowedEdge(pkey, ckey);
+                    const checked = blocked ? false : (allowed ? true : defaultFriend);
+                    return (
+                      <label key={character.id || character.name} className="flex items-center gap-2 p-2 rounded-xl bg-white border border-[#eee] text-[11px] cursor-pointer">
+                        <input type="checkbox" checked={checked} onChange={e => { setVroomFriendEdge(pkey, ckey, e.target.checked); setVroomRev(v => v + 1); }} />
+                        <span className="flex-1 truncate">{character.name}</span>
+                        <span className="text-[8px] text-[#aaa]">{blocked ? '已屏蔽' : allowed ? '好友' : defaultFriend ? '默认好友' : '陌生人'}</span>
+                      </label>
+                    );
+                  })}
+                  {!importedCharacters.length && <div className="text-[10px] text-[#aaa] text-center py-2">还没有导入角色</div>}
+                </div>
+                <div className="text-[9px] font-medium text-[#666] pt-1">NPC</div>
+                <div className="max-h-[160px] overflow-y-auto space-y-1">
+                  {allLineNpcs.map(npc => {
+                    const personaId = vroomFriendPersonaId || effectivePersonaId || 'default';
+                    const pkey = 'persona:' + personaId;
+                    const nkey = 'npc:' + npc.id;
+                    const defaultFriend = friendsList.some(f => f.npcId === npc.id);
+                    const blocked = isVroomBlockedEdge(pkey, nkey);
+                    const allowed = isVroomAllowedEdge(pkey, nkey);
+                    const checked = blocked ? false : (allowed ? true : defaultFriend);
+                    return (
+                      <label key={npc.id} className="flex items-center gap-2 p-2 rounded-xl bg-white border border-[#eee] text-[11px] cursor-pointer">
+                        <input type="checkbox" checked={checked} onChange={e => { setVroomFriendEdge(pkey, nkey, e.target.checked); setVroomRev(v => v + 1); }} />
+                        <span className="flex-1 truncate">{npc.name}</span>
+                        <span className="text-[8px] text-[#ae7e89]">NPC</span>
+                        <span className="text-[8px] text-[#aaa]">{blocked ? '已屏蔽' : allowed ? '好友' : defaultFriend ? '默认好友' : '陌生人'}</span>
+                      </label>
+                    );
+                  })}
+                  {!allLineNpcs.length && <div className="text-[10px] text-[#aaa] text-center py-2">还没有 NPC · 去 NPC App 生成</div>}
+                </div>
+              </div>
+            </div>
 
             <div className="space-y-2.5 pt-1">
               <div className="text-[10px] font-semibold text-[#555]">评论</div>
@@ -2618,11 +2955,35 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               </label>
               <label className="flex items-center justify-between p-3 rounded-2xl bg-[#f8f8f9]">
                 <div>
-                  <div className="text-xs font-medium">允许 NPC 池评论</div>
-                  <div className="text-[9px] text-[#aaa] mt-1">仅对勾了「可评论朋友圈」的活跃 NPC 生效。</div>
+                  <div className="text-xs font-medium">允许 NPC 评论</div>
+                  <div className="text-[9px] text-[#aaa] mt-1">总开关。下面还可按人开关每个 NPC。</div>
                 </div>
                 <input type="checkbox" checked={momentsSettings.allowNpcComment !== false} onChange={e => setMomentsSettings(prev => ({ ...prev, allowNpcComment: e.target.checked }))} />
               </label>
+              {momentsSettings.allowNpcComment !== false && allLineNpcs.length > 0 && (
+                <div className="p-3 rounded-2xl bg-[#f8f8f9] space-y-1.5">
+                  <div className="text-[10px] font-medium text-[#555]">哪些 NPC 可以评论</div>
+                  <div className="max-h-[140px] overflow-y-auto space-y-1">
+                    {allLineNpcs.map(npc => (
+                      <label key={'comment-' + npc.id} className="flex items-center gap-2 p-2 rounded-xl bg-white border border-[#eee] text-[11px] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={npc.active && npc.canCommentMoments !== false}
+                          onChange={() => {
+                            updateNpc(npc.id, {
+                              canCommentMoments: !(npc.active && npc.canCommentMoments !== false),
+                              active: true,
+                            });
+                            setVroomRev(v => v + 1);
+                          }}
+                        />
+                        <span className="flex-1 truncate">{npc.name}</span>
+                        <span className="text-[8px] text-[#ae7e89]">NPC</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="p-3 rounded-2xl bg-[#f8f8f9] space-y-2">
                 <div className="text-xs font-medium">评论生成方式</div>
                 <div className="text-[9px] text-[#aaa] leading-relaxed">批量：发帖后立刻生成几条；自主：仅后台偶尔来评；两者：都开。</div>
@@ -2680,8 +3041,98 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               </label>
             </div>
 
-            <div><div className="text-[10px] font-semibold text-[#555] mb-2">谁可以发朋友圈</div><div className="space-y-1.5">{importedCharacters.map(character => { const checked = momentsSettings.enabledCharacterIds.length === 0 || momentsSettings.enabledCharacterIds.includes(character.id); return <label key={character.id} className="flex items-center gap-3 p-2.5 rounded-xl border border-[#eee] cursor-pointer"><div className="w-9 h-9 rounded-full overflow-hidden bg-[#f1f1f2] shrink-0">{character.avatar ? <img src={character.avatar} alt="" className="w-full h-full object-cover" /> : null}</div><span className="flex-1 text-xs">{character.name}</span><input type="checkbox" checked={checked} onChange={() => setMomentsSettings(prev => { const allIds = importedCharacters.map(item => item.id); const current = prev.enabledCharacterIds.length === 0 ? allIds : prev.enabledCharacterIds; const next = current.includes(character.id) ? current.filter(id => id !== character.id) : [...current, character.id]; return {...prev, enabledCharacterIds: next.length === allIds.length ? [] : next}; })} /></label>; })}</div></div>
-            <button onClick={() => { setShowMomentsSettings(false); void generateMomentsPost(); }} className="w-full py-2.5 rounded-xl bg-[#292724] text-white text-xs">按当前设置让角色发一条</button>
+            <div className="space-y-2">
+              <div className="text-[10px] font-semibold text-[#555]">谁可以发朋友圈 · 角色</div>
+              <div className="space-y-1.5 max-h-[160px] overflow-y-auto">
+                {importedCharacters.map(character => {
+                  const checked = momentsSettings.enabledCharacterIds.length === 0 || momentsSettings.enabledCharacterIds.includes(character.id);
+                  return (
+                    <label key={character.id} className="flex items-center gap-3 p-2.5 rounded-xl border border-[#eee] cursor-pointer">
+                      <div className="w-9 h-9 rounded-full overflow-hidden bg-[#f1f1f2] shrink-0">
+                        {character.avatar ? <img src={character.avatar} alt="" className="w-full h-full object-cover" /> : null}
+                      </div>
+                      <span className="flex-1 text-xs">{character.name}</span>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => setMomentsSettings(prev => {
+                          const allIds = importedCharacters.map(item => item.id);
+                          const current = prev.enabledCharacterIds.length === 0 ? allIds : prev.enabledCharacterIds;
+                          const next = current.includes(character.id) ? current.filter(id => id !== character.id) : [...current, character.id];
+                          return { ...prev, enabledCharacterIds: next.length === allIds.length ? [] : next };
+                        })}
+                      />
+                    </label>
+                  );
+                })}
+                {!importedCharacters.length && <div className="text-[10px] text-[#aaa] text-center py-2">还没有导入角色</div>}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-[10px] font-semibold text-[#555]">谁可以发朋友圈 · NPC</div>
+              <div className="text-[9px] text-[#aaa] leading-relaxed">需先打开上面的「允许 NPC 发朋友圈」。空勾选 = 全部可发帖的活跃 NPC。</div>
+              <div className="space-y-1.5 max-h-[160px] overflow-y-auto">
+                {allLineNpcs.map(npc => {
+                  const allowedByWhitelist = momentsSettings.enabledNpcIds.length === 0 || momentsSettings.enabledNpcIds.includes(npc.id);
+                  const checked = npc.active && npc.canPostMoments !== false && allowedByWhitelist && momentsSettings.allowNpcAutoPost !== false;
+                  return (
+                    <label key={'post-npc-' + npc.id} className="flex items-center gap-3 p-2.5 rounded-xl border border-[#eee] cursor-pointer">
+                      <div className="w-9 h-9 rounded-full overflow-hidden bg-[#f1f1f2] shrink-0">
+                        <NpcAvatar name={npc.name} avatar={npc.avatar} className="w-full h-full" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs truncate">{npc.name}</div>
+                        <div className="text-[8px] text-[#ae7e89]">NPC</div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          const turningOn = !checked;
+                          updateNpc(npc.id, {
+                            active: true,
+                            canPostMoments: turningOn,
+                          });
+                          setMomentsSettings(prev => {
+                            const allIds = allLineNpcs.map(n => n.id);
+                            const current = prev.enabledNpcIds.length === 0 ? allIds : prev.enabledNpcIds;
+                            let next = turningOn
+                              ? (current.includes(npc.id) ? current : [...current, npc.id])
+                              : current.filter(id => id !== npc.id);
+                            if (turningOn && next.length === allIds.length) next = [];
+                            return {
+                              ...prev,
+                              allowNpcAutoPost: turningOn ? true : prev.allowNpcAutoPost,
+                              enabledNpcIds: next,
+                            };
+                          });
+                          setVroomRev(v => v + 1);
+                        }}
+                      />
+                    </label>
+                  );
+                })}
+                {!allLineNpcs.length && <div className="text-[10px] text-[#aaa] text-center py-2">还没有 NPC · 去 NPC App 生成</div>}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => { setShowMomentsSettings(false); void generateMomentsPost(); }}
+                className="w-full py-2.5 rounded-xl bg-[#292724] text-white text-xs"
+              >
+                角色/NPC 发一条
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowMomentsSettings(false); void generateNpcMomentsPost(); }}
+                className="w-full py-2.5 rounded-xl bg-[#f6eef0] text-[#8c5f6b] text-xs font-medium"
+              >
+                专门让 NPC 发一条
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -2811,32 +3262,54 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       })()}
 
       {friendProfile && (() => {
-        const character = importedCharacters.find(c => c.id === friendProfile.characterId) || importedCharacters.find(c => c.name === friendProfile.name);
-        const chat = chatItems.find(c => (c.characterId === friendProfile.characterId || c.name === friendProfile.name) && (c.isGroup || c.personaId === effectivePersonaId));
+        const profileNpc = friendProfile.npcId ? allLineNpcs.find(item => item.id === friendProfile.npcId) : null;
+        const character = profileNpc
+          ? null
+          : (importedCharacters.find(c => c.id === friendProfile.characterId) || importedCharacters.find(c => c.name === friendProfile.name));
+        const boundForProfileNpc = profileNpc
+          ? importedCharacters.find(c => c.id === profileNpc.boundCharacterId)
+          : null;
+        const chat = chatItems.find(c =>
+          friendProfile.npcId
+            ? c.npcId === friendProfile.npcId && (!c.personaId || c.personaId === effectivePersonaId)
+            : (!c.npcId && (c.characterId === friendProfile.characterId || c.name === friendProfile.name) && (c.isGroup || c.personaId === effectivePersonaId))
+        );
+        const profileAvatar = profileNpc
+          ? (profileNpc.avatar || boundForProfileNpc?.avatar || '')
+          : (characterProfileStyles[character?.id || friendProfile.characterId || '']?.avatar || character?.avatar || '');
         return (
           <div className="absolute inset-0 z-[70] bg-white animate-in slide-in-from-right">
             <div className="h-full overflow-y-auto no-scrollbar">
               <div className="h-[170px] relative overflow-visible" style={{ background: characterProfileStyles[character?.id || friendProfile.characterId || '']?.background ? undefined : '#f0efed' }}>
                 <div className="absolute inset-0" style={{
-                  backgroundImage: characterProfileStyles[character?.id || friendProfile.characterId || '']?.background
+                  backgroundImage: !profileNpc && characterProfileStyles[character?.id || friendProfile.characterId || '']?.background
                     ? `linear-gradient(180deg, rgba(0,0,0,.04), rgba(0,0,0,.18)), url(${characterProfileStyles[character?.id || friendProfile.characterId || '']?.background})`
                     : 'linear-gradient(135deg, #f1eeeb, #e8e5e1)',
                   backgroundSize: 'cover', backgroundPosition: 'center'
                 }} />
                 <button onClick={() => setFriendProfile(null)} className="absolute top-4 left-4 w-8 h-8 rounded-full bg-white/80 text-[#555] z-10">‹</button>
-                <button onClick={() => setCharacterProfileStyleOpen(true)} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/80 text-[#555] z-10">✦</button>
+                {!profileNpc && <button onClick={() => setCharacterProfileStyleOpen(true)} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/80 text-[#555] z-10">✦</button>}
                 <div className="absolute -bottom-9 left-5 z-20 w-[78px] h-[78px] rounded-full border-4 border-white bg-[#f1f1f2] overflow-hidden grid place-items-center shadow-sm">
-                  {(characterProfileStyles[character?.id || friendProfile.characterId || '']?.avatar || character?.avatar) ? <img src={characterProfileStyles[character?.id || friendProfile.characterId || '']?.avatar || character?.avatar} alt="" className="w-full h-full object-cover" /> : <span className="text-xl text-[#aaa]">{friendProfile.name[0] || '·'}</span>}
+                  {profileAvatar ? <img src={profileAvatar} alt="" className="w-full h-full object-cover" /> : <span className="text-xl text-[#aaa]">{friendProfile.name[0] || '·'}</span>}
                 </div>
               </div>
               <div className="px-5 pt-12 pb-8">
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="text-[21px] font-semibold text-[#222]">{friendProfile.name}</div>
-                    <div className="text-[10px] text-[#aaa] mt-1">{friendProfile.online ? '● 在线' : '最近没有上线'} · {friendProfile.variantLabel || '默认身份'}</div>
+                    <div className="text-[10px] text-[#aaa] mt-1">{friendProfile.online ? '● 在线' : '最近没有上线'} · {friendProfile.variantLabel || (profileNpc ? 'NPC' : '默认身份')}</div>
                   </div>
                   {friendProfile.online && <span className="text-[9px] px-2 py-1 rounded-full bg-[#f1f7f2] text-[#719178]">ONLINE</span>}
                 </div>
+
+                {profileNpc && (
+                  <div className="mt-4 rounded-[22px] border border-[#e4e9f0] bg-[#f7f9fc] p-4 space-y-2">
+                    <div className="text-[10px] text-[#7a8aa0]">NPC App 档案 · 绑定 {profileNpc.boundCharacterName || boundForProfileNpc?.name || '角色'}</div>
+                    <div className="text-[12px] text-[#555] leading-5 whitespace-pre-wrap">{profileNpc.bio || profileNpc.personality || '暂无简介'}</div>
+                    {profileNpc.relationship && <div className="text-[10px] text-[#888]">关系：{profileNpc.relationship}</div>}
+                    {profileNpc.statusMessage && <div className="text-[10px] text-[#999]">签名：{profileNpc.statusMessage}</div>}
+                  </div>
+                )}
 
                 {character && (() => {
                   const profile = generatedCharacterProfiles[character.id] || { followers: 0, following: 0, signature: '', updatedAt: '' };
@@ -2926,7 +3399,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                         setActiveChatId(chat.id);
                         return;
                       }
-                      if (friendProfile.characterId) {
+                      if (friendProfile.npcId || friendProfile.characterId) {
                         setNewChatRelationship('new-friend');
                         setReaddedReason('deleted');
                         setRelationshipContext('');
@@ -2944,7 +3417,11 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   <button
                     onClick={() => {
                       if (friendEditing) {
-                        setFriendsList(prev => prev.map(item => item.characterId === friendProfile.characterId ? friendProfile : item));
+                        setFriendsList(prev => prev.map(item =>
+                          friendProfile.npcId
+                            ? (item.npcId === friendProfile.npcId ? friendProfile : item)
+                            : (item.characterId === friendProfile.characterId && !item.npcId ? friendProfile : item)
+                        ));
                         showToast('好友备注已保存');
                       }
                       setFriendEditing(v => !v);
@@ -2957,11 +3434,20 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 <button
                   onClick={() => {
                     const characterId = friendProfile.characterId;
+                    const npcId = friendProfile.npcId;
                     setFriendsList(prev => prev.filter(item =>
-                      characterId ? item.characterId !== characterId : item.name !== friendProfile.name
+                      npcId
+                        ? item.npcId !== npcId
+                        : characterId
+                          ? !(item.characterId === characterId && !item.npcId)
+                          : item.name !== friendProfile.name
                     ));
                     setChatItems(prev => prev.map(item =>
-                      (characterId ? item.characterId === characterId : item.name === friendProfile.name)
+                      (npcId
+                        ? item.npcId === npcId
+                        : characterId
+                          ? item.characterId === characterId && !item.npcId
+                          : item.name === friendProfile.name)
                         ? { ...item, friendStatus: 'not-friend', preview: item.preview === '聊天暂时无法打开' ? '暂无消息' : item.preview }
                         : item
                     ));
@@ -3038,7 +3524,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                                 </div>
                               </div>
                               <div className="ml-[50px] mt-2.5 text-[12px] leading-[1.8] text-[#4b4b4d] whitespace-pre-wrap">{post.text}</div>
-                              {post.image && <img src={post.image} alt="" className="ml-[50px] mt-3 max-w-[82%] max-h-[250px] rounded-[13px] object-cover border border-[#eee]" />}
+                              {post.image && <VroomImage src={post.image} alt="" className="ml-[50px] mt-3 max-w-[82%] max-h-[250px] rounded-[13px] object-cover border border-[#eee]" />}
                               {(() => {
                                 const meName = (activePersona?.name || currentUser.name || '').trim() || '我';
                                 const { list, count } = momentLikerNames(post, meName);
@@ -3152,7 +3638,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 {Array.isArray(postDetail.mentionIds) && postDetail.mentionIds.length > 0 && (
                   <div className="mt-4 text-[12px] text-[#8c5f6b]">
                     {postDetail.mentionIds
-                      .map((id: string) => friendsList.find(f => (f.characterId || f.name) === id)?.name)
+                      .map((id: string) => resolveAudienceLabel(id, vroomAudienceFriends, allLineNpcs))
                       .filter(Boolean)
                       .map((n: string) => `@${n}`)
                       .join(' ')}
@@ -3445,24 +3931,24 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       ===================================================== */}
       {showGroupModal && (
         <div
-          onClick={() => setShowGroupModal(false)}
+          onClick={closeGroupModal}
           className="absolute inset-0 bg-black/25 z-50 flex items-end animate-in fade-in"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full bg-white rounded-t-[20px] p-5 pb-8 space-y-4 animate-in slide-in-from-bottom max-h-[80%] flex flex-col"
+            className="w-full bg-white rounded-t-[20px] p-5 pb-8 space-y-4 animate-in slide-in-from-bottom max-h-[88%] flex flex-col"
           >
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center shrink-0">
               <div>
                 <div className="text-[16px] font-semibold text-[#202124]">创建新群聊</div>
-                <div className="text-[10px] text-[#aaa]">选择群成员一起聊天</div>
+                <div className="text-[10px] text-[#aaa]">可勾选好友，或从 NPC App 按角色折叠直选</div>
               </div>
-              <button onClick={() => setShowGroupModal(false)} className="text-xl text-[#aaa] cursor-pointer">
+              <button onClick={closeGroupModal} className="text-xl text-[#aaa] cursor-pointer">
                 ×
               </button>
             </div>
 
-            <div>
+            <div className="shrink-0">
               <span className="text-[11px] text-[#666]">群聊名称</span>
               <input
                 type="text"
@@ -3473,53 +3959,203 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               />
             </div>
 
-            <div>
-              <span className="text-[11px] text-[#666]">勾选好友加入群聊：</span>
-              <div className="mt-2 divide-y divide-[#f2f2f4] max-h-48 overflow-y-auto text-xs">
-                {friendsList.map((friend, i) => {
-                  const isSelected = selectedGroupFriends.includes(friend.name);
-                  return (
-                    <div
-                      key={i}
-                      onClick={() => {
-                        setSelectedGroupFriends((prev) =>
-                          prev.includes(friend.name)
-                            ? prev.filter((n) => n !== friend.name)
-                            : [...prev, friend.name]
-                        );
-                      }}
-                      className="py-2.5 px-2 flex items-center justify-between cursor-pointer hover:bg-[#fafafa]"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-full bg-[#f1f1f2] flex items-center justify-center text-[10px] text-[#888]">
-                          {friend.name[0]}
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-4">
+              <div>
+                <span className="text-[11px] text-[#666]">好友（含已添加的 NPC）</span>
+                <div className="mt-2 divide-y divide-[#f2f2f4] text-xs rounded-xl border border-[#ededee] overflow-hidden">
+                  {visibleFriends.map((friend, i) => {
+                    const selectKey = friend.npcId || friend.characterId || friend.name;
+                    const isSelected = selectedGroupFriends.includes(selectKey);
+                    return (
+                      <div
+                        key={friend.npcId || friend.characterId || friend.name + '-' + i}
+                        onClick={() => {
+                          setSelectedGroupFriends((prev) =>
+                            prev.includes(selectKey)
+                              ? prev.filter((n) => n !== selectKey)
+                              : [...prev, selectKey]
+                          );
+                          // 与 NPC App 区去重：好友里勾选 NPC 时同步 / 取消同步 selectedGroupNpcIds
+                          if (friend.npcId) {
+                            setSelectedGroupNpcIds((prev) =>
+                              isSelected
+                                ? prev.filter((id) => id !== friend.npcId)
+                                : prev.includes(friend.npcId!) ? prev : [...prev, friend.npcId!]
+                            );
+                          }
+                        }}
+                        className="py-2.5 px-3 flex items-center justify-between cursor-pointer hover:bg-[#fafafa]"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-7 h-7 rounded-full bg-[#f1f1f2] overflow-hidden flex items-center justify-center text-[10px] text-[#888] shrink-0">
+                            {resolveFriendAvatar(friend)
+                              ? <img src={resolveFriendAvatar(friend)} alt="" className="w-full h-full object-cover" />
+                              : friend.name[0]}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-medium text-[#333] truncate">{friend.name}</div>
+                            {friend.npcId && <div className="text-[9px] text-[#aaa] truncate">{friend.note}</div>}
+                          </div>
                         </div>
-                        <span className="font-medium text-[#333]">{friend.name}</span>
+                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                          isSelected ? 'bg-[#ae7e89] border-[#ae7e89] text-white text-[9px]' : 'border-[#ccc]'
+                        }`}>
+                          {isSelected && '✓'}
+                        </div>
                       </div>
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                        isSelected ? 'bg-[#ae7e89] border-[#ae7e89] text-white text-[9px]' : 'border-[#ccc]'
-                      }`}>
-                        {isSelected && '✓'}
+                    );
+                  })}
+                  {!visibleFriends.length && (
+                    <div className="py-4 text-center text-[10px] text-[#aaa]">当前没有可勾选的好友</div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[11px] text-[#666]">NPC App · 按角色折叠</span>
+                  <span className="text-[9px] text-[#aaa]">
+                    {hasBounds
+                      ? `仅「${activePersonaForFilter?.name || '当前人设'}」已连接角色`
+                      : '未连接人设 · 显示全部已绑定 NPC'}
+                  </span>
+                </div>
+                <div className="mt-2 space-y-2">
+                  {creatableNpcGroups.map(group => {
+                    const expanded = groupModalExpandedChars.includes(group.characterId);
+                    const selectedInGroup = group.npcs.filter(npc => selectedGroupNpcIds.includes(npc.id)).length;
+                    return (
+                      <div key={group.characterId} className="rounded-xl border border-[#ededee] overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => setGroupModalExpandedChars(prev =>
+                            prev.includes(group.characterId)
+                              ? prev.filter(id => id !== group.characterId)
+                              : [...prev, group.characterId]
+                          )}
+                          className="w-full flex items-center gap-3 p-3 text-left bg-[#faf9fa]"
+                        >
+                          <div className="w-9 h-9 rounded-full overflow-hidden bg-[#f1f1f2] shrink-0 grid place-items-center">
+                            {group.avatar
+                              ? <img src={group.avatar} alt="" className="w-full h-full object-cover" />
+                              : <span className="text-[10px] text-[#aaa]">{group.characterName.slice(0, 1)}</span>}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[12px] font-medium text-[#333] truncate">{group.characterName}</div>
+                            <div className="text-[9px] text-[#aaa]">
+                              {group.npcs.length} 位相关 NPC{selectedInGroup ? ` · 已选 ${selectedInGroup}` : ''}
+                            </div>
+                          </div>
+                          <ChevronRight className={`w-4 h-4 text-[#ccc] shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+                        </button>
+                        {expanded && group.npcs.map(npc => {
+                          const checked = selectedGroupNpcIds.includes(npc.id);
+                          const av = npc.avatar || group.avatar;
+                          const friendKey = npc.id;
+                          return (
+                            <button
+                              key={npc.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedGroupNpcIds(prev =>
+                                  checked ? prev.filter(id => id !== npc.id) : [...prev, npc.id]
+                                );
+                                // 若已是好友，同步好友勾选状态
+                                const asFriend = visibleFriends.some(f => f.npcId === npc.id);
+                                if (asFriend) {
+                                  setSelectedGroupFriends(prev =>
+                                    checked
+                                      ? prev.filter(k => k !== friendKey)
+                                      : prev.includes(friendKey) ? prev : [...prev, friendKey]
+                                  );
+                                }
+                              }}
+                              className="w-full flex items-center gap-3 pl-6 pr-3 py-2.5 text-left border-t border-[#f2f2f3] active:bg-[#f5f0f2]"
+                            >
+                              <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                                checked ? 'bg-[#ae7e89] border-[#ae7e89] text-white text-[9px]' : 'border-[#ccc]'
+                              }`}>
+                                {checked ? '✓' : null}
+                              </div>
+                              <div className="w-8 h-8 rounded-full overflow-hidden bg-[#f0f3f8] shrink-0 grid place-items-center">
+                                {av
+                                  ? <img src={av} alt="" className="w-full h-full object-cover" />
+                                  : <span className="text-[10px] text-[#7a8aa0]">{npc.name.slice(0, 1)}</span>}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-[12px] font-medium text-[#333] truncate">{npc.name}</div>
+                                <div className="text-[9px] text-[#aaa] truncate">
+                                  NPC{npc.relationship ? ` · ${npc.relationship}` : ''}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
+                    );
+                  })}
+                  {!creatableNpcGroups.length && (
+                    <div className="py-4 text-center text-[10px] text-[#aaa] rounded-xl border border-dashed border-[#e8e8e9]">
+                      {hasBounds
+                        ? '当前人设连接的角色下暂无 NPC。请先在 NPC App 生成。'
+                        : 'NPC App 暂无可选人物，请先创建并绑定角色。'}
                     </div>
-                  );
-                })}
+                  )}
+                </div>
               </div>
             </div>
 
             <button
               onClick={() => {
                 const groupTitle = newGroupName.trim() || '我们的新群聊';
+                const selectedFriends = visibleFriends.filter(friend =>
+                  selectedGroupFriends.includes(friend.npcId || friend.characterId || friend.name)
+                );
+                // NPC App 直选：合并好友区已勾 NPC，按 id 去重
+                const friendNpcIds = new Set(
+                  selectedFriends.filter(f => f.npcId).map(f => f.npcId as string)
+                );
+                const directNpcs = creatableNpcsForPersona.filter(npc =>
+                  selectedGroupNpcIds.includes(npc.id) && !friendNpcIds.has(npc.id)
+                );
+                const memberNames = [
+                  ...selectedFriends.map(friend => friend.name),
+                  ...directNpcs.map(npc => npc.name),
+                ];
+                if (!memberNames.length) {
+                  showToast('请至少选择一位好友或 NPC');
+                  return;
+                }
+                const npcMembersFromFriends = Object.fromEntries(
+                  selectedFriends
+                    .filter(friend => friend.npcId)
+                    .map(friend => [friend.name, {
+                      npcId: friend.npcId as string,
+                      boundCharacterId: friend.characterId,
+                      avatar: resolveFriendAvatar(friend),
+                    }])
+                );
+                const npcMembersFromApp = Object.fromEntries(
+                  directNpcs.map(npc => {
+                    const bound = importedCharacters.find(c => c.id === npc.boundCharacterId);
+                    return [npc.name, {
+                      npcId: npc.id,
+                      boundCharacterId: npc.boundCharacterId,
+                      avatar: npc.avatar || bound?.avatar || '',
+                    }];
+                  })
+                );
                 const group = createLineGroup({
                   name: groupTitle,
                   ownerId: currentUser.id,
                   ownerName: currentUser.name,
-                  memberNames: selectedGroupFriends,
+                  memberNames,
                   characterIds: Object.fromEntries(
-                    importedCharacters
-                      .filter(character => selectedGroupFriends.includes(character.name))
-                      .map(character => [character.name, character.id])
+                    selectedFriends
+                      .filter(friend => !friend.npcId && friend.characterId)
+                      .map(friend => [friend.name, friend.characterId as string])
                   ),
+                  npcMembers: { ...npcMembersFromFriends, ...npcMembersFromApp },
                   announcement: '',
                 });
                 const newChat = {
@@ -3533,51 +4169,234 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   draft: '',
                   isGroup: true,
                   groupId: group.id,
+                  personaId: effectivePersonaId || undefined,
                 };
                 setChatItems((prev) => [newChat, ...prev]);
-                setShowGroupModal(false);
+                closeGroupModal();
                 showToast(`已创建群聊「${groupTitle}」`);
               }}
-              className="w-full py-2.5 bg-[#d4aab5] text-white rounded-[12px] text-xs font-semibold cursor-pointer"
+              className="w-full shrink-0 py-2.5 bg-[#d4aab5] text-white rounded-[12px] text-xs font-semibold cursor-pointer"
             >
-              完成并进入群聊
+              {(() => {
+                const friendCount = selectedGroupFriends.length;
+                const extraNpcCount = selectedGroupNpcIds.filter(id =>
+                  !visibleFriends.some(f => f.npcId === id && selectedGroupFriends.includes(f.npcId || f.characterId || f.name))
+                ).length;
+                const total = friendCount + extraNpcCount;
+                return total > 0 ? `完成并进入群聊 · ${total} 人` : '完成并进入群聊';
+              })()}
             </button>
           </div>
         </div>
       )}
 
       {showFriendModal && (
-        <div onClick={() => setShowFriendModal(false)} className="absolute inset-0 bg-black/25 z-[79] flex items-end animate-in fade-in">
+        <div onClick={() => { setShowFriendModal(false); setFriendModalExpandedChars([]); }} className="absolute inset-0 bg-black/25 z-[79] flex items-end animate-in fade-in">
           <div onClick={e => e.stopPropagation()} className="w-full bg-white rounded-t-[26px] p-5 pb-8 space-y-4 max-h-[82%] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div><div className="text-[8px] tracking-[1.8px] font-mono text-[#aaa]">ADD FRIEND</div><div className="mt-1 text-[18px] font-semibold text-[#202124]">添加好友</div></div>
-              <button onClick={() => setShowFriendModal(false)} className="text-xl text-[#aaa]">×</button>
+              <button onClick={() => { setShowFriendModal(false); setFriendModalExpandedChars([]); }} className="text-xl text-[#aaa]">×</button>
             </div>
             <div className="h-[40px] bg-[#f6f6f7] rounded-[11px] flex items-center px-3.5">
               <Search className="w-4 h-4 text-[#aaa] mr-2" />
-              <input value={friendSearchQuery} onChange={e => setFriendSearchQuery(e.target.value)} placeholder="搜索角色名字" className="w-full bg-transparent outline-none text-xs text-[#555]" />
+              <input value={friendSearchQuery} onChange={e => setFriendSearchQuery(e.target.value)} placeholder="搜索角色 / NPC 名字" className="w-full bg-transparent outline-none text-xs text-[#555]" />
             </div>
             {(() => {
-              const q=friendSearchQuery.trim().toLowerCase();
-              const available=importedCharacters.filter(ch=>!friendsList.some(f=>f.characterId===ch.id));
-              const matches=q ? available.filter(ch=>ch.name.toLowerCase().includes(q)) : available;
-              return <div className="space-y-2">
-                <div className="text-[10px] text-[#888]">{q ? `搜索结果 · ${matches.length}` : '你可能认识的人'}</div>
-                {matches.map(ch=><button key={ch.id} onClick={()=>{setAddCharacterChatFriend({name:ch.name,characterId:ch.id,note:'角色卡联系人',online:true,pinyin:ch.name[0]||''});setShowFriendModal(false);setOpeningMode('none');setOpeningGreetingIndex(0);}} className="w-full flex items-center gap-3 p-3 rounded-xl border border-[#ededee] text-left">
-                  <div className="w-10 h-10 rounded-full overflow-hidden bg-[#f1f1f2] shrink-0">{ch.avatar?<img src={ch.avatar} alt="" className="w-full h-full object-cover"/>:<div className="w-full h-full grid place-items-center text-[10px] text-[#aaa]">{ch.name.slice(0,1)}</div>}</div>
-                  <div className="flex-1 min-w-0"><div className="text-[12px] font-medium text-[#333]">{ch.name||'未命名角色'}</div><div className="text-[9px] text-[#aaa]">{ch.variantLabel||'角色卡'}</div></div>
-                  <span className="text-[9px] text-[#ae7e89]">选择</span>
-                </button>)}
-                {!matches.length && <div className="py-6 text-center text-[10px] text-[#aaa]">{q?'没有找到符合名字的角色。':'所有角色都已经是好友。'}</div>}
-              </div>;
+              const q = friendSearchQuery.trim().toLowerCase();
+              const available = importedCharacters.filter(ch =>
+                !hasBounds || boundSet.has(ch.id)
+              ).filter(ch => !friendsList.some(f => !f.npcId && f.characterId === ch.id));
+              const matches = q ? available.filter(ch => ch.name.toLowerCase().includes(q)) : available;
+              return (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="text-[10px] text-[#888]">{q ? `角色搜索 · ${matches.length}` : '你可能认识的人 · 角色卡'}</div>
+                    {matches.map(ch => (
+                      <button
+                        key={ch.id}
+                        onClick={() => {
+                          setAddCharacterChatFriend({ name: ch.name, characterId: ch.id, kind: 'character', note: '角色卡联系人', online: true, pinyin: ch.name[0] || '' });
+                          setShowFriendModal(false);
+                          setOpeningMode('none');
+                          setOpeningGreetingIndex(0);
+                        }}
+                        className="w-full flex items-center gap-3 p-3 rounded-xl border border-[#ededee] text-left"
+                      >
+                        <div className="w-10 h-10 rounded-full overflow-hidden bg-[#f1f1f2] shrink-0">
+                          {ch.avatar ? <img src={ch.avatar} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full grid place-items-center text-[10px] text-[#aaa]">{ch.name.slice(0, 1)}</div>}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[12px] font-medium text-[#333]">{ch.name || '未命名角色'}</div>
+                          <div className="text-[9px] text-[#aaa]">{ch.variantLabel || '角色卡'}</div>
+                        </div>
+                        <span className="text-[9px] text-[#ae7e89]">选择</span>
+                      </button>
+                    ))}
+                    {!matches.length && (
+                      <div className="py-4 text-center text-[10px] text-[#aaa]">
+                        {q ? '没有找到符合名字的角色。' : hasBounds ? '当前人设绑定的角色都已经是好友。' : '所有角色都已经是好友。'}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-[10px] text-[#888]">
+                      {q ? `NPC 搜索 · ${addableNpcsForPersona.length}` : 'NPC App · 按角色折叠'}
+                      {hasBounds ? ` · 仅「${activePersonaForFilter?.name || '当前人设'}」已连接角色` : ''}
+                    </div>
+                    {addableNpcGroups.map(group => {
+                      const expanded = friendModalExpandedChars.includes(group.characterId) || Boolean(q);
+                      return (
+                        <div key={group.characterId} className="rounded-xl border border-[#ededee] overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => setFriendModalExpandedChars(prev =>
+                              prev.includes(group.characterId) ? prev.filter(id => id !== group.characterId) : [...prev, group.characterId]
+                            )}
+                            className="w-full flex items-center gap-3 p-3 text-left bg-[#faf9fa]"
+                          >
+                            <div className="w-10 h-10 rounded-full overflow-hidden bg-[#f1f1f2] shrink-0 grid place-items-center">
+                              {group.avatar ? <img src={group.avatar} alt="" className="w-full h-full object-cover" /> : <span className="text-[10px] text-[#aaa]">{group.characterName.slice(0, 1)}</span>}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[12px] font-medium text-[#333] truncate">{group.characterName}</div>
+                              <div className="text-[9px] text-[#aaa]">{group.npcs.length} 位相关 NPC</div>
+                            </div>
+                            <ChevronRight className={`w-4 h-4 text-[#ccc] shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+                          </button>
+                          {expanded && group.npcs.map(npc => (
+                            <button
+                              key={npc.id}
+                              type="button"
+                              onClick={() => selectNpcAsFriendCandidate(npc)}
+                              className="w-full flex items-center gap-3 pl-6 pr-3 py-2.5 text-left border-t border-[#f2f2f3]"
+                            >
+                              <div className="w-9 h-9 rounded-full overflow-hidden bg-[#f0f3f8] shrink-0 grid place-items-center">
+                                {(npc.avatar || group.avatar)
+                                  ? <img src={npc.avatar || group.avatar} alt="" className="w-full h-full object-cover" />
+                                  : <span className="text-[10px] text-[#7a8aa0]">{npc.name.slice(0, 1)}</span>}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-[12px] font-medium text-[#333] truncate">{npc.name}</div>
+                                <div className="text-[9px] text-[#aaa] truncate">NPC{npc.relationship ? ` · ${npc.relationship}` : ''}</div>
+                              </div>
+                              <span className="text-[9px] text-[#ae7e89]">选择</span>
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })}
+                    {!addableNpcGroups.length && (
+                      <div className="py-4 text-center text-[10px] text-[#aaa]">
+                        {hasBounds
+                          ? '当前人设连接的角色下暂无可添加 NPC。请先在 NPC App 生成。'
+                          : 'NPC App 暂无可添加人物，或都已经是好友。'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
             })()}
           </div>
         </div>
       )}
 
       {addCharacterChatFriend && (() => {
-        const character = addCharacterChatFriend.characterId ? importedCharacters.find(item => item.id === addCharacterChatFriend.characterId) : null;
+        const isNpcFriend = Boolean(addCharacterChatFriend.npcId);
+        const npcFriend = isNpcFriend ? allLineNpcs.find(item => item.id === addCharacterChatFriend.npcId) : null;
+        const character = (!isNpcFriend && addCharacterChatFriend.characterId)
+          ? importedCharacters.find(item => item.id === addCharacterChatFriend.characterId)
+          : null;
+        const boundForNpc = npcFriend
+          ? importedCharacters.find(item => item.id === npcFriend.boundCharacterId)
+          : null;
         const greetings = character ? [character.firstMessage, ...character.alternateGreetings].filter(Boolean) : [];
+
+        if (isNpcFriend && npcFriend) {
+          const avatar = npcFriend.avatar || boundForNpc?.avatar || '';
+          return (
+            <div onClick={() => setAddCharacterChatFriend(null)} className="absolute inset-0 bg-black/25 z-[80] flex items-end animate-in fade-in">
+              <div onClick={e => e.stopPropagation()} className="w-full bg-white rounded-t-[26px] p-5 pb-8 space-y-4 animate-in slide-in-from-bottom max-h-[88%] overflow-y-auto">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="text-[8px] tracking-[1.8px] font-mono text-[#aaa]">ADD NPC</div>
+                    <div className="mt-1 text-[18px] font-semibold text-[#202124]">添加 NPC 好友</div>
+                    <div className="mt-1 text-[10px] text-[#999]">来自 NPC App · 绑定 {npcFriend.boundCharacterName || boundForNpc?.name || '角色'}</div>
+                  </div>
+                  <button onClick={() => setAddCharacterChatFriend(null)} className="text-xl text-[#aaa]">×</button>
+                </div>
+                <div className="flex items-center gap-3 p-3 rounded-2xl bg-[#f7f7f8] border border-[#ededee]">
+                  <div className="w-14 h-14 rounded-full overflow-hidden bg-[#f0f3f8] shrink-0 grid place-items-center">
+                    {avatar ? <img src={avatar} alt="" className="w-full h-full object-cover" /> : <span className="text-sm text-[#7a8aa0]">{npcFriend.name.slice(0, 1)}</span>}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[15px] font-semibold text-[#222]">{npcFriend.name}</div>
+                    <div className="text-[10px] text-[#888] mt-1 truncate">{npcFriend.identity || 'NPC'}{npcFriend.relationship ? ` · ${npcFriend.relationship}` : ''}</div>
+                    <div className="text-[9px] text-[#aaa] mt-1 line-clamp-2">{npcFriend.bio || npcFriend.personality || '来自 NPC App 的关联人物'}</div>
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-[#f7f7f8] p-3.5 space-y-2">
+                  <div className="text-[10px] text-[#888]">你们的关系</div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {([['new-friend', '新朋友'], ['old-friend', '老朋友'], ['readded', '重新加回']] as const).map(([id, label]) => (
+                      <button key={id} type="button" onClick={() => setNewChatRelationship(id)}
+                        className={`py-2 rounded-xl text-[10px] border ${newChatRelationship === id ? 'bg-[#292724] text-white border-[#292724]' : 'bg-white text-[#666] border-[#e8e8e9]'}`}>{label}</button>
+                    ))}
+                  </div>
+                  <textarea value={relationshipContext} onChange={e => setRelationshipContext(e.target.value)}
+                    placeholder="例如：TA 是程凛的发小，我们在聚会上认识。"
+                    className="w-full h-16 p-2.5 rounded-xl bg-white border border-[#e8e8e9] outline-none resize-none text-[10px] text-[#555]" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const friend: LineFriend = {
+                      name: npcFriend.name,
+                      characterId: npcFriend.boundCharacterId,
+                      npcId: npcFriend.id,
+                      kind: 'npc',
+                      note: 'NPC · 绑定 ' + (npcFriend.boundCharacterName || boundForNpc?.name || '角色'),
+                      variantLabel: npcFriend.boundCharacterName || 'NPC',
+                      online: true,
+                      pinyin: npcFriend.name[0] || '',
+                      relationship: newChatRelationship,
+                    };
+                    const context = relationshipContext.trim();
+                    setFriendsList(prev => prev.some(item => item.npcId === npcFriend.id) ? prev : [friend, ...prev]);
+                    setChatItems(prev => {
+                      if (prev.some(chat => chat.npcId === npcFriend.id && chat.personaId === effectivePersonaId)) return prev;
+                      return [{
+                        id: `c_${Date.now()}`,
+                        name: npcFriend.name,
+                        characterId: npcFriend.boundCharacterId,
+                        npcId: npcFriend.id,
+                        personaId: effectivePersonaId || undefined,
+                        time: '刚刚',
+                        preview: '打个招呼吧',
+                        unread: 0,
+                        isPinned: false,
+                        isMuted: false,
+                        draft: '',
+                        isGroup: false,
+                        relationshipContext: context,
+                        openingMode: 'none',
+                        relationship: newChatRelationship,
+                        variantLabel: friend.variantLabel,
+                      }, ...prev];
+                    });
+                    setAddCharacterChatFriend(null);
+                    setFriendSearchQuery('');
+                    showToast(`已添加 NPC「${npcFriend.name}」并建立聊天`);
+                  }}
+                  className="w-full py-3 rounded-2xl bg-[#292724] text-white text-xs font-semibold"
+                >
+                  添加为好友并进入聊天
+                </button>
+              </div>
+            </div>
+          );
+        }
+
         return (
           <div onClick={() => setAddCharacterChatFriend(null)} className="absolute inset-0 bg-black/25 z-[80] flex items-end animate-in fade-in">
             <div onClick={e => e.stopPropagation()} className="w-full bg-white rounded-t-[26px] p-5 pb-8 space-y-4 animate-in slide-in-from-bottom max-h-[88%] overflow-y-auto">
@@ -3585,7 +4404,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 <div>
                   <div className="text-[8px] tracking-[1.8px] font-mono text-[#aaa]">ADD FRIEND</div>
                   <div className="mt-1 text-[18px] font-semibold text-[#202124]">添加好友</div>
-                  <div className="mt-1 text-[10px] text-[#999]">只能搜索已经导入的角色名字；也可以从推荐列表直接添加。</div>
+                  <div className="mt-1 text-[10px] text-[#999]">可添加角色卡，或从 NPC App 添加已连接角色下的人物。</div>
                 </div>
                 <button onClick={() => setAddCharacterChatFriend(null)} className="text-xl text-[#aaa]">×</button>
               </div>
@@ -3701,11 +4520,10 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   const relationship = newChatRelationship;
                   const context = relationshipContext.trim();
                   const greeting = greetings[openingGreetingIndex] || '';
-                  const item = { ...addCharacterChatFriend, relationshipContext: context, openingMode, openingGreeting: openingMode === 'context' ? greeting : '' };
-                  setFriendsList(prev => prev.some(friend => friend.characterId === character.id) ? prev : [{ ...addCharacterChatFriend, characterId: character.id, note: '角色卡联系人', online: true }, ...prev]);
-                  setChatItems(prev => prev.some(chat => chat.characterId === character.id && chat.personaId === effectivePersonaId)
-  ? prev
-  : [{ id: `c_${Date.now()}`, name: character.name, characterId: character.id, personaId: effectivePersonaId || undefined, time: '刚刚', preview: '打个招呼吧', unread: 0, isPinned: false, isMuted: false, draft: '', isGroup: false, relationshipContext: context, openingMode, openingGreeting: openingMode === 'context' ? greeting : '', relationship }, ...prev]);
+                  setFriendsList(prev => prev.some(friend => !friend.npcId && friend.characterId === character.id) ? prev : [{ ...addCharacterChatFriend, characterId: character.id, kind: 'character', note: '角色卡联系人', online: true }, ...prev]);
+                  setChatItems(prev => prev.some(chat => !chat.npcId && chat.characterId === character.id && chat.personaId === effectivePersonaId)
+                    ? prev
+                    : [{ id: `c_${Date.now()}`, name: character.name, characterId: character.id, personaId: effectivePersonaId || undefined, time: '刚刚', preview: '打个招呼吧', unread: 0, isPinned: false, isMuted: false, draft: '', isGroup: false, relationshipContext: context, openingMode, openingGreeting: openingMode === 'context' ? greeting : '', relationship }, ...prev]);
                   setAddCharacterChatFriend(null); setFriendSearchQuery(''); showToast(`已添加「${character.name}」并建立聊天`);
                 }} className="w-full py-3 rounded-2xl bg-[#292724] text-white text-xs font-semibold">添加为好友并进入聊天</button>
               )}
@@ -3757,7 +4575,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                       <div className="px-3 py-4 text-[11px] text-[#aaa]">没有匹配的好友</div>
                     ) : (
                       mentionCandidates.map(f => {
-                        const key = f.characterId || f.name;
+                        const key = friendAudienceKey(f);
                         return (
                           <button
                             key={key}
@@ -3766,6 +4584,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                             className="w-full px-3 py-2.5 text-left text-[12px] hover:bg-[#f7f7f8] flex items-center gap-2"
                           >
                             <span className="text-[#8c5f6b]">@{f.name}</span>
+                            {f.npcId ? <span className="text-[8px] text-[#ae7e89]">NPC</span> : null}
                             {newPostMentionIds.includes(key) && <span className="ml-auto text-[9px] text-[#aaa]">已选</span>}
                           </button>
                         );
@@ -3777,7 +4596,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               {newPostMentionIds.length > 0 && (
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {newPostMentionIds.map(id => {
-                    const name = friendsList.find(f => (f.characterId || f.name) === id)?.name || id;
+                    const name = resolveAudienceLabel(id, vroomAudienceFriends, allLineNpcs);
                     return (
                       <button
                         key={id}
@@ -3900,33 +4719,37 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               </div>
               {(newPostVisibility === 'group' || newPostVisibility === 'partial') && (
                 <div className="mt-2.5">
-                  <div className="text-[10px] text-[#666] font-semibold">给谁看 · 点选好友（{newPostAllowedIds.length}）</div>
-                  <div className="mt-1.5 max-h-[120px] overflow-y-auto space-y-1">
-                    {friendsList.map(f => {
-                      const key = f.characterId || f.name;
+                  <div className="text-[10px] text-[#666] font-semibold">给谁看 · 角色 / NPC（{newPostAllowedIds.length}）</div>
+                  <div className="mt-1.5 max-h-[140px] overflow-y-auto space-y-1">
+                    {vroomAudienceFriends.map(f => {
+                      const key = friendAudienceKey(f);
                       return (
                       <label key={key} className="flex items-center gap-2 p-1.5 rounded-lg border border-[#f0f0f0] text-[11px] cursor-pointer">
                         <input type="checkbox" checked={newPostAllowedIds.includes(key)} onChange={() => { setNewPostAllowedIds(prev => prev.includes(key) ? prev.filter(x => x !== key) : [...prev, key]); }} />
-                        <span className="flex-1">{f.name}</span>
+                        <span className="flex-1 truncate">{f.name}</span>
+                        {f.npcId ? <span className="text-[8px] text-[#ae7e89]">NPC</span> : <span className="text-[8px] text-[#aaa]">角色</span>}
                       </label>
                       );
                     })}
+                    {!vroomAudienceFriends.length && <div className="text-[10px] text-[#aaa] text-center py-2">还没有好友或 NPC</div>}
                   </div>
                 </div>
               )}
-              {newPostVisibility === 'partial' && (
+              {(newPostVisibility === 'partial' || newPostVisibility === 'public') && (
                 <div className="mt-2.5">
-                  <div className="text-[10px] text-[#666] font-semibold">不给谁看（{newPostBlockedIds.length}）</div>
-                  <div className="mt-1.5 max-h-[120px] overflow-y-auto space-y-1">
-                    {friendsList.map(f => {
-                      const key = f.characterId || f.name;
+                  <div className="text-[10px] text-[#666] font-semibold">不给谁看 · 可屏蔽 NPC（{newPostBlockedIds.length}）</div>
+                  <div className="mt-1.5 max-h-[140px] overflow-y-auto space-y-1">
+                    {vroomAudienceFriends.map(f => {
+                      const key = friendAudienceKey(f);
                       return (
-                      <label key={key} className="flex items-center gap-2 p-1.5 rounded-lg border border-[#f0f0f0] text-[11px] cursor-pointer">
+                      <label key={'block-' + key} className="flex items-center gap-2 p-1.5 rounded-lg border border-[#f0f0f0] text-[11px] cursor-pointer">
                         <input type="checkbox" checked={newPostBlockedIds.includes(key)} onChange={() => { setNewPostBlockedIds(prev => prev.includes(key) ? prev.filter(x => x !== key) : [...prev, key]); }} />
-                        <span className="flex-1">{f.name}</span>
+                        <span className="flex-1 truncate">{f.name}</span>
+                        {f.npcId ? <span className="text-[8px] text-[#ae7e89]">NPC</span> : <span className="text-[8px] text-[#aaa]">角色</span>}
                       </label>
                       );
                     })}
+                    {!vroomAudienceFriends.length && <div className="text-[10px] text-[#aaa] text-center py-2">还没有好友或 NPC</div>}
                   </div>
                 </div>
               )}
@@ -3981,10 +4804,21 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                       if (videoBody) polishedVideo = await polishOne(videoBody, '文字视频卡');
                     }
 
-                    const visibilityLabel = newPostVisibility === 'public' ? '公开' : newPostVisibility === 'group' ? `分组 · ${newPostAllowedIds.length}人` : newPostVisibility === 'self' ? '仅自己' : `部分 · ${newPostAllowedIds.length}人可见${newPostBlockedIds.length ? ` · ${newPostBlockedIds.length}人不可见` : ''}`;
+                    const visibilityLabel = newPostVisibility === 'public'
+                      ? (newPostBlockedIds.length ? `公开 · 屏蔽${newPostBlockedIds.length}人` : '公开')
+                      : newPostVisibility === 'group'
+                        ? `分组 · ${newPostAllowedIds.length}人`
+                        : newPostVisibility === 'self'
+                          ? '仅自己'
+                          : `部分 · ${newPostAllowedIds.length}人可见${newPostBlockedIds.length ? ` · ${newPostBlockedIds.length}人不可见` : ''}`;
                     const authorName = (activePersona?.name || currentUser.name || '').trim() || '我';
                     const authorAvatar = activePersona?.avatar || currentUser.avatar || undefined;
                     const oneImage = newPostImages[0] || newPostImage || undefined;
+                    let storedImage = oneImage;
+                    if (storedImage && storedImage.startsWith('data:')) {
+                      try { storedImage = 'media:' + await putMedia(storedImage); }
+                      catch { showToast('图片太大，发布失败，请换张小图'); setIsPublishingPost(false); return; }
+                    }
                     const didPolish = !!(momentsSettings.aiPolishTextCard && (rawCard || videoBody));
                     const newPost = {
                       id: `p_${Date.now()}`,
@@ -4000,8 +4834,8 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                       liked: false,
                       likers: [],
                       commentsList: [],
-                      image: oneImage,
-                      images: oneImage ? [oneImage] : [],
+                      image: storedImage,
+                      images: storedImage ? [storedImage] : [],
                       textCards: polishedCard
                         ? [{ text: polishedCard, style: textCardStyleId || 'a', collapsed: true, polished: !!(rawCard && didPolish && polishedCard !== rawCard) }]
                         : [],

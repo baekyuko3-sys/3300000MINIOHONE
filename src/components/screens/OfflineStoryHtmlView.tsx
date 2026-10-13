@@ -11,6 +11,7 @@ import {
   getCharacterMemory,
 } from '../../store/characterMemory';
 import { generateCreativeText, readStoredAiSettings } from '../../ai/aiEngine';
+import { bookHasScope, readOfflineGlobalIds } from '../../store/worldbookRuntime';
 import offlineHtml from '../../offline/offline-story.html?raw';
 
 function readStoredJson<T>(key: string, fallback: T): T {
@@ -86,24 +87,36 @@ function buildData(
         ...books.filter(book => book.sourceCharacterId === character.id).map(book => book.id),
       ])),
     })),
-    books: books.map(book => ({
-      id: book.id,
-      name: book.name,
-      on: book.enabled !== false,
-      scopes: (book.globalScopes || []).includes('offline-story') ? ['offline'] : [],
-      es: (book.entries || []).map(entry => ({
-        uid: entry.id,
-        key: entry.keywords || [],
-        keysecondary: entry.secondaryKeywords || [],
-        comment: entry.name,
-        content: entry.content,
-        constant: !!entry.constant,
-        disable: !entry.enabled,
-        position: entry.insertion === 'before' ? 0 : entry.insertion === 'after' ? 1 : 4,
-        depth: entry.depth || 4,
-        order: entry.priority ?? entry.order ?? 100,
-      })),
-    })),
+    books: (() => {
+      const offlineGlobalIds = readOfflineGlobalIds();
+      return books.map(book => ({
+        id: book.id,
+        name: book.name,
+        on: book.enabled !== false,
+        scopes: bookHasScope(book, 'offline-story', undefined, offlineGlobalIds) ? ['offline'] : [],
+        es: (book.entries || []).map(entry => ({
+          uid: entry.id,
+          key: entry.keywords || [],
+          keysecondary: entry.secondaryKeywords || [],
+          comment: entry.name,
+          content: entry.content,
+          constant: !!entry.constant,
+          disable: !entry.enabled,
+          position: entry.insertion === 'before' ? 0 : entry.insertion === 'after' ? 1 : 4,
+          depth: entry.depth || 4,
+          order: entry.priority ?? entry.order ?? 100,
+          selective: !!entry.selective,
+          selectiveLogic: entry.selectiveLogic ?? 0,
+          probability: entry.probability ?? 100,
+          useProbability: Boolean(entry.useProbability),
+          caseSensitive: Boolean(entry.caseSensitive),
+          matchWholeWords: Boolean(entry.matchWholeWords),
+          useRegex: Boolean(entry.useRegex),
+          preventRecursion: Boolean(entry.preventRecursion),
+          excludeRecursion: Boolean(entry.excludeRecursion),
+        })),
+      }));
+    })(),
     // Pass a read-only projection of LINE invites; offlineRP9 remains independent.
     invites: events
       .filter(event => ['accepted', 'in-progress', 'completed'].includes(event.status))

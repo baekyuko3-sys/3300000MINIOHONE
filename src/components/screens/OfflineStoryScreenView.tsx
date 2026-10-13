@@ -18,6 +18,7 @@ import { recordOfflineEventInLine } from '../../store/lineRuntime';
 import { getCotForTarget } from '../../store/cotPresets';
 import { buildPromptPresetInstructions } from '../../store/promptPresets';
 import { getOfflinePersonas, getOfflineStyle, saveOfflineStyle, exportOfflineEvent, importOfflineEvent, cloneOfflineBranch, type OfflinePersona, type OfflineStyleSettings } from '../../store/offlineStory';
+import { collectScopedWorldBooks } from '../../store/worldbookRuntime';
 
 const statusLabel: Record<OfflineEvent['status'], string> = {
   draft: '草稿',
@@ -36,6 +37,7 @@ export function OfflineStoryScreenView({ onNavigate }: { onNavigate: (screen: Sc
   const [events, setEvents] = usePersistentState<OfflineEvent[]>('phone:offline-events-cache', getOfflineEvents());
   const [characters] = usePersistentState<ImportedCharacter[]>('phone:characters', []);
   const [worldbooks] = usePersistentState<WorldBook[]>('phone:worldbooks', []);
+  const [offlineGlobalIds] = usePersistentState<string[]>('phone:worldbook:global-offline-ids', []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sceneBusy, setSceneBusy] = useState(false);
   const [actionText, setActionText] = useState('');
@@ -46,6 +48,18 @@ export function OfflineStoryScreenView({ onNavigate }: { onNavigate: (screen: Sc
   const [style, setStyle] = useState<OfflineStyleSettings>(getOfflineStyle());
 
   const selected = events.find(event => event.id === selectedId) || null;
+
+  /** 事件勾选 + 线下全局始终合并，避免旧剧情漏掉后来加入的线下全局。 */
+  const resolveOfflineWorldBooks = (event: OfflineEvent, character?: ImportedCharacter | null) => {
+    const scoped = collectScopedWorldBooks({
+      books: worldbooks,
+      scope: 'offline-story',
+      character,
+      offlineGlobalIds,
+      extraBookIds: event.worldBookIds || [],
+    });
+    return scoped.filter(book => book.enabled !== false);
+  };
   const activeEvents = useMemo(
     () => events.filter(event => ['pending', 'accepted', 'in-progress'].includes(event.status)),
     [events],
@@ -85,7 +99,12 @@ export function OfflineStoryScreenView({ onNavigate }: { onNavigate: (screen: Sc
       createdAt: nowIso(),
       updatedAt: nowIso(),
       sceneLog: [],
-      worldBookIds: worldbooks.filter(book => book.enabled).map(book => book.id),
+      worldBookIds: collectScopedWorldBooks({
+        books: worldbooks,
+        scope: 'offline-story',
+        character: defaultCharacter,
+        offlineGlobalIds,
+      }).filter(book => book.enabled).map(book => book.id),
       personaId: personas[0]?.id,
       cotPresetId: getCotForTarget('offline')?.id,
       branchId: 'branch-root-' + Date.now(),
@@ -124,7 +143,7 @@ export function OfflineStoryScreenView({ onNavigate }: { onNavigate: (screen: Sc
     const project = getProjectManifest();
     const settings = readStoredAiSettings();
     const presetInstructions = buildPromptPresetInstructions('offline');
-    const selectedBooks = worldbooks.filter(book => event.worldBookIds?.length ? event.worldBookIds.includes(book.id) : book.enabled);
+    const selectedBooks = resolveOfflineWorldBooks(event, character);
     const persona = personas.find(item => item.id === event.personaId);
 
     try {
@@ -223,7 +242,7 @@ export function OfflineStoryScreenView({ onNavigate }: { onNavigate: (screen: Sc
     const project = getProjectManifest();
     const settings = readStoredAiSettings();
     const presetInstructions = buildPromptPresetInstructions('offline');
-    const selectedBooks = worldbooks.filter(book => selected.worldBookIds?.length ? selected.worldBookIds.includes(book.id) : book.enabled);
+    const selectedBooks = resolveOfflineWorldBooks(selected, character);
     const persona = personas.find(item => item.id === selected.personaId);
 
     setSceneBusy(true);

@@ -18,10 +18,13 @@ import {
 } from './offlineInviteCard';
 import { buildLineHumanBehaviorPrompt, getLineRealitySettings, getCurrentLineTimeContext } from './lineReality';
 import {
+  listPostableNpcs,
   readMomentsSettings,
   spawnBatchCommentsForPost,
   tryAutonomousMomentComment,
 } from './momentsComments';
+import { generateNpcMomentNow } from './momentsAfterChat';
+import { collectScopedWorldBooks } from './worldbookRuntime';
 
 interface ScheduleItem {
   id: string;
@@ -200,7 +203,11 @@ async function generateProactiveMessage(
   const profile = getCharacterProfile(character.name, character.id);
   const memory = getCharacterMemory(character.id, character.name);
   const project = getProjectManifest();
-  const worldbooks = readLocal<WorldBook[]>('phone:worldbooks', []);
+  const worldbooks = collectScopedWorldBooks({
+    books: readLocal<WorldBook[]>('phone:worldbooks', []),
+    scope: 'online-chat',
+    character,
+  });
   const personas = readLocal<any[]>('line:user-personas', []);
   const persona = personas.find(item => item.isDefault) || personas[0] || null;
   const recentMessages = getLineConversationMessages(character.id || character.name).slice(-12);
@@ -279,8 +286,7 @@ export async function runProactiveCatchup() {
   if (!settings.backgroundEnabled || !settings.proactiveMessagesEnabled) return;
 
   const characters = readLocal<ImportedCharacter[]>('phone:characters', []);
-  if (!characters.length) return;
-  syncWorldCharacters(characters);
+  if (characters.length) syncWorldCharacters(characters);
 
   const now = new Date();
   const reality = getLineRealitySettings();
@@ -438,6 +444,31 @@ export async function runProactiveCatchup() {
         });
       }
     }
+    // NPC 偶尔自主发一条朋友圈（每天最多一条，不依赖角色日程）
+    try {
+      const momentsCfg = readMomentsSettings();
+      const npcs = listPostableNpcs(momentsCfg);
+      const npcDayKey = 'npc-vroom:' + today;
+      if (
+        npcs.length
+        && momentsCfg.allowNpcAutoPost !== false
+        && state.delivered['__npc_moment__'] !== npcDayKey
+        && Math.random() < 0.4
+      ) {
+        const npc = npcs[Math.floor(Math.random() * npcs.length)];
+        const msg = await generateNpcMomentNow(npc.id);
+        if (msg.startsWith('生成成功')) {
+          state.delivered['__npc_moment__'] = npcDayKey;
+          dirty = true;
+          if (settings.notificationEnabled && 'Notification' in window && Notification.permission === 'granted') {
+            new Notification(npc.name + ' · VROOM', { body: '发了一条朋友圈', tag: 'sane333-npc-moment-' + npc.id });
+          }
+        }
+      }
+    } catch {
+      // NPC proactive moments are best-effort
+    }
+
     // Autonomous moment comments (independent of schedule / auto-post)
     try {
       await tryAutonomousMomentComment();

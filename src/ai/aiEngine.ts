@@ -8,6 +8,7 @@ import type { AppSettings, ChannelAiSettings } from '../store/appSettings';
 import { readAppSettings } from '../store/appSettings';
 import { getCharacterAiProfile, mergeCharacterAiSettings } from '../store/characterAiProfiles';
 import { resolveCharacterContext, selectWorldBookEntries } from './contextEngine';
+import { filterWorldBooksForCharacter } from '../store/worldbookRuntime';
 import type { CotPreset } from '../store/cotPresets';
 import { buildLineHumanBehaviorPrompt } from '../store/lineReality';
 import { pushAiDebugLog, writeAiDebugTrace } from '../store/aiDebug';
@@ -302,29 +303,11 @@ export function readStoredAiSettings(characterId?: string, characterName?: strin
 }
 
 function getApplicableWorldBooks(input: AiReplyInput): WorldBook[] {
-  const books = input.worldbooks || [];
-  const characterId = input.character?.id;
-  const characterName = input.character?.name;
-
-  // Character-card lorebooks are private to their source character.
-  // Manually imported / global books remain available to every character.
-  const selectedIds = new Set(input.character?.worldBookIds || []);
-  const hasExplicitSelection = Array.isArray(input.character?.worldBookIds);
-
-  return books.filter(book => {
-    // Once a character has an explicit selection, only checked books are injected.
-    // This is the same mental model as Tavern's per-character lorebook selection.
-    if (hasExplicitSelection) return selectedIds.has(book.id);
-
-    // Legacy cards without selection state keep the old behavior:
-    // their own embedded books + global books remain available.
-    if (book.sourceType !== 'character-card' && !book.sourceCharacterId) return true;
-    if (!characterId && !characterName) return false;
-    return (
-      book.sourceCharacterId === characterId ||
-      (!book.sourceCharacterId && book.sourceCharacterName === characterName)
-    );
-  });
+  // Callers (LINE / offline / music) must already scope the pool to online/offline
+  // globals + character bindings. Here we only enforce character-card privacy so
+  // character-owned books never leak — without dropping online/offline globals
+  // when a character also has worldBookIds selected.
+  return filterWorldBooksForCharacter(input.worldbooks || [], input.character);
 }
 
 function buildWorldBookScanResolver(input: AiReplyInput, defaultDepth: number) {
@@ -1599,7 +1582,7 @@ export async function generateCharacterReply(input: AiReplyInput): Promise<AiRep
   saveTrace();
 
   pushAiDebugLog({ level:'success', event:'request:success', message:'角色回复成功', provider:input.settings.provider, model:input.settings.model, durationMs:Date.now()-startedAt, meta:{ textLength:parsed.text.length, hasCot:Boolean(parsed.thinkingSummary), hasAction:Boolean(parsed.actionDescription), matchedWorldbookEntries } });
-  return {
+  const replyResult = {
     text: parsed.text,
     thinkingSummary: parsed.thinkingSummary,
     actionDescription: parsed.actionDescription,
@@ -1609,6 +1592,22 @@ export async function generateCharacterReply(input: AiReplyInput): Promise<AiRep
     model: input.settings.model.trim(),
     matchedWorldbookEntries,
   };
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sane333:line-replied', {
+        detail: {
+          characterId: (input.character as any)?.id || null,
+          characterName: (input.character as any)?.name || '',
+          channel: (input as any)?.channel || '',
+          conversationId: (input as any)?.conversationId || '',
+          groupName: (input as any)?.groupName || '',
+          chatText: String((input as any)?.userMessage || '').slice(-500),
+          replyText: String(parsed.text || '').slice(-800),
+        },
+      }));
+    }
+  } catch { /* never break reply */ }
+  return replyResult;
 }
 export async function testAiConnection(
   settings: AiSettings,

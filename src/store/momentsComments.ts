@@ -1,16 +1,25 @@
 import type { ImportedCharacter } from '../data/characterImport';
 import { generateCreativeText, resolveChannelAiSettings } from '../ai/aiEngine';
-import { getNpcs, type SaneNpc } from './npcs';
+import { getActivePersona, getNpcRelationToMe, getNpcs, type SaneNpc } from './npcs';
 import { readPersistentState } from './usePersistentState';
+import { canViewerSeePost, characterViewerFor, npcViewerFor, type VroomPostLike } from './vroomScope';
 
 export const MOMENTS_SETTINGS_KEY = 'line:moments-settings';
 export const MOMENTS_POSTS_KEY = 'line:moments-posts';
 
 export type CommentSpawnMode = 'batch' | 'autonomous' | 'both';
+/** 聊天回复后是否发朋友圈：关闭 / 每次都发 / 角色自己看情况判定 */
+export type PostMomentsAfterChat = 'off' | 'always' | 'decide';
 
 export interface MomentsCommentSettings {
   enabledCharacterIds: string[];
+  /** 空 = 全部活跃且 canPostMoments 的 NPC 可发；非空 = 白名单 */
+  enabledNpcIds: string[];
   allowCharacterAutoPost: boolean;
+  /** 允许 NPC 自主 / 一键发朋友圈 */
+  allowNpcAutoPost: boolean;
+  /** 角色在 LINE 回复后，是否发朋友圈 */
+  postMomentsAfterChat: PostMomentsAfterChat;
   aiPolishTextCard: boolean;
   allowCharacterComment: boolean;
   allowCharacterMentionMe: boolean;
@@ -23,7 +32,10 @@ export interface MomentsCommentSettings {
 
 export const DEFAULT_MOMENTS_SETTINGS: MomentsCommentSettings = {
   enabledCharacterIds: [],
+  enabledNpcIds: [],
   allowCharacterAutoPost: true,
+  allowNpcAutoPost: true,
+  postMomentsAfterChat: 'decide',
   aiPolishTextCard: false,
   allowCharacterComment: true,
   allowCharacterMentionMe: true,
@@ -38,11 +50,15 @@ export function readMomentsSettings(): MomentsCommentSettings {
   const raw = readPersistentState<Partial<MomentsCommentSettings>>(MOMENTS_SETTINGS_KEY, {});
   const mode = raw.commentSpawnMode;
   const count = Number(raw.batchCommentCount);
+  const afterChat = raw.postMomentsAfterChat;
   return {
     ...DEFAULT_MOMENTS_SETTINGS,
     ...raw,
     enabledCharacterIds: Array.isArray(raw.enabledCharacterIds) ? raw.enabledCharacterIds : [],
+    enabledNpcIds: Array.isArray(raw.enabledNpcIds) ? raw.enabledNpcIds : [],
     allowCharacterAutoPost: raw.allowCharacterAutoPost !== false,
+    allowNpcAutoPost: raw.allowNpcAutoPost !== false,
+    postMomentsAfterChat: afterChat === 'off' || afterChat === 'always' || afterChat === 'decide' ? afterChat : 'decide',
     aiPolishTextCard: !!raw.aiPolishTextCard,
     allowCharacterComment: raw.allowCharacterComment !== false,
     allowCharacterMentionMe: raw.allowCharacterMentionMe !== false,
@@ -52,6 +68,24 @@ export function readMomentsSettings(): MomentsCommentSettings {
     instantReplyOnCommentReply: raw.instantReplyOnCommentReply !== false,
     instantReplyOnPostComment: !!raw.instantReplyOnPostComment,
   };
+}
+
+export function isCharacterAllowedToPostMoments(characterId: string, settings = readMomentsSettings()): boolean {
+  if (!characterId) return false;
+  if (!settings.enabledCharacterIds.length) return true;
+  return settings.enabledCharacterIds.includes(characterId);
+}
+
+export function isNpcAllowedToPostMoments(npcId: string, settings = readMomentsSettings()): boolean {
+  if (!npcId || !settings.allowNpcAutoPost) return false;
+  const npc = getNpcs().find(n => n.id === npcId);
+  if (!npc || !npc.active || npc.canPostMoments === false) return false;
+  if (!settings.enabledNpcIds.length) return true;
+  return settings.enabledNpcIds.includes(npcId);
+}
+
+export function listPostableNpcs(settings = readMomentsSettings()): SaneNpc[] {
+  return getNpcs().filter(n => isNpcAllowedToPostMoments(n.id, settings));
 }
 
 export type MomentComment = {
@@ -141,6 +175,8 @@ function pickCommenters(
   settings: MomentsCommentSettings,
   excludeCharacterId?: string | null,
   excludeNames: string[] = [],
+  post?: VroomPostLike | null,
+  excludeNpcId?: string | null,
 ): Commenter[] {
   const out: Commenter[] = [];
   const nameSet = new Set(excludeNames.map(n => n.trim()).filter(Boolean));
@@ -153,14 +189,17 @@ function pickCommenters(
     for (const character of allowed) {
       if (excludeCharacterId && character.id === excludeCharacterId) continue;
       if (nameSet.has(character.name)) continue;
+      if (post && !canViewerSeePost(post, characterViewerFor(character.id, character.name))) continue;
       out.push({ kind: 'character', character });
     }
   }
 
   if (settings.allowNpcComment) {
     for (const npc of getNpcs()) {
-      if (!npc.active || !npc.canCommentMoments) continue;
+      if (!npc.active || npc.canCommentMoments === false) continue;
+      if (excludeNpcId && npc.id === excludeNpcId) continue;
       if (nameSet.has(npc.name)) continue;
+      if (post && !canViewerSeePost(post, npcViewerFor(npc.id, npc.name, npc.boundCharacterId))) continue;
       out.push({ kind: 'npc', npc });
     }
   }
@@ -198,7 +237,8 @@ function commenterPromptBlock(c: Commenter): string {
     '性格：' + n.personality,
     '背景：' + n.background,
     '关系：' + n.relationship,
-  ].join('\n');
+    (() => { const rel = getNpcRelationToMe(n); const persona = getActivePersona(); return rel && persona ? '与用户（' + persona.name + '）的关系：' + rel : ''; })(),
+  ].filter(Boolean).join('\n');
 }
 
 function makeCommentId(prefix: string): string {
@@ -273,6 +313,10 @@ function normalizeSettings(partial?: Partial<MomentsCommentSettings> | null): Mo
     enabledCharacterIds: Array.isArray(partial.enabledCharacterIds)
       ? partial.enabledCharacterIds
       : DEFAULT_MOMENTS_SETTINGS.enabledCharacterIds,
+    enabledNpcIds: Array.isArray(partial.enabledNpcIds)
+      ? partial.enabledNpcIds
+      : DEFAULT_MOMENTS_SETTINGS.enabledNpcIds,
+    allowNpcAutoPost: partial.allowNpcAutoPost !== false,
     commentSpawnMode:
       partial.commentSpawnMode === 'batch' || partial.commentSpawnMode === 'autonomous' || partial.commentSpawnMode === 'both'
         ? partial.commentSpawnMode
@@ -294,24 +338,51 @@ export function shouldAutonomousSpawn(settings?: Partial<MomentsCommentSettings>
   return s.commentSpawnMode === 'autonomous' || s.commentSpawnMode === 'both';
 }
 
+type MomentPostRef = {
+  id: string;
+  name?: string;
+  text?: string;
+  characterId?: string;
+  npcId?: string;
+  personaId?: string;
+  isMine?: boolean;
+  visibility?: string;
+  allowedIds?: unknown;
+  blockedIds?: unknown;
+};
+
 /** 发帖后批量生成评论（失败返回空数组，不抛） */
 export async function spawnBatchCommentsForPost(opts: {
-  post: { id: string; name?: string; text?: string; characterId?: string };
+  post: MomentPostRef;
   meName: string;
   settings?: Partial<MomentsCommentSettings>;
+  /** 手动「生成评论」时忽略 batch/autonomous 模式限制 */
+  force?: boolean;
+  /** 覆盖批量条数 */
+  count?: number;
 }): Promise<{ comments: MomentComment[]; skippedReason?: string }> {
   const settings = normalizeSettings(opts.settings);
-  if (!shouldBatchSpawn(settings)) return { comments: [] };
+  if (!opts.force && !shouldBatchSpawn(settings)) return { comments: [] };
   if (!settings.allowCharacterComment && !settings.allowNpcComment) {
-    return { comments: [], skippedReason: '已关闭角色/NPC 评论' };
+    return { comments: [], skippedReason: '已关闭角色/NPC 评论（去 VROOM 设置打开）' };
   }
 
-  const pool = pickCommenters(settings, opts.post.characterId, [opts.post.name || '']);
+  const pool = pickCommenters(
+    settings,
+    // NPC 帖的 characterId 只是绑定角色，不能当成「作者本人」排除
+    opts.post.npcId ? null : opts.post.characterId,
+    [opts.post.name || ''],
+    opts.post as VroomPostLike,
+    opts.post.npcId,
+  );
   if (!pool.length) {
-    return { comments: [], skippedReason: '没有可评论的角色或 NPC' };
+    return { comments: [], skippedReason: '没有可评论的角色或 NPC（检查好友/屏蔽与 NPC 评论开关）' };
   }
 
-  const picked = shufflePick(pool, settings.batchCommentCount);
+  const want = opts.count != null
+    ? Math.min(5, Math.max(1, Math.round(opts.count)))
+    : settings.batchCommentCount;
+  const picked = shufflePick(pool, want);
   const comments: MomentComment[] = [];
   for (const commenter of picked) {
     try {
@@ -327,12 +398,25 @@ export async function spawnBatchCommentsForPost(opts: {
       // skip failed individual commenter
     }
   }
+  if (!comments.length) {
+    return { comments: [], skippedReason: '评论生成失败，检查 AI 配置后重试' };
+  }
   return { comments };
+}
+
+/** 手动为某条动态生成评论（强制，不受「仅自主」模式影响） */
+export async function generateCommentsForPost(opts: {
+  post: MomentPostRef;
+  meName: string;
+  settings?: Partial<MomentsCommentSettings>;
+  count?: number;
+}): Promise<{ comments: MomentComment[]; skippedReason?: string }> {
+  return spawnBatchCommentsForPost({ ...opts, force: true });
 }
 
 /** 立刻回敬：被回复者（角色/NPC）或帖子作者回一条 */
 export async function spawnInstantReply(opts: {
-  post: { id: string; name?: string; text?: string; characterId?: string };
+  post: MomentPostRef;
   meName: string;
   /** 用户刚发的评论 */
   userComment: MomentComment;
@@ -385,10 +469,14 @@ export async function spawnInstantReply(opts: {
 
   // 顶层新评：作者回敬
   if (!settings.instantReplyOnPostComment) return null;
-  if (!opts.post.characterId && !settings.allowCharacterComment && !settings.allowNpcComment) return null;
+  if (!opts.post.characterId && !opts.post.npcId && !settings.allowCharacterComment && !settings.allowNpcComment) return null;
 
   let authorCommenter: Commenter | null = null;
-  if (opts.post.characterId) {
+  if (opts.post.npcId && settings.allowNpcComment) {
+    const npc = getNpcs().find(n => n.id === opts.post.npcId && n.active);
+    if (npc) authorCommenter = { kind: 'npc', npc };
+  }
+  if (!authorCommenter && opts.post.characterId && !opts.post.npcId) {
     const character = readImportedCharacters().find(c => c.id === opts.post.characterId);
     if (character && settings.allowCharacterComment) {
       authorCommenter = { kind: 'character', character };
@@ -396,10 +484,10 @@ export async function spawnInstantReply(opts: {
   }
   if (!authorCommenter && opts.post.name) {
     const character = readImportedCharacters().find(c => c.name === opts.post.name);
-    if (character && settings.allowCharacterComment) {
+    if (character && settings.allowCharacterComment && !opts.post.npcId) {
       authorCommenter = { kind: 'character', character };
     } else if (settings.allowNpcComment) {
-      const npc = getNpcs().find(n => n.name === opts.post.name && n.active && n.canCommentMoments);
+      const npc = getNpcs().find(n => n.name === opts.post.name && n.active && n.canCommentMoments !== false);
       if (npc) authorCommenter = { kind: 'npc', npc };
     }
   }
@@ -451,7 +539,13 @@ export async function tryAutonomousMomentComment(): Promise<boolean> {
   const post = candidates[Math.floor(Math.random() * Math.min(5, candidates.length))];
 
   const existingNames = flattenMomentComments(normalizeMomentComments(post.commentsList)).map(c => c.user);
-  const pool = pickCommenters(settings, post.characterId, [post.name || '', ...existingNames]);
+  const pool = pickCommenters(
+    settings,
+    post.characterId,
+    [post.name || '', ...existingNames],
+    post as VroomPostLike,
+    post.npcId,
+  );
   if (!pool.length) return false;
 
   const commenter = shufflePick(pool, 1)[0];

@@ -25,6 +25,7 @@ import { HomeCustomizeSheet } from './modals/HomeCustomizeSheet';
 import { playAppSound, type AppSoundKind } from '../store/soundManager';
 import { runProactiveCatchup } from '../store/proactiveRuntime';
 import { readAppearance } from '../store/appearance';
+import { getMedia } from '../store/mediaVault';
 import { DynamicIsland } from './DynamicIsland';
 import { AppErrorBoundary } from '../crashUi';
 
@@ -107,8 +108,9 @@ export function PhoneSimulator({
   const appBeauty = appearance.appBeauty?.[currentScreen] || {};
   const isLineScreen = currentScreen === 'chat' || currentScreen === 'inbox';
   const globalBg = isLineScreen ? '#ffffff' : (appearance.globalBackground || '#f7f4ee');
-  const activeFont = appearance.customFontUrl || appearance.customFont;
-
+  // 上传字体优先于旧 URL，避免「上传了却仍用旧链接」
+  const activeFont = appearance.customFont || appearance.customFontUrl || '';
+  const [fontFaceCss, setFontFaceCss] = useState('');
 
   const handleToggleTheme = () => {
     onSelectTheme(isDark ? 'nordic-light' : 'dark-luxury');
@@ -121,14 +123,83 @@ export function PhoneSimulator({
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    let addedFace: FontFace | null = null;
+
+    const guessFormat = (src: string, fileName?: string): string | null => {
+      const hay = `${fileName || ''} ${src.slice(0, 120)}`.toLowerCase();
+      if (hay.includes('woff2') || hay.includes('font/woff2')) return 'woff2';
+      if (hay.includes('woff') || hay.includes('font/woff')) return 'woff';
+      if (hay.includes('.ttf') || hay.includes('font/ttf') || hay.includes('truetype')) return 'truetype';
+      if (hay.includes('.otf') || hay.includes('font/otf') || hay.includes('opentype')) return 'opentype';
+      return null;
+    };
+
+    const apply = async () => {
+      if (!activeFont) {
+        setFontFaceCss('');
+        return;
+      }
+      // 上传字体存的是 media:<id> 引用（避免 localStorage 5MB 爆掉），先解析成 dataURL
+      let srcValue = activeFont;
+      if (srcValue.startsWith('media:')) {
+        try {
+          const resolved = await getMedia(srcValue.slice(6));
+          if (cancelled) return;
+          if (resolved) srcValue = resolved;
+          else { setFontFaceCss(''); return; }
+        } catch { setFontFaceCss(''); return; }
+      }
+      const format = guessFormat(srcValue, appearance.customFontName);
+      const quoted = JSON.stringify(srcValue);
+      const src = format ? `url(${quoted}) format(${JSON.stringify(format)})` : `url(${quoted})`;
+      // 不写死 woff2：ttf/otf/woff 也能生效；再用 FontFace 确保加载完成
+      setFontFaceCss(`@font-face{font-family:Sane333Custom;src:${src};font-display:swap;}`);
+      try {
+        if (typeof FontFace !== 'undefined' && document?.fonts) {
+          // FontFace 只接受 url(...)，不接受 format(...)，否则直接抛 SyntaxError
+          const face = new FontFace('Sane333Custom', `url(${quoted})`, { display: 'swap' });
+          await face.load();
+          if (cancelled) return;
+          document.fonts.add(face);
+          addedFace = face;
+        }
+      } catch {
+        // CSS @font-face 仍保留；加载失败时回退系统字体，不打断手机壳
+      }
+    };
+
+    void apply();
+    return () => {
+      cancelled = true;
+      if (addedFace) {
+        try { document.fonts.delete(addedFace); } catch { /* ignore */ }
+      }
+    };
+  }, [activeFont, appearance.customFontName]);
+
+  useEffect(() => {
     // The phone itself owns the world clock: proactive messages can arrive
     // while the user is on Home, Music, Notes, etc. — not only inside LINE.
+    const onLineReplied = (event: Event) => {
+      try {
+        const d = ((event as unknown) as CustomEvent<any>).detail || {};
+        if (!d.replyText) return;
+        void import('../store/momentsAfterChat').then(async (m) => {
+          const chars: any[] = JSON.parse(window.localStorage.getItem('phone:characters') || '[]');
+          const ch = chars.find((c) => (d.characterId && c.id === d.characterId) || (d.characterName && c.name === d.characterName));
+          if (!ch) return;
+          await m.maybePostMomentAfterChat({ character: ch, chatText: String(d.chatText || ''), replyText: String(d.replyText || ''), groupName: d.groupName || null });
+        });
+      } catch { /* best-effort */ }
+    };
+    window.addEventListener('sane333:line-replied', onLineReplied);
     void runProactiveCatchup();
     const interval = window.setInterval(() => {
       void runProactiveCatchup();
     }, 60_000);
 
-    return () => window.clearInterval(interval);
+    return () => { window.removeEventListener('sane333:line-replied', onLineReplied); window.clearInterval(interval); };
   }, []);
 
   useEffect(() => {
@@ -151,9 +222,7 @@ export function PhoneSimulator({
 
   return (
     <div className="relative mx-auto flex flex-col items-center">
-      {activeFont && (
-        <style>{`@font-face{font-family:Sane333Custom;src:url("${activeFont}") format("woff2");font-display:swap;}`}</style>
-      )}
+      {fontFaceCss ? <style>{fontFaceCss}</style> : null}
       
       {/* Authentic Physical Phone Chassis (Exact CSS from user template) */}
       <div 
