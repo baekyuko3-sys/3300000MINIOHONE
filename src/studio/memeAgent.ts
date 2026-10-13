@@ -396,7 +396,7 @@ export async function runMemeAgent(options: AgentOptions, userRequest: string, v
         if (target && typeof target.content === 'string') {
           originalContent = target.content;
           fileSnapshots.set(action.path, originalContent);
-          history.push({ role: 'assistant', content: '[STUDIO TOOL RESULT] AUTO-READ PROPOSAL TARGET (' + action.path + '):\\n' + JSON.stringify(target).slice(0, 50000) });
+          history.push({ role: 'assistant', content: '[STUDIO TOOL RESULT] AUTO-READ PROPOSAL TARGET (' + action.path + '):\n' + JSON.stringify(target).slice(0, 50000) });
         } else {
           throw new Error('Meme 无法读取待修改文件：' + action.path);
         }
@@ -413,7 +413,7 @@ export async function runMemeAgent(options: AgentOptions, userRequest: string, v
           if (!target || typeof target.content !== 'string') throw new Error('Meme 无法读取待修改文件：' + action.path);
           baseContent = target.content;
           fileSnapshots.set(action.path, String(baseContent));
-          history.push({ role: 'assistant', content: '[STUDIO TOOL RESULT] read ' + action.path + ':\\n' + JSON.stringify(target).slice(0, 50000) });
+          history.push({ role: 'assistant', content: '[STUDIO TOOL RESULT] read ' + action.path + ':\n' + JSON.stringify(target).slice(0, 50000) });
         }
         if (typeof baseContent !== 'string') throw new Error('Meme patch 没有获得原文件内容：' + action.path);
         const patchFind: string = action.find ?? '';
@@ -457,7 +457,7 @@ export async function runMemeAgent(options: AgentOptions, userRequest: string, v
 
       let validation: MemeValidation | null = null;
       let validationRound = 0;
-      let evidence = Array.from(fileSnapshots.entries()).map(([path, content]) => path + '\\n' + content.slice(0, 10000)).join('\\n\\n');
+      let evidence = Array.from(fileSnapshots.entries()).map(([path, content]) => path + '\n' + content.slice(0, 10000)).join('\n\n');
 
       while (validationRound < maxValidationRounds) {
         validationRound++;
@@ -477,7 +477,7 @@ export async function runMemeAgent(options: AgentOptions, userRequest: string, v
         history.push({ role: 'assistant', content: raw });
         history.push({
           role: 'assistant',
-          content: '[STUDIO VALIDATION FAILED] ' + proposal.path + ':\\n' + JSON.stringify(validation) + '\\nDo not stage this proposal. Inspect/read/search the relevant code and produce a smaller, evidence-based corrected proposal.',
+          content: '[STUDIO VALIDATION FAILED] ' + proposal.path + ':\n' + JSON.stringify(validation) + '\nDo not stage this proposal. Inspect/read/search the relevant code and produce a smaller, evidence-based corrected proposal.',
         });
         if (validation.status === 'needs_more_context' && validationRound >= maxValidationRounds) {
           options.onEvent?.({ type: 'message', text: 'Meme 暂不把 ' + proposal.path + ' 交给 Changes：证据不足，正在保留当前检查结果。' });
@@ -510,7 +510,7 @@ export async function runMemeAgent(options: AgentOptions, userRequest: string, v
     }
 
     history.push({ role: 'assistant', content: raw });
-    history.push({ role: 'assistant', content: '[STUDIO TOOL RESULT] ' + tool.name + ':\\n' + JSON.stringify(resultText).slice(0, 50000) });
+    history.push({ role: 'assistant', content: '[STUDIO TOOL RESULT] ' + tool.name + ':\n' + JSON.stringify(resultText).slice(0, 50000) });
   }
 
   const text = 'Meme 达到本轮 Agent 步数上限，已停止并保留当前已通过验证的 Changes。';

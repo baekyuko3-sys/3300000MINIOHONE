@@ -150,7 +150,7 @@ export function buildLineHumanBehaviorPrompt(characterStyle?: Partial<Pick<LineR
     '例如，如果角色平时会说“你吃了吗? 我还没有”，就保持这种节奏；如果会说“你吃了 我也是”，也不要擅自改成书面句式。',
     '不要把每条消息都写成完整工整的句子，也不要每次都用相同的结尾标点。',
     '允许很短的真人式回复，例如“嗯”“好”“我也是”“刚到”“等我一下”，但必须符合上下文。',
-  ].join('\\n');
+  ].join('\n');
 }
 
 

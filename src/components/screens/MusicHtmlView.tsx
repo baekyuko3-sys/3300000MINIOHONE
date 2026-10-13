@@ -527,6 +527,7 @@ export function MusicHtmlView({ active = true, onNavigate }: MusicHtmlViewProps)
           '请发一条很短的私聊，像真人发现对方在听自己歌单时会说的话（1～2 句）。',
           '可以惊讶、开心、调侃或害羞，必须符合人设；不要解释系统，不要提 AI。',
         ].join('\n'),
+        groupName: '',
         authorNote: [
           '这是音乐 App「听了角色歌单」触发的主动私聊。',
           '只发一条短讯，自然口语。',
@@ -1564,6 +1565,7 @@ export function MusicHtmlView({ active = true, onNavigate }: MusicHtmlViewProps)
           `当前歌曲：《${track.name}》 - ${track.artist}`,
           '请说一句你对这首歌的第一反应（1～2 句短讯）。',
         ].join('\n'),
+        groupName: '',
         authorNote: musicSessionAuthorNote(nextSession, character),
         cotTarget: 'line',
         temperature: settings.temperature,
@@ -1616,6 +1618,7 @@ export function MusicHtmlView({ active = true, onNavigate }: MusicHtmlViewProps)
           `对方刚刚说：${userText}`,
           '请用 1～3 句短讯回复对方，必须针对这句话。',
         ].join('\n'),
+        groupName: '',
         authorNote: musicSessionAuthorNote(nextSession, character),
         cotTarget: 'line',
         temperature: Math.min(1, (settings.temperature || 0.85) + 0.05),

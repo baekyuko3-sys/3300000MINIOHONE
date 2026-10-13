@@ -19,7 +19,7 @@ import {
   IMAGE_LOADING_LABELS,
 } from './TextMediaCards';
 import { LineConversationErrorBoundary } from './LineConversationErrorBoundary';
-import { createLineGroup } from '../../store/lineGroups';
+import { createLineGroup, getLineGroupById } from '../../store/lineGroups';
 import { getNpcs, updateNpc, type SaneNpc } from '../../store/npcs';
 import { NpcAvatar } from '../NpcAvatar';
 import { VroomImage } from '../VroomImage';
@@ -43,7 +43,7 @@ import {
   type MomentComment,
   type MomentsCommentSettings,
 } from '../../store/momentsComments';
-import { generateNpcMomentNow } from '../../store/momentsAfterChat';
+import { generateNpcMomentNow, refreshMomentsFeed } from '../../store/momentsAfterChat';
 import { edgePair, isAllowedEdge as isVroomAllowedEdge, isBlockedEdge as isVroomBlockedEdge, readVroomScopeSettings, setFriendEdge as setVroomFriendEdge } from '../../store/vroomScope';
 import {
   Pin, Bell, BellOff, Bookmark, Heart, MessageCircle, Share2, Plus, Search,
@@ -599,7 +599,22 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
 
   // Moments refresh state
   const [isRefreshingMoments, setIsRefreshingMoments] = useState(false);
+  const [isRefreshingComments, setIsRefreshingComments] = useState(false);
   const [generatingCommentsPostId, setGeneratingCommentsPostId] = useState<string | null>(null);
+
+  const handleRefreshComments = async () => {
+    if (isRefreshingComments) return;
+    setIsRefreshingComments(true);
+    try {
+      const result = await refreshMomentsFeed();
+      try { setMomentsPosts(JSON.parse(window.localStorage.getItem(MOMENTS_POSTS_KEY) || '[]')); } catch { /* ignore */ }
+      showToast(result || '刷新完成');
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '刷新失败');
+    } finally {
+      setIsRefreshingComments(false);
+    }
+  };
 
   // User / Mask State
   const [importedCharactersRaw, setImportedCharacters] = usePersistentState<ImportedCharacter[]>('phone:characters', []);
@@ -958,6 +973,11 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   };
 
   const resolveChatAvatar = (item: LineChatItem) => {
+    if (item.isGroup) {
+      const group = getLineGroupById(item.groupId || '');
+      if (group?.avatar) return group.avatar;
+      return '';
+    }
     if (item.npcId) {
       const npc = allLineNpcs.find(n => n.id === item.npcId);
       if (npc?.avatar) return npc.avatar;
@@ -2585,16 +2605,30 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
             </button>
             <button
               type="button"
-              className="w-full flex items-center gap-3 py-3 px-1 text-left"
+              className="w-full flex items-center gap-3 py-3 px-1 border-b border-[#f3f3f4] text-left"
               onClick={() => {
                 setMomentsMoreOpen(false);
                 void generateMomentsPost();
               }}
             >
-              <span className="w-9 h-9 rounded-full border border-[#e7e7e8] grid place-items-center text-[14px] text-[#555] shrink-0">↺</span>
+              <span className="w-9 h-9 rounded-full border border-[#e7e7e8] grid place-items-center text-[13px] text-[#555] shrink-0">✦</span>
               <span className="min-w-0">
-                <span className="block text-[13px] text-[#333]">刷新</span>
-                <span className="block text-[10px] text-[#aaa] mt-0.5">拉取新动态</span>
+                <span className="block text-[13px] text-[#333]">一键生成</span>
+                <span className="block text-[10px] text-[#aaa] mt-0.5">随机角色/NPC 发一条</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              className="w-full flex items-center gap-3 py-3 px-1 text-left"
+              onClick={() => {
+                setMomentsMoreOpen(false);
+                void handleRefreshComments();
+              }}
+            >
+              <span className="w-9 h-9 rounded-full border border-[#e7e7e8] grid place-items-center text-[13px] text-[#555] shrink-0">↺</span>
+              <span className="min-w-0">
+                <span className="block text-[13px] text-[#333]">一键刷新</span>
+                <span className="block text-[10px] text-[#aaa] mt-0.5">给现有动态补评论</span>
               </span>
             </button>
           </div>
@@ -2865,6 +2899,15 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
             <div className="flex items-center justify-between"><div><div className="text-[8px] font-mono tracking-[1.5px] text-[#aaa]">VROOM · SETTINGS</div><div className="mt-1 font-semibold text-[15px]">朋友圈设置</div></div><button onClick={() => setShowMomentsSettings(false)} className="text-xl text-[#aaa]">×</button></div>
             <label className="flex items-center justify-between p-3 rounded-2xl bg-[#f8f8f9]"><div><div className="text-xs font-medium">允许角色自主发朋友圈</div><div className="text-[9px] text-[#aaa] mt-1">关闭后，角色不会通过主动生活事件发布动态。</div></div><input type="checkbox" checked={momentsSettings.allowCharacterAutoPost} onChange={e => setMomentsSettings(prev => ({...prev, allowCharacterAutoPost: e.target.checked}))} /></label>
             <label className="flex items-center justify-between p-3 rounded-2xl bg-[#f8f8f9]"><div><div className="text-xs font-medium">允许 NPC 发朋友圈</div><div className="text-[9px] text-[#aaa] mt-1">关闭后，NPC 不会一键发帖 / 出现在刷新池里。</div></div><input type="checkbox" checked={momentsSettings.allowNpcAutoPost !== false} onChange={e => setMomentsSettings(prev => ({...prev, allowNpcAutoPost: e.target.checked}))} /></label>
+            <div className="p-3 rounded-2xl bg-[#f8f8f9] space-y-2">
+              <div className="text-xs font-medium">回复后发朋友圈</div>
+              <div className="text-[9px] text-[#aaa]">角色单聊/群聊回复后，是否自动发朋友圈</div>
+              <div className="flex gap-2">
+                {([['off','关闭'],['decide','角色判定'],['always','每次都发']] as const).map(([val, label]) => (
+                  <button key={val} type="button" onClick={() => setMomentsSettings(prev => ({ ...prev, postMomentsAfterChat: val }))} className={`flex-1 py-2 rounded-xl border text-[10px] font-medium ${momentsSettings.postMomentsAfterChat === val ? 'bg-[#292724] text-white border-[#292724]' : 'bg-white border-[#eee] text-[#666]'}`}>{label}</button>
+                ))}
+              </div>
+            </div>
             <label className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-[#faf8f9] border border-[#f0e4e7]">
               <div>
                 <div className="text-xs font-medium text-[#333]">图片卡 / 视频卡 · AI 润色</div>
@@ -3132,6 +3175,13 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               >
                 专门让 NPC 发一条
               </button>
+              <button
+                type="button"
+                onClick={() => { setShowMomentsSettings(false); void handleRefreshComments(); }}
+                className="col-span-2 w-full py-2.5 rounded-xl bg-[#f8f8f9] text-[#555] text-xs border border-[#eee]"
+              >
+                {isRefreshingComments ? '刷新中…' : '↺ 一键刷新评论'}
+              </button>
             </div>
           </div>
         </div>
@@ -3275,7 +3325,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
             : (!c.npcId && (c.characterId === friendProfile.characterId || c.name === friendProfile.name) && (c.isGroup || c.personaId === effectivePersonaId))
         );
         const profileAvatar = profileNpc
-          ? (profileNpc.avatar || boundForProfileNpc?.avatar || '')
+          ? (profileNpc.avatar || (boundForProfileNpc ? boundForProfileNpc.avatar : '') || '')
           : (characterProfileStyles[character?.id || friendProfile.characterId || '']?.avatar || character?.avatar || '');
         return (
           <div className="absolute inset-0 z-[70] bg-white animate-in slide-in-from-right">
@@ -3637,7 +3687,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 </div>
                 {Array.isArray(postDetail.mentionIds) && postDetail.mentionIds.length > 0 && (
                   <div className="mt-4 text-[12px] text-[#8c5f6b]">
-                    {postDetail.mentionIds
+                    {(Array.isArray(postDetail.mentionIds) ? postDetail.mentionIds : [])
                       .map((id: string) => resolveAudienceLabel(id, vroomAudienceFriends, allLineNpcs))
                       .filter(Boolean)
                       .map((n: string) => `@${n}`)
@@ -4138,10 +4188,11 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 const npcMembersFromApp = Object.fromEntries(
                   directNpcs.map(npc => {
                     const bound = importedCharacters.find(c => c.id === npc.boundCharacterId);
+                    const gAvatar = npc.avatar || (bound ? bound.avatar : '') || '';
                     return [npc.name, {
                       npcId: npc.id,
                       boundCharacterId: npc.boundCharacterId,
-                      avatar: npc.avatar || bound?.avatar || '',
+                      avatar: gAvatar,
                     }];
                   })
                 );
@@ -4313,7 +4364,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         const greetings = character ? [character.firstMessage, ...character.alternateGreetings].filter(Boolean) : [];
 
         if (isNpcFriend && npcFriend) {
-          const avatar = npcFriend.avatar || boundForNpc?.avatar || '';
+          const avatar = npcFriend.avatar || (boundForNpc ? boundForNpc.avatar : '') || '';
           return (
             <div onClick={() => setAddCharacterChatFriend(null)} className="absolute inset-0 bg-black/25 z-[80] flex items-end animate-in fade-in">
               <div onClick={e => e.stopPropagation()} className="w-full bg-white rounded-t-[26px] p-5 pb-8 space-y-4 animate-in slide-in-from-bottom max-h-[88%] overflow-y-auto">

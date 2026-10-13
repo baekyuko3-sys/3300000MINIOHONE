@@ -28,6 +28,8 @@ function macroNamesOf(input: AiReplyInput): MacroNames {
 export interface AiReplyInput {
   settings: AiSettings;
   character?: ImportedCharacter | null;
+  /** 当前所在群聊的名称（用于朋友圈话题标签）。单聊传空字符串即可。 */
+  groupName?: string;
   characterProfile: {
     nickname: string;
     relationship: string;
@@ -509,7 +511,7 @@ export function buildCharacterSystemPrompt(input: AiReplyInput): string {
       '保持稳定，但不要机械复制每条消息的格式。',
       '非普通话且双语开启时，在同一次角色发言中提供原文与中文翻译，不要生成两条独立消息。',
       input.character!.languageProfile.bilingualLayout === 'below-bubble' ? '译文属于同一消息，应显示在原气泡下方。' : '原文与译文属于同一个气泡。'
-    ].join('\\n') : '',
+    ].join('\n') : '',
     '除非角色卡明确要求，否则不要每轮都过度煽情或重复昵称。',
     input.isGroup ? '这是群聊：回复可以体现群聊语境，但不要替其他成员完成完整对话。' : '这是私聊：只扮演当前角色。',
     context.worldBookBefore ? '【世界书 · 角色定义前】\n' + context.worldBookBefore : '',
@@ -562,7 +564,7 @@ export function buildCharacterSystemPrompt(input: AiReplyInput): string {
       '状态栏不是 COT 的 STEP。状态栏属于本轮角色回复的末尾输出层。',
       '原始预设如下：',
       cotPreset.template
-    ].join('\\n') : '【内部生成预设】无。',
+    ].join('\n') : '【内部生成预设】无。',
     '',
     '【当前任务 · 绝对最高优先级】',
     '你只能回答当前用户消息，不要替当前用户补写下一句，也不要自行延续旧话题。',
@@ -722,7 +724,7 @@ function buildConversationMessages(input: AiReplyInput) {
   // This is the single message the character is answering right now.
   history.push({
     role: 'user' as const,
-    content: '【当前用户消息】\\n' + input.userMessage,
+    content: '【当前用户消息】\n' + input.userMessage,
     // Preserve the current turn's attachment when its text was removed from history
     // to avoid duplicating the user turn. Otherwise image messages silently lose
     // their image before the provider request is assembled.
@@ -1000,7 +1002,7 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}
     return await fetch(input, { ...init, signal: controller.signal });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('AI_TIMEOUT: Docker AI 接口超过 ' + Math.round(timeoutMs / 1000) + ' 秒没有响应');
+      throw new Error('AI_TIMEOUT: API 接口超过 ' + Math.round(timeoutMs / 1000) + ' 秒没有响应，请检查 API 地址、API Key、网络连接或服务商状态。');
     }
     throw error;
   } finally {
@@ -1201,7 +1203,7 @@ export async function generateCharacterReply(input: AiReplyInput): Promise<AiRep
     .slice(-scanDepth)
     .map(message => message.text || message.transcript || '')
     .filter(Boolean)
-    .join('\\n') + '\\n' + input.userMessage;
+    .join('\n') + '\n' + input.userMessage;
   const matchedWorldbookEntries = selectWorldBookEntries(worldbooks, scannedText, buildWorldBookScanResolver(input, scanDepth)).length;
 
   const providerInput: AiReplyInput = { ...input, onDelta: undefined };

@@ -145,10 +145,10 @@ async function generateLifeText(
       character.description || '', character.personality || '', character.scenario || '',
       '关系：' + profile.relationship + '；称呼：' + profile.callMe,
       '长期记忆：' + (memory.summary || '暂无') ,
-      '最近聊天：\\n' + recentMessages.map(m => (m.sender === 'other' ? character.name : '我') + ': ' + (m.text || '[媒体]')).join('\\n'),
+      '最近聊天：\n' + recentMessages.map(m => (m.sender === 'other' ? character.name : '我') + ': ' + (m.text || '[媒体]')).join('\n'),
       '朋友圈动态必须是角色自己的生活，不要伪装成聊天消息。',
-    ].join('\\n'),
-    userPrompt: '请写一条角色自己的朋友圈动态。像真实生活记录，不要向用户提问，不要替用户说话，不要解释这是 AI。可以是照片感、正在做的事、看到的东西或一句自然的话。控制在手机朋友圈适合的长度。\\n日程：' + schedule.time + ' · ' + schedule.title,
+    ].join('\n'),
+    userPrompt: '请写一条角色自己的朋友圈动态。像真实生活记录，不要向用户提问，不要替用户说话，不要解释这是 AI。可以是照片感、正在做的事、看到的东西或一句自然的话。控制在手机朋友圈适合的长度。\n日程：' + schedule.time + ' · ' + schedule.title,
     temperature: settings.temperature ?? 0.85,
   });
 }
@@ -258,8 +258,8 @@ async function generateProactiveMessage(
       : []).join('\n') || '无',
     '',
     '【最近聊天】',
-    '【离线期间 / 当前联系状态】\\n' + offlineContext,
-    recentMessages.map(message => (message.sender === 'other' ? character.name : '用户') + ': ' + (message.text || '[媒体]')).join('\\n'),
+    '【离线期间 / 当前联系状态】\n' + offlineContext,
+    recentMessages.map(message => (message.sender === 'other' ? character.name : '用户') + ': ' + (message.text || '[媒体]')).join('\n'),
   ].join('\n');
 
   return generateCreativeText({

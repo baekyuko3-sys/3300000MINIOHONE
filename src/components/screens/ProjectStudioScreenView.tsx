@@ -507,7 +507,7 @@ export function ProjectStudioScreenView({ onNavigate }: { onNavigate: (screen: S
     }
     const request = sourceRequest.trim();
     const attachedContext = attachments.length
-      ? `\\n\\n[附件：${attachments.map(item => item.name).join('、')}]`
+      ? `\n\n[附件：${attachments.map(item => item.name).join('、')}]`
       : '';
     const requestWithAttachments = request + attachedContext;
     setPrompt('');
@@ -747,14 +747,14 @@ export function ProjectStudioScreenView({ onNavigate }: { onNavigate: (screen: S
   const loadDiff = async () => {
     try {
       const data=await compare(sharedOwner,sharedRepo,'main',sharedBranch,sharedToken);
-      const files=(data.files||[]).map((item:any)=>item.filename+' · '+item.status+' · +'+item.additions+' -'+item.deletions).join('\\n');
+      const files=(data.files||[]).map((item:any)=>item.filename+' · '+item.status+' · +'+item.additions+' -'+item.deletions).join('\n');
       setCiText(files || '没有差异'); setTab('changes');
     } catch(error){ notify(error instanceof Error ? error.message : 'Diff 获取失败'); }
   };
 
   const rollbackToCommit = async (sha: string) => {
     if (!ready || !sha) return;
-    if (!window.confirm('确认把当前分支恢复到这个 commit？\\n' + sha.slice(0,8) + '\\n此操作会改变远端分支指向。')) return;
+    if (!window.confirm('确认把当前分支恢复到这个 commit？\n' + sha.slice(0,8) + '\n此操作会改变远端分支指向。')) return;
     try {
       await rollbackBranch(sharedOwner, sharedRepo, sharedBranch, sha, sharedToken);
       notify('已恢复到 ' + sha.slice(0,8));
@@ -782,7 +782,7 @@ export function ProjectStudioScreenView({ onNavigate }: { onNavigate: (screen: S
     setTaskSteps(previous => previous.map((step, index) =>
       index === 2 ? '修复已通过 Meme 自检' : index === 3 ? '等待你的批准' : step
     ));
-    setMessage('Meme 已完成修复前后验证：' + p.path + '\\n' + (validation?.summary || p.reason));
+    setMessage('Meme 已完成修复前后验证：' + p.path + '\n' + (validation?.summary || p.reason));
     log('change', p.operation + ' ' + p.path + ' · validation passed');
     updateCiStatus('changes', 'Meme 已生成并通过自检的 Changes，等待你的批准。');
     // Keep the conversation visible like the reference workbench: the user
@@ -844,7 +844,7 @@ export function ProjectStudioScreenView({ onNavigate }: { onNavigate: (screen: S
       const data = await github(base + '/commits?sha=' + encodeURIComponent(effectiveBranch) + '&per_page=6', effectiveToken);
       recentCommits = (data || []).slice(0, 6).map((item: any) => ({
         sha: item.sha,
-        message: item.commit?.message?.split('\\n')[0],
+        message: item.commit?.message?.split('\n')[0],
         author: item.commit?.author?.name,
       }));
     } catch (error) {
@@ -906,19 +906,19 @@ export function ProjectStudioScreenView({ onNavigate }: { onNavigate: (screen: S
     const errorText = context.ciError;
     const repairRequest =
       'CI 自动修复任务。' +
-      '\\n来源：' + sourceLabel +
-      '\\n失败 commit：' + failedSha +
-      '\\n\\n你现在拿到的是一次真实的事故现场。必须综合下面全部证据判断根因：CI 错误、失败 commit、最近提交、当前未批准 Changes、以及失败 commit 对应的相关源码。' +
-      '\\n不要只根据错误最后一行猜测，也不要重复上一轮已经存在的错误修改。先确认根因，再提出最小修复。' +
-      '\\n\\n--- INCIDENT CONTEXT ---\\n' + JSON.stringify(context) +
-      '\\n--- END INCIDENT CONTEXT ---' +
-      '\\n\\n工作要求：' +
-      '\\n1. 优先定位真正失败点，而不是机械修改报错文字。' +
-      '\\n2. 检查相关文件之间的依赖、import、类型、配置和构建脚本。' +
-      '\\n3. 如果当前 Changes 已经包含可能导致失败的修改，优先审查并修正它。' +
-      '\\n4. 只提出能解释 CI 错误的最小必要改动。' +
-      '\\n5. 如果证据不足，继续使用 inspect/read/search，不要猜。' +
-      '\\n6. 所有实际文件修改必须进入 Studio Changes，等待用户批准；不要直接写 GitHub。';
+      '\n来源：' + sourceLabel +
+      '\n失败 commit：' + failedSha +
+      '\n\n你现在拿到的是一次真实的事故现场。必须综合下面全部证据判断根因：CI 错误、失败 commit、最近提交、当前未批准 Changes、以及失败 commit 对应的相关源码。' +
+      '\n不要只根据错误最后一行猜测，也不要重复上一轮已经存在的错误修改。先确认根因，再提出最小修复。' +
+      '\n\n--- INCIDENT CONTEXT ---\n' + JSON.stringify(context) +
+      '\n--- END INCIDENT CONTEXT ---' +
+      '\n\n工作要求：' +
+      '\n1. 优先定位真正失败点，而不是机械修改报错文字。' +
+      '\n2. 检查相关文件之间的依赖、import、类型、配置和构建脚本。' +
+      '\n3. 如果当前 Changes 已经包含可能导致失败的修改，优先审查并修正它。' +
+      '\n4. 只提出能解释 CI 错误的最小必要改动。' +
+      '\n5. 如果证据不足，继续使用 inspect/read/search，不要猜。' +
+      '\n6. 所有实际文件修改必须进入 Studio Changes，等待用户批准；不要直接写 GitHub。';
 
     setPrompt('');
     updateCiStatus('repairing', 'CI 已失败，Meme 正在读取真实错误日志并准备修复 Changes。', failedSha);

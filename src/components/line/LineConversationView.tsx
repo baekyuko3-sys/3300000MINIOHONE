@@ -212,6 +212,141 @@ function cleanGroupGeneratedText(text: string): string {
   return value.trim();
 }
 
+/**
+ * 解析 AI 单次 API 返回的"多 NPC 群聊"输出。
+ * AI 必须按 "[名字] 消息内容" 的格式逐条输出。
+ * 返回 [{ rawSpeaker, text, primary }]，调用方负责把 rawSpeaker 归一化匹配成成员索引。
+ */
+function splitGroupMultiSpeaker(
+  text: string,
+  primarySpeakerName: string,
+  candidateNames: string[],
+  candidateNicknames: string[]
+): Array<{ rawSpeaker: string; text: string; primary: boolean }> {
+  const cleaned = cleanGroupGeneratedText(text);
+  if (!cleaned) return [];
+
+  // 拆 <message>...</message> 块
+  const blocks: string[] = [];
+  const messageTagRegex = /<message\b[^>]*>([\s\S]*?)<\/message\s*>/gi;
+  let match: RegExpExecArray | null;
+  let lastIndex = 0;
+  while ((match = messageTagRegex.exec(cleaned)) !== null) {
+    if (match.index > lastIndex) {
+      const between = cleaned.slice(lastIndex, match.index).trim();
+      if (between) blocks.push(between);
+    }
+    blocks.push(match[1]);
+    lastIndex = messageTagRegex.lastIndex;
+  }
+  if (lastIndex < cleaned.length) {
+    const tail = cleaned.slice(lastIndex).trim();
+    if (tail) blocks.push(tail);
+  }
+  if (!blocks.length) blocks.push(cleaned);
+
+  // 把所有候选名字按长度倒序排（防短名优先匹配长名）
+  const nameSorted = candidateNames
+    .map((n, i) => ({ name: n, idx: i }))
+    .filter(x => x.name)
+    .sort((a, b) => b.name.length - a.name.length);
+  const nickSorted = candidateNicknames
+    .map((n, i) => ({ name: n, idx: i }))
+    .filter(x => x.name)
+    .sort((a, b) => b.name.length - a.name.length);
+
+  const out: Array<{ rawSpeaker: string; text: string; primary: boolean }> = [];
+
+  for (const block of blocks) {
+    const blockTrim = String(block || '').trim();
+    if (!blockTrim) continue;
+
+    let matchedName = '';
+    let matchedIndex = -1;
+
+    // 1) 按 [名字] / 【名字】 / 名字：/名字: 找前缀
+    for (const { name } of nameSorted) {
+      const candidates = [
+        '[' + name + ']', '【' + name + '】',
+        name + '：', name + ':',
+        name,
+      ];
+      for (const prefix of candidates) {
+        const idx = blockTrim.indexOf(prefix);
+        if (idx >= 0 && idx <= 2) {
+          matchedName = name;
+          matchedIndex = idx + prefix.length;
+          break;
+        }
+      }
+      if (matchedName) break;
+    }
+    // 2) 备选用 nickname
+    if (!matchedName) {
+      for (const { name } of nickSorted) {
+        const candidates = [
+          '[' + name + ']', '【' + name + '】',
+          name + '：', name + ':',
+          name,
+        ];
+        for (const prefix of candidates) {
+          const idx = blockTrim.indexOf(prefix);
+          if (idx >= 0 && idx <= 2) {
+            matchedName = name;
+            matchedIndex = idx + prefix.length;
+            break;
+          }
+        }
+        if (matchedName) break;
+      }
+    }
+
+    if (matchedName) {
+      const rest = blockTrim.slice(matchedIndex).replace(/^[:：]\s*/, '').trim();
+      out.push({ rawSpeaker: matchedName, text: rest, primary: false });
+    } else {
+      // 没有前缀：当主说话人
+      out.push({ rawSpeaker: primarySpeakerName, text: blockTrim, primary: true });
+    }
+  }
+  return out.filter(item => item.text);
+}
+
+/**
+ * 把 splitGroupMultiSpeaker 返回的 rawSpeaker 归一化，匹配回 groupAiMembers 的下标。
+ * 返回 groupAiMembers 的索引；-1 表示未匹配上（调用方用 primary 兜底）。
+ */
+function resolveSpeakerIndex(
+  rawSpeaker: string,
+  candidateNames: string[],
+  candidateNicknames: string[]
+): number {
+  const target = String(rawSpeaker || '').trim();
+  if (!target) return -1;
+  // 精确
+  let idx = candidateNames.findIndex(n => n === target);
+  if (idx >= 0) return idx;
+  // 去前缀/后缀
+  const cleaned = target.replace(/^[\[【\s]+|[:：\]\】\s]+$/g, '').trim();
+  if (cleaned && cleaned !== target) {
+    idx = candidateNames.findIndex(n => n === cleaned);
+    if (idx >= 0) return idx;
+  }
+  // nickname
+  if (cleaned) {
+    idx = candidateNicknames.findIndex(n => n && n === cleaned);
+    if (idx >= 0) return idx;
+  }
+  // 包含匹配（短的输入是长的成员名的子串，例如 AI 写了"程"而成员是"程凛"）
+  if (cleaned) {
+    idx = candidateNames.findIndex(n => n && (cleaned.includes(n) || n.includes(cleaned)));
+    if (idx >= 0) return idx;
+    idx = candidateNicknames.findIndex(n => n && (cleaned.includes(n) || n.includes(cleaned)));
+    if (idx >= 0) return idx;
+  }
+  return -1;
+}
+
 function spliceExpandedLineReply(prev: any[], replyMsgId: any, expanded: any[]) {
   const targetIndex = prev.findIndex((m: any) => m.id === replyMsgId);
   const withoutStreaming = prev.filter((m: any) => m.id !== replyMsgId);
@@ -484,7 +619,7 @@ export function LineConversationView({
 
   useEffect(() => {
     setLoadedMessageCount(Math.min(LINE_PAGE_SIZE, Math.max(0, messages.length)));
-  }, [conversationStorageId]);
+  }, [conversationStorageId, messages.length]);
 
   const loadOlderMessages = () => {
     if (loadingOlderMessagesRef.current || loadedMessageCount >= messages.length) return;
@@ -951,6 +1086,19 @@ export function LineConversationView({
     ? storedUserPersonas.filter((persona): persona is Record<string, any> => !!persona && typeof persona === 'object')
     : [];
   const [activePersonaId, setActivePersonaId] = usePersistentState<string | null>('line:active-persona', null);
+  // Prefer parent prop personaId, fall back to locally stored activePersonaId.
+  // Use nullish coalescing so that a valid empty-string prop doesn't override the stored value.
+  const resolvedPersonaId = personaId == null ? activePersonaId : personaId;
+  const activePersona = userPersonas.find(p => p.id === resolvedPersonaId) || userPersonas[0] || {
+      id: '',
+      name: '',
+      avatar: '',
+      age: '',
+      profession: '',
+      setting: '',
+      identity: '',
+      traits: '',
+    };
   const [editingPersonaId, setEditingPersonaId] = useState<string | null>(null);
   const [showMyAvatar, setShowMyAvatar] = usePersistentState<boolean>(`line:show-my-avatar:${conversationStorageId}`, true);
   const myAvatarFileRef = useRef<HTMLInputElement>(null);
@@ -996,24 +1144,6 @@ export function LineConversationView({
     ? importedCharacters.find(character => character && character.id === characterId) || null
     : importedCharacters.find(character => character && character.name === contactName) || null;
   const characterMemoryForPersona = importedCharacter ? getCharacterMemory(importedCharacter.id, importedCharacter.name) : null;
-  const activePersona = userPersonas.find(p => p.id === characterMemoryForPersona?.personaId)
-    || userPersonas.find(p => Array.isArray(p.boundCharacterIds) && p.boundCharacterIds.includes(importedCharacter?.id))
-    || userPersonas.find(p => p.boundCharacterId === importedCharacter?.id)
-    || userPersonas.find(p => p.id === activePersonaId)
-    || {
-    id: '',
-    name: '',
-    avatar: '',
-    age: '',
-    profession: '',
-    setting: '',
-    identity: '',
-    traits: '',
-    background: '',
-    region: '',
-    timezone: '',
-    birthday: '',
-  };
 
   const [personaLiveWeather, setPersonaLiveWeather] = useState<LineWeatherSnapshot | null>(null);
 
@@ -1029,12 +1159,14 @@ export function LineConversationView({
       const npc = allNpcs.find(item => item.id === member.npcId) || allNpcs.find(item => item.name === member.name);
       if (!npc) return null;
       const bound = importedCharacters.find(character => character.id === npc.boundCharacterId || character.id === member.characterId) || null;
+      const resAvatar = npc.avatar || (bound ? bound.avatar : '') || '';
+      const resDesc = [npc.identity, npc.personality, npc.background, npc.relationship].filter(Boolean).join('\n') || (bound ? bound.description : '');
       return {
         ...(bound || ({} as ImportedCharacter)),
         id: npc.id,
         name: npc.name,
-        avatar: npc.avatar || bound?.avatar || '',
-        description: [npc.identity, npc.personality, npc.background, npc.relationship].filter(Boolean).join('\n') || bound?.description,
+        avatar: resAvatar,
+        description: resDesc,
       } as ImportedCharacter;
     }
     return importedCharacters.find(character => character.id === member.characterId || character.name === member.name) || null;
@@ -1051,7 +1183,7 @@ export function LineConversationView({
   const [mentionQuery, setMentionQuery] = useState('');
 
   const currentMentionQuery = (value: string) => {
-    const match = value.match(/(?:^|[\\s])@([^\\s@]*)$/);
+    const match = value.match(/(?:^|\s)@([^\s@]*)$/);
     return match ? match[1] : null;
   };
 
@@ -1085,7 +1217,7 @@ export function LineConversationView({
   };
 
   const insertMention = (name: string) => {
-    const match = inputText.match(/(?:^|[\\s])@([^\\s@]*)$/);
+    const match = inputText.match(/(?:^|\s)@([^\s@]*)$/);
     if (!match) return;
     const prefix = inputText.slice(0, match.index! + (match[0].startsWith(' ') ? 1 : 0));
     setInputText(prefix + '@' + name + ' ');
@@ -2273,67 +2405,111 @@ export function LineConversationView({
     );
 
     if (isGroup) {
+      // 群聊：一次 API 调用生成所有 NPC 的回复（单角色 system prompt + 多角色摘要 + 强制 [名字] 前缀格式）。
+      // 任一成员失败不影响整轮；解析失败时回退到主发言者单条消息。
       try {
-      if (groupAiMembers.length === 0) {
-        showToast('这个群还没有导入可接入 AI 的角色卡');
-        setMessages(prev => prev.filter(message => message.id !== msgId));
-        return;
-      }
-      const mentioned = groupAiMembers.filter(({ member }) => userText.includes('@' + member.name) || userText.includes('@' + (member.nickname || '')));
-      const availableMembers = groupAiMembers.filter(({ member }) => !member.muted && member.online !== false);
-      const pool = (mentioned.length ? mentioned : availableMembers).filter(({ member }) => !member.muted);
-      const responderLimit = mentioned.length && activeGroupPreset.mentionPriority
-        ? Math.min(pool.length, 1)
-        : Math.min(pool.length, Math.max(1, Number(activeGroupPreset.maxResponders) || 1));
-      // Group chat only: don't always select the first roster entries. Rotate the
-      // starting point to the member after the most recent NPC speaker, while
-      // preserving explicit @ priority and the preset's responder limit.
-      const lastGroupSpeaker = [...messages].reverse().find(message => message.sender !== 'me' && message.sender !== 'system-nudge');
-      const lastGroupSpeakerId = String(lastGroupSpeaker?.characterId || lastGroupSpeaker?.metadata?.characterId || '').trim();
-      const lastGroupSpeakerIndex = !mentioned.length && lastGroupSpeakerId
-        ? pool.findIndex(({ character }) => String(character?.id || '').trim() === lastGroupSpeakerId)
-        : -1;
-      const rotatedPool = lastGroupSpeakerIndex >= 0
-        ? [...pool.slice(lastGroupSpeakerIndex + 1), ...pool.slice(0, lastGroupSpeakerIndex + 1)]
-        : pool;
-      const responders = (mentioned.length && activeGroupPreset.mentionPriority ? pool : rotatedPool).slice(0, responderLimit);
-      let workingMessages = [...messages, newMsg].map(message => ({ ...message, sender: message.sender || 'other' }));
-      for (let index = 0; index < responders.length; index += 1) {
-        const { character } = responders[index];
-        if (!character) continue;
-        const memberProfile = getCharacterProfile(character.name, character.id);
-        const memberMemory = getCharacterMemory(character.id, character.name);
-        const replyMsgId = Date.now() + index + 1;
-        setMessages(prev => prev);
+        if (groupAiMembers.length === 0) {
+          showToast('这个群还没有导入可接入 AI 的角色卡');
+          setMessages(prev => prev.filter(message => message.id !== msgId));
+          setIsTyping(false);
+          return;
+        }
+        const mentioned = groupAiMembers.filter(({ member }) => userText.includes('@' + member.name) || userText.includes('@' + (member.nickname || '')));
+        const availableMembers = groupAiMembers.filter(({ member }) => !member.muted && member.online !== false);
+        const pool = (mentioned.length ? mentioned : availableMembers).filter(({ member }) => !member.muted);
+
+        // 主发言者：@ 模式只选被 @ 的；否则选"最后发言 NPC 的下一位"
+        const lastGroupSpeaker = [...messages].reverse().find(message => message.sender !== 'me' && message.sender !== 'system-nudge');
+        const lastGroupSpeakerId = String(lastGroupSpeaker?.characterId || lastGroupSpeaker?.metadata?.characterId || '').trim();
+        const lastGroupSpeakerIndex = !mentioned.length && lastGroupSpeakerId
+          ? pool.findIndex(({ character }) => String(character?.id || '').trim() === lastGroupSpeakerId)
+          : -1;
+        const rotatedPool = lastGroupSpeakerIndex >= 0
+          ? [...pool.slice(lastGroupSpeakerIndex + 1), ...pool.slice(0, lastGroupSpeakerIndex + 1)]
+          : pool;
+        const primary = mentioned.length ? pool[0] : rotatedPool[0];
+        if (!primary) {
+          setIsTyping(false);
+          return;
+        }
+
+        // 构建名字/昵称列表：顺序和 groupAiMembers 完全对应
+        const candidateNames = groupAiMembers.map(({ member }) => member.name);
+        const candidateNicknames = groupAiMembers.map(({ member }) => member.nickname || '');
+        const primaryMemberIndex = groupAiMembers.findIndex(({ member }) => member.name === primary.member.name);
+
+        // 群所有成员摘要：让 AI 知道群里都有谁、各自什么性格
+        const allMemberSummaries = groupAiMembers
+          .map(({ member, character }) => {
+            const personality = String(character?.personality || '').slice(0, 120);
+            const identity = String(character?.identity || '').slice(0, 80);
+            return `· ${member.name}（${character?.name || member.name}）：${identity ? '身份=' + identity + '；' : ''}性格=${personality || '普通'}`;
+          })
+          .join('\n');
+
+        const primaryProfile = getCharacterProfile(primary.character!.name, primary.character!.id);
+        const primaryMemory = getCharacterMemory(primary.character!.id, primary.character!.name);
+        const memberNamesInGroup = groupAiMembers.map(({ member }) => member.name);
+        const speakerFormatRule = '【输出格式 - 严格遵守,这是群聊不是单聊】\n' +
+          '1. 你这一次调用要扮演群里多个角色,不能只让一个角色说话。\n' +
+          '2. 每一行/每一条消息必须用 "[名字] 消息内容" 的格式,名字必须从下方【群成员】列表里严格选,不能编造。\n' +
+          '3. 主发言者(必须出现的第一位)是: [' + primary.member.name + ']。\n' +
+          '4. 至少要让 2 个不同的角色各说 1 条,根据话题和性格,可以让 2~6 个角色接话。\n' +
+          '5. 严禁在一行里写两个角色。严禁省略 [名字] 前缀。\n' +
+          '6. 不要写 <action>、<thinking>、旁白、解释、OOC。\n' +
+          '7. 输出示例(假设群成员是程凛、顾黎、苏晚):\n' +
+          '   [程凛] 今晚去不去吃饭?\n' +
+          '   [顾黎] 我去。\n' +
+          '   [苏晚] 我也去!';
+
+        const replyMsgId = Date.now() + 1;
         let streamedText = '';
+        const placeholderId = replyMsgId;
+        // 先插入一个"AI 正在输入"的占位气泡（用主发言者名字）
+        setMessages(prev => prev.some(m => m.id === placeholderId)
+          ? prev
+          : [...prev, {
+              id: placeholderId,
+              sender: 'other',
+              senderName: primary.member.name,
+              characterId: primary.character!.id,
+              text: '',
+              time: '刚刚',
+              type: 'ai-reply',
+              showThinking: false,
+            }]);
+
         const result = await generateCharacterReply({
           settings: conversationAiSettings(),
-          character,
-          characterProfile: memberProfile,
+          character: primary.character!,
+          characterProfile: primaryProfile,
           persona: activePersona ? { ...activePersona, weather: personaLiveWeather ? formatLineWeather(personaLiveWeather) : activePersona.weather } : activePersona,
           characterWeather: characterWeather ? formatLineWeather(characterWeather) : '',
           worldbooks: groupWorldbooks,
-          memory: memberMemory,
+          memory: primaryMemory,
           project: projectManifest,
-          messages: workingMessages,
+          messages: [...messages, newMsg].map(message => ({ ...message, sender: message.sender || 'other' })),
           userMessage: userText,
           isGroup: true,
+          groupName: activeGroup?.name || '',
           authorNote: [
             lineConversationRules,
             '群聊预设：' + activeGroupPreset.name,
             activeGroupPreset.systemPrompt,
             (groupNoticeText || activeGroup?.announcement) ? '群公告：' + (groupNoticeText || activeGroup?.announcement) : '',
             groupLorebookActive.trim() ? '【群聊风格补充】\n' + groupLorebookActive.trim() : '',
-            activeGroup?.relationships?.length ? '【成员关系】\\n' + activeGroup.relationships.map(item => item.from + ' → ' + item.to + '：' + item.relation).join('\\n') : '',
-            activeGroup?.events?.length ? '【群事件记忆】\\n' + activeGroup.events.slice(-12).map(item => item.text).join('\\n') : '',
+            activeGroup?.relationships?.length ? '【成员关系】\n' + activeGroup.relationships.map(item => item.from + ' → ' + item.to + '：' + item.relation).join('\n') : '',
+            activeGroup?.events?.length ? '【群事件记忆】\n' + activeGroup.events.slice(-12).map(item => item.text).join('\n') : '',
             groupMemorySummary.trim() ? '【当前群聊独立记忆总结】\n' + groupMemorySummary.trim() : '',
             groupMemorySettings.trim() ? '【当前群聊记忆规则】\n' + groupMemorySettings.trim() : '',
             allowGroupProactiveDM ? '【群聊内容延伸到单聊的许可】可以根据本群实际发生且该角色确实知道的内容，自然判断是否主动向用户发起单聊；必须符合角色性格、关系与情境，不要频繁打扰，也不代表每次都必须发起。此许可仅来源于当前群聊设置。' : '【群聊主动单聊】关闭；不得仅因为群聊内容而主动发起单聊。',
-            '【成员状态】\\n' + (activeGroup?.members || []).map(member => member.name + '：' + [member.online === false ? '离线' : '在线', member.mood || '', member.relationship || ''].filter(Boolean).join(' / ')).join('\\n'),
+            '【成员状态】\n' + (activeGroup?.members || []).map(member => member.name + '：' + [member.online === false ? '离线' : '在线', member.mood || '', member.relationship || ''].filter(Boolean).join(' / ')).join('\n'),
+            '【群成员】（按你选择的群聊预设决定谁能说话）\n' + allMemberSummaries,
+            speakerFormatRule,
           ].filter(Boolean).join('\n'),
           stylePreset: selectedPreset,
-        cotTarget: isGroup ? 'group' : 'line',
-        cotPreset: undefined,
+          cotTarget: isGroup ? 'group' : 'line',
+          cotPreset: undefined,
           typingHabit: [
             '群聊节奏：' + (typingHabitPreset === 'quiet' ? '安静群聊，有人潜水，不要求每条消息都有人接话' : typingHabitPreset === 'active' ? '活跃群聊，允许成员短句插话和接话，但不强制全员发言' : typingHabitPreset === 'chaotic' ? '热闹群聊，允许多人抢话，但每条消息身份必须明确' : typingHabitPreset === 'custom' ? typingHabitCustom : '自然群聊，成员根据性格、关系和话题自行判断是否发言'),
             groupLorebookActive.trim() ? '群聊补充风格：' + groupLorebookActive.trim() : '',
@@ -2344,71 +2520,117 @@ export function LineConversationView({
             '句子长度：' + typingLength,
             '语气词：' + typingFillers,
             '断句：' + typingSentenceBreak,
-            replyCountEnabled ? '每位发言角色按自然节奏分条，不为凑数生成无意义消息。' : '不强制每位群成员输出固定条数。',
           ].filter(Boolean).join('；'),
           temperature: Number(presetTemp) || 0.85,
           debugConversationId: conversationStorageId,
           onDelta: delta => {
             streamedText += delta;
-            const clean = cleanGroupGeneratedText(streamedText);
-            if (!clean) return;
+            const hasSpeakerMarker = /[\[【]/.test(delta);
+            if (!hasSpeakerMarker && streamedText.length < 6) return;
+            const parts = splitGroupMultiSpeaker(streamedText, primary.member.name, candidateNames, candidateNicknames);
+            if (!parts.length) return;
+            const placeholders = parts.map((part, idx) => {
+              const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
+              const finalIdx = memberIdx >= 0 ? memberIdx : primaryMemberIndex;
+              const foundMember = groupAiMembers[finalIdx];
+              const foundChar = foundMember?.character;
+              return {
+                id: placeholderId + idx,
+                sender: 'other' as const,
+                senderName: part.rawSpeaker,
+                characterId: foundChar?.id || primary.character!.id,
+                text: part.text,
+                time: '刚刚',
+                type: 'ai-reply' as const,
+                showThinking: false,
+              };
+            });
             setMessages(prev => {
-              if (prev.some(m => m.id === replyMsgId)) return prev.map(m => m.id === replyMsgId ? { ...m, text: clean, senderName: character.name, characterId: character.id } : m);
-              return [...prev, { id: replyMsgId, sender: 'other', senderName: character.name, characterId: character.id, text: clean, time: '刚刚', type: 'ai-reply', showThinking: false }];
+              const cleaned = prev.filter(m => !String(m.id).startsWith(String(placeholderId)));
+              return [...cleaned, ...placeholders];
             });
           },
         });
-        const groupReplyText = cleanGroupGeneratedText(String(result?.text || streamedText || ''));
-        if (!groupReplyText) throw new Error(`${character.name} 没有返回任何内容，请检查 API、模型或网络连接。`);
-        const groupExpanded = expandCharacterReplyMessages(groupReplyText, replyMsgId, {
-          senderName: character.name,
-          characterId: character.id,
-          groupMode: true,
-          extras: {
-            time: formatLineMessageClock({ createdAt: new Date().toISOString() }, chatTimezone, lineTimeDisplayLocale),
-            createdAt: new Date().toISOString(),
-            type: 'ai-reply',
-            aiModel: result.model,
-            matchedWorldbookEntries: result.matchedWorldbookEntries,
-            status: 'delivered',
-            thinkingSummary: result.thinkingSummary,
-            actionDescription: result.actionDescription,
+
+        const finalText = cleanGroupGeneratedText(String(result?.text || streamedText || ''));
+        if (!finalText) {
+          setMessages(prev => prev.map(m => String(m.id).startsWith(String(placeholderId)) ? { ...m, status: 'failed', error: 'AI 没有返回任何内容', text: '回复失败：AI 没有返回任何内容（可点击下方按钮删除）' } : m));
+          showToast('群聊 AI 没有返回内容');
+          setIsTyping(false);
+          return;
+        }
+
+        const parts = splitGroupMultiSpeaker(finalText, primary.member.name, candidateNames, candidateNicknames);
+        if (!parts.length) {
+          setMessages(prev => prev.map(m => String(m.id).startsWith(String(placeholderId)) ? { ...m, status: 'failed', error: 'AI 输出无法解析为群聊消息', text: '回复失败：输出无法解析为群聊消息（可点击下方按钮删除）' } : m));
+          setIsTyping(false);
+          return;
+        }
+
+        const finalMessages = parts.map((part, idx) => {
+          const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
+          const finalIdx = memberIdx >= 0 ? memberIdx : primaryMemberIndex;
+          const foundMember = groupAiMembers[finalIdx];
+          const foundChar = foundMember?.character;
+          return {
+            id: placeholderId + idx,
+            sender: 'other' as const,
+            senderName: foundMember?.member.name || part.rawSpeaker,
+            characterId: foundChar?.id || primary.character!.id,
+            text: part.text,
+            time: '刚刚',
+            type: 'ai-reply' as const,
             showThinking: false,
-            hasThinking: Boolean(result.thinkingSummary),
-            hasAction: Boolean(result.actionDescription),
-            metadata: {
-              characterId: character.id,
-              ...(result.thinkingSummary ? { thinkingSummary: result.thinkingSummary } : {}),
-              ...(result.actionDescription ? { actionDescription: result.actionDescription } : {}),
-            },
-          },
+            status: 'delivered' as const,
+            createdAt: new Date().toISOString(),
+            metadata: { characterId: foundChar?.id || primary.character!.id },
+          };
         });
-        setMessages(prev => spliceExpandedLineReply(prev, replyMsgId, groupExpanded));
-        // 角色真正回复后，用户刚才的消息才变成已读。
+        setMessages(prev => {
+          const cleaned = prev.filter(m => !String(m.id).startsWith(String(placeholderId)));
+          return [...cleaned, ...finalMessages];
+        });
         setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isRead: true } : m));
-        workingMessages = [...workingMessages, { id: replyMsgId, sender: 'other', senderName: character.name, characterId: character.id, text: String(result?.text || '').trim() }];
-        const member = responders[index].member;
-        updateLineGroupMember(activeGroup?.id || '', member.id, {
-          online: true,
-          lastSeenAt: new Date().toISOString(),
-          mood: '刚刚参与群聊',
-          memory: [...(member.memory || []), result.text.slice(0, 160)].slice(-20),
-        });
-        addLineGroupMemory(activeGroup?.id || '', character.name + ' 在群聊中说：' + result.text.slice(0, 180));
+
+        for (let i = 0; i < parts.length; i += 1) {
+          const part = parts[i];
+          const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
+          const finalIdx = memberIdx >= 0 ? memberIdx : primaryMemberIndex;
+          const foundMember = groupAiMembers[finalIdx]?.member;
+          if (foundMember) {
+            updateLineGroupMember(activeGroup?.id || '', foundMember.id, {
+              online: true,
+              lastSeenAt: new Date().toISOString(),
+              mood: '刚刚参与群聊',
+              memory: [...(foundMember.memory || []), part.text.slice(0, 160)].slice(-20),
+            });
+            addLineGroupMemory(activeGroup?.id || '', (foundMember.name || part.rawSpeaker) + ' 在群聊中说：' + part.text.slice(0, 180));
+          }
+        }
         window.dispatchEvent(new CustomEvent('sane333:play-sound', { detail: { kind: 'message' } }));
-      }
+
+        setIsTyping(false);
         return;
       } catch (error) {
         const message = error instanceof Error ? error.message : '群聊 AI 请求失败';
-        // Keep the error path as normal source lines; never embed literal escape text here.
         setMessages(prev => {
-          const hasEmpty = prev.some(m => m.type === 'ai-reply' && m.sender === 'other' && !String(m.text || '').trim());
-          if (hasEmpty) return prev.map(m => m.type === 'ai-reply' && m.sender === 'other' && !String(m.text || '').trim() ? { ...m, status: 'failed', error: message, text: `回复失败：${message}` } : m);
-          return [...prev, { id: Date.now() + 2, sender: 'other', senderName: '系统提示', text: `群聊回复失败：${message}`, time: '刚刚', type: 'system-nudge', status: 'failed', error: message }];
+          // 删占位 + 标为可删除的失败提示
+          const cleaned = prev.filter(m => !String(m.id).startsWith(String(Date.now() + 1)));
+          return [...cleaned, {
+            id: 'group-fail-' + Date.now(),
+            sender: 'other',
+            senderName: '系统提示',
+            text: '群聊回复失败：' + message,
+            time: '刚刚',
+            type: 'system-nudge',
+            status: 'failed',
+            error: message,
+            dismissible: true,
+          } as any];
         });
         showToast(message.length > 72 ? message.slice(0, 72) + '…' : message);
-      } finally {
         setIsTyping(false);
+        return;
       }
     }
 
@@ -2448,6 +2670,7 @@ export function LineConversationView({
         messages: [...messages, newMsg].map(message => ({ ...message, sender: message.sender || 'other' })),
         userMessage: userText,
         isGroup,
+        groupName: '',
         stylePreset: selectedPreset,
         cotTarget: isGroup ? 'group' : 'line',
         cotPreset: undefined,
@@ -2458,7 +2681,7 @@ export function LineConversationView({
           messages.length === 0 && selectedOpeningContext.trim() ? '【角色卡开场白 / 前情提要】\n' + selectedOpeningContext.trim() : '',
            `【预设流程输出】必须依照预设 App 中当前启用的条目顺序逐项执行，并在 <preset_flow>...</preset_flow> 中完整记录每一步的执行结论；不可缩减成 1～3 句总摘要。随后输出角色正文。流程语言遵循角色语言设定；未指定时跟随用户当前消息语言。`,
           lineActionDescriptionsEnabled ? '【线上动作描写：开启】本轮如果有动作/反应必须输出 <action>...</action>，动作与正文分离。' : '【线上动作描写：关闭】不要输出 <action> 标签。',
-        ].filter(Boolean).join('\\n'),
+        ].filter(Boolean).join('\n'),
         typingHabit: [
           typingHabitPreset === 'custom' ? '总体风格：' + typingHabitCustom : '总体风格：' + typingHabitPreset,
           '标点：' + typingPunctuation,
@@ -3460,17 +3683,17 @@ export function LineConversationView({
           '禁止使用固定昵称模板、随机昵称或为了好听而虚构称呼。',
           '如果角色没有形成专属称呼，callMe 返回空字符串。',
           '严格输出 JSON：{"relationship":"...","callMe":"..."}',
-        ].join('\\n'),
+        ].join('\n'),
         userPrompt: [
           '【角色】' + importedCharacter.name,
-          '【角色设定】' + [importedCharacter.description, importedCharacter.personality, importedCharacter.scenario].filter(Boolean).join('\\n'),
+          '【角色设定】' + [importedCharacter.description, importedCharacter.personality, importedCharacter.scenario].filter(Boolean).join('\n'),
           '【当前关系】' + [characterProfile.relationship, characterProfile.callMe].filter(Boolean).join(' / '),
           '【好感度】' + String(statusData.favor || '未知'),
           '【长期记忆】' + (characterMemory.summary || '暂无'),
           ...characterMemory.items.slice(0, 12).map(item => '- ' + item.content),
-          '【世界书】' + (worldbooks.flatMap(book => book.enabled ? book.entries.filter(entry => entry.enabled).map(entry => entry.name + ': ' + entry.content) : []).join('\\n') || '暂无'),
-          '【最近聊天】' + messages.slice(-20).map(message => (message.sender === 'me' ? '用户' : (message.senderName || importedCharacter.name)) + ': ' + (message.text || message.transcript || '')).join('\\n'),
-        ].join('\\n'),
+          '【世界书】' + (worldbooks.flatMap(book => book.enabled ? book.entries.filter(entry => entry.enabled).map(entry => entry.name + ': ' + entry.content) : []).join('\n') || '暂无'),
+          '【最近聊天】' + messages.slice(-20).map(message => (message.sender === 'me' ? '用户' : (message.senderName || importedCharacter.name)) + ': ' + (message.text || message.transcript || '')).join('\n'),
+        ].join('\n'),
         temperature: Math.min(0.8, Number(presetTemp) || 0.7),
         macroNames: { char: importedCharacter.name, user: activePersona?.name },
       });
@@ -3505,7 +3728,7 @@ export function LineConversationView({
           '只根据已经发生的群聊、成员资料、群公告和事件记忆判断关系，不要凭空编造。',
           '可以只输出真实存在且有证据的关系；不确定时写“关系尚未明确”。',
           '严格输出 JSON 数组，每项格式：{"from":"成员","to":"成员","relation":"关系"}。',
-        ].join('\\n'),
+        ].join('\n'),
         userPrompt: [
           '【成员】',
           ...groupAiMembers.map(item => {
@@ -3513,10 +3736,10 @@ export function LineConversationView({
             return member.name + '：' + [member.relationship, member.mood, member.online === false ? '离线' : '在线'].filter(Boolean).join(' / ');
           }),
           '【群公告】' + (groupNoticeText || activeGroup?.announcement || '暂无'),
-          '【已有关系】' + (activeGroup?.relationships || groupRelationships || []).map(item => item.from + ' → ' + item.to + '：' + item.relation).join('\\n'),
-          '【群事件】' + (activeGroup?.events || []).slice(-12).map(item => item.text).join('\\n'),
-          '【最近聊天】' + messages.slice(-30).map(message => (message.sender === 'me' ? '我' : (message.senderName || '角色')) + ': ' + (message.text || '')).join('\\n'),
-        ].join('\\n'),
+          '【已有关系】' + (activeGroup?.relationships || groupRelationships || []).map(item => item.from + ' → ' + item.to + '：' + item.relation).join('\n'),
+          '【群事件】' + (activeGroup?.events || []).slice(-12).map(item => item.text).join('\n'),
+          '【最近聊天】' + messages.slice(-30).map(message => (message.sender === 'me' ? '我' : (message.senderName || '角色')) + ': ' + (message.text || '')).join('\n'),
+        ].join('\n'),
         temperature: 0.55,
         macroNames: { char: importedCharacter?.name || characterProfile.nickname, user: activePersona?.name },
       });
@@ -3596,6 +3819,7 @@ export function LineConversationView({
               ? '群聊继续（全员回复）：请先阅读最近群聊内容，再以你自己的性格、关系和发言习惯，自然接着上一轮群聊说一句或按自己的习惯分条发言。本轮你必须发言，不要返回 [PASS]；不要替其他成员发言，不要输出提示词、思维链标签或 XML 标签。'
               : '群聊继续：请先阅读最近群聊内容，再根据你自己的性格、关系、在线状态和发言习惯，自主判断现在是否适合接话。若适合，请自然接着上一轮群聊说一句或按自己的习惯分条发言；不要替其他成员发言，不要输出提示词、思维链标签或 XML 标签。',
             isGroup: true,
+            groupName: activeGroup?.name || '',
             authorNote: [
               lineConversationRules,
               '这是群聊 Continue，不是单人私聊。当前发言角色：' + character.name,
@@ -3692,12 +3916,13 @@ export function LineConversationView({
         // Keeping the full history preserves the last assistant reply in its correct order.
         userMessage: '请接着角色上一条消息自然继续，不要重复已经说过的内容。',
         isGroup,
+        groupName: isGroup ? (activeGroup?.name || '') : '',
         authorNote: [
           lineConversationRules,
           '这是 Continue：请自然接着角色上一条未说完的内容继续。',
-          lastOther?.text ? '【上一条角色消息】\\n' + lastOther.text : '',
+          lastOther?.text ? '【上一条角色消息】\n' + lastOther.text : '',
           '不要重复上一条已经说过的内容，也不要突然改变话题；像真实聊天一样自然补完。',
-        ].filter(Boolean).join('\\n'),
+        ].filter(Boolean).join('\n'),
         statusBarPreset: turnStatusPreset,
         stylePreset: activeCotPreset?.title || selectedPreset,
         cotTarget: isGroup ? 'group' : 'line',
@@ -4017,6 +4242,7 @@ export function LineConversationView({
               ],
               userMessage: '我给你发了一张图片，请看看这张图片并自然回应。',
               isGroup,
+              groupName: '',
               authorNote: lineConversationRules,
               statusBarPreset: turnStatusPreset,
               stylePreset: activeCotPreset?.title || selectedPreset,
@@ -4219,7 +4445,8 @@ export function LineConversationView({
         messages: messages.slice(0, previousUserIndex >= 0 ? previousUserIndex : targetIndex).map(message => ({ ...message, sender: message.sender || 'other' })),
         userMessage: previousUser || '继续当前对话',
         isGroup,
-        authorNote: [lineConversationRules, '重新生成要求：' + instruction + '；这次只重新生成被选中的这一条消息，不要额外生成其他消息。'].filter(Boolean).join('\\n'),
+        groupName: isGroup ? (activeGroup?.name || '') : '',
+        authorNote: [lineConversationRules, '重新生成要求：' + instruction + '；这次只重新生成被选中的这一条消息，不要额外生成其他消息。'].filter(Boolean).join('\n'),
         statusBarPreset: turnStatusPreset,
         stylePreset: activeCotPreset?.title || selectedPreset,
         cotTarget: isGroup ? 'group' : 'line',
@@ -4416,14 +4643,23 @@ export function LineConversationView({
                   <div className={`w-[38px] h-[38px] rounded-full bg-[#f1f1f2] border border-[#ededee] flex items-center justify-center overflow-hidden shrink-0 group-hover:scale-105 group-hover:ring-2 group-hover:ring-[#d4aab5]/50 transition-all ${
                     nudgeAvatar ? 'scale-110 ring-2 ring-[#d4aab5]' : ''
                   }`}>
-                    {(isGroup ? activeGroup?.avatar : importedCharacter?.avatar) ? (
-                      <img src={(isGroup ? activeGroup?.avatar : importedCharacter?.avatar) || ''} alt={isGroup ? contactName : characterProfile.nickname} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    ) : (
-                      <svg className="w-6 h-6 text-[#999]" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <circle cx="12" cy="8" r="4" />
-                      <path d="M4 21c.8-4 3.5-6 8-6s7.2 2 8 6" />
-                    </svg>
-                    )}
+                    {(() => {
+                      const headerAvatar = isGroup
+                        ? (activeGroup?.avatar || groupAiMembers[0]?.character?.avatar || '')
+                        : (importedCharacter?.avatar || '');
+                      const headerName = isGroup
+                        ? (activeGroup?.avatar ? contactName : (groupAiMembers[0]?.character?.name || contactName))
+                        : characterProfile.nickname;
+                      if (headerAvatar) {
+                        return <img src={headerAvatar} alt={headerName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />;
+                      }
+                      return (
+                        <svg className="w-6 h-6 text-[#999]" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <circle cx="12" cy="8" r="4" />
+                          <path d="M4 21c.8-4 3.5-6 8-6s7.2 2 8 6" />
+                        </svg>
+                      );
+                    })()}
                   </div>
                   <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-[#b9d2c1] border border-white" />
                   </div>
@@ -4919,10 +5155,18 @@ export function LineConversationView({
 
           if (msg.type === 'system-nudge') {
             return (
-              <div key={msg.id} data-line-message-id={msg.id} className="flex justify-center my-1.5 animate-in fade-in">
-                <span className="text-[10px] text-[#999b9f] bg-[#f5f5f6] border border-[#ececee] px-3 py-1 rounded-full shadow-2xs">
+              <div key={msg.id} data-line-message-id={msg.id} className="flex justify-center my-1.5 animate-in fade-in items-center gap-1.5">
+                <span className={`text-[10px] px-3 py-1 rounded-full shadow-2xs ${msg.status === 'failed' ? 'text-[#8b5d68] bg-[#fff7f8] border border-[#ead9de]' : 'text-[#999b9f] bg-[#f5f5f6] border border-[#ececee]'}`}>
                   {msg.text}
                 </span>
+                {msg.status === 'failed' && (
+                  <button
+                    type="button"
+                    onClick={() => setMessages(prev => prev.filter(m => m.id !== msg.id))}
+                    className="text-[9px] text-[#a66d7b] hover:text-[#8b5d68] px-1.5 py-0.5 rounded border border-[#ead9de] hover:bg-white cursor-pointer"
+                    title="删除这条失败消息"
+                  >删除</button>
+                )}
               </div>
             );
           }
@@ -4937,7 +5181,9 @@ export function LineConversationView({
           const sameGroupSpeakerAsPrevious = Boolean(isGroup && !isMe && previousMessage && previousMessage.sender !== 'me' && previousMessage.type !== 'system-nudge' && msg.type !== 'system-nudge' && previousCharacterKey && previousCharacterKey === currentCharacterKey);
           const groupMessageMember = isGroup && !isMe
             ? (messageCharacterId
-                ? safeGroupMembers.find(member => String(member.characterId || '').trim() === messageCharacterId) || null
+                ? safeGroupMembers.find(member => String(member.characterId || '').trim() === messageCharacterId) ||
+                  safeGroupMembers.find(member => String(member.npcId || '').trim() === messageCharacterId) ||
+                  null
                 : safeGroupMembers.find(member =>
                     [member.nickname, member.name].filter(Boolean).some(name => String(name).trim() === messageSenderName)
                   ) || null)
@@ -4945,16 +5191,47 @@ export function LineConversationView({
           const groupMessageCharacter = isGroup && !isMe
             ? (messageCharacterId
                 ? importedCharacters.find(character => String(character.id || '').trim() === messageCharacterId) ||
-                  importedCharacters.find(character => String(character.id || '').trim() === String(groupMessageMember?.characterId || '').trim()) || null
+                  importedCharacters.find(character => String(character.id || '').trim() === String(groupMessageMember?.characterId || '').trim()) ||
+                  (() => {
+                    // NPC: resolve by npcId match so we can use the NPC's avatar/name even without a bound character
+                    const npc = allNpcs.find(n => String(n.id || '').trim() === messageCharacterId)
+                      || (groupMessageMember ? allNpcs.find(n => n.id === groupMessageMember.npcId) : null);
+                    if (!npc) return null;
+                    const bound = importedCharacters.find(c => c.id === npc.boundCharacterId);
+                    const npcAvatar = npc.avatar || (bound ? bound.avatar : '') || '';
+                    const npcDesc = [npc.identity, npc.personality, npc.background].filter(Boolean).join('\n') || (bound ? bound.description : '') || '';
+                    return {
+                      id: npc.id,
+                      name: npc.name,
+                      avatar: npcAvatar,
+                      description: npcDesc,
+                    } as ImportedCharacter;
+                  })()
                 : importedCharacters.find(character =>
                     String(character.id || '').trim() === String(groupMessageMember?.characterId || '').trim()
                   ) || importedCharacters.find(character =>
                     [character.name, groupMessageMember?.name, groupMessageMember?.nickname].filter(Boolean).some(name => String(name).trim() === messageSenderName)
                   ) || null)
             : null;
-          // Prefer the character card's original avatar. If identity cannot be resolved,
-          // show the neutral placeholder instead of borrowing an unrelated member avatar.
-          const groupMessageAvatar = groupMessageCharacter?.avatar || '';
+          // Fallback: if groupMessageCharacter is still null but senderName matches an NPC name, resolve it
+          let _npcFallback: ImportedCharacter | null = null;
+          if (isGroup && !isMe && messageSenderName && !groupMessageCharacter) {
+            const _npc = allNpcs.find(n => n.name === messageSenderName);
+            if (_npc) {
+              const _bound = importedCharacters.find(c => c.id === _npc.boundCharacterId);
+              const fbAvatar = _npc.avatar || (_bound ? _bound.avatar : '') || '';
+              const fbDesc = [_npc.identity, _npc.personality, _npc.background].filter(Boolean).join('\n') || (_bound ? _bound.description : '') || '';
+              _npcFallback = {
+                id: _npc.id,
+                name: _npc.name,
+                avatar: fbAvatar,
+                description: fbDesc,
+              } as ImportedCharacter;
+            }
+          }
+          const groupMessageAvatar = isGroup
+            ? (_npcFallback?.avatar || groupMessageCharacter?.avatar || groupMessageMember?.avatar || '')
+            : (importedCharacter?.avatar || '');
           const thinkingContent = msg.thinkingSummary || msg.metadata?.thinkingSummary || msg.thinking || msg.metadata?.thinking || '';
           const hasThinking = Boolean(String(thinkingContent).trim()) && (isGroup || showChainOfThoughtInChat);
           const cotLabel = getActivePromptPreset(isGroup ? 'group' : 'single')?.name || '预设流程';
@@ -5054,6 +5331,7 @@ export function LineConversationView({
 
               {/* Other Avatar */}
               {!isMe && !(isGroup && sameGroupSpeakerAsPrevious) && (
+                <>
                 <div
                   onClick={() => {
                     if (isGroup) {
@@ -5074,20 +5352,29 @@ export function LineConversationView({
                       handleMessageAvatarDoubleClick(msg.senderName || characterProfile.nickname);
                     }
                   }}
-                  className={`w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 self-end mb-0.5 cursor-pointer hover:opacity-80 active:scale-95 transition-all ${
+                  className={`w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 self-end mb-1 cursor-pointer hover:opacity-80 active:scale-95 transition-all ${
                     nudgeAvatar ? 'scale-110 ring-2 ring-[#d4aab5]' : ''
                   }`}
                   title={isGroup ? `单击查看${msg.senderName || characterProfile.nickname}心声，双击@该成员` : '单击打开状态卡，双击拍一拍'}
                 >
-                  {(isGroup ? groupMessageAvatar : importedCharacter?.avatar) ? (
-                    <img src={(isGroup ? groupMessageAvatar : importedCharacter?.avatar) || ''} alt={msg.senderName || characterProfile.nickname} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  ) : (
-                    <svg className="w-5 h-5 text-[#999]" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <circle cx="12" cy="8" r="4" />
-                    <path d="M4 21c.8-4 3.5-6 8-6s7.2 2 8 6" />
-                  </svg>
-                  )}
+                  {(() => {
+                    const avatarSrc = isGroup
+                      ? (groupMessageAvatar || '')
+                      : (importedCharacter?.avatar || '');
+                    const senderLabel = isGroup
+                      ? (_npcFallback?.name || groupMessageCharacter?.name || groupMessageMember?.nickname || groupMessageMember?.name || msg.senderName || characterProfile.nickname)
+                      : (msg.senderName || characterProfile.nickname);
+                    return avatarSrc ? (
+                      <img src={avatarSrc} alt={senderLabel} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <svg className="w-5 h-5 text-[#999]" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <circle cx="12" cy="8" r="4" />
+                        <path d="M4 21c.8-4 3.5-6 8-6s7.2 2 8 6" />
+                      </svg>
+                    );
+                  })()}
                 </div>
+                </>
               )}
 
               {/* Bubble content container */}
@@ -5503,7 +5790,7 @@ export function LineConversationView({
                       {/* 群聊角色名放在气泡上方，避免显示在气泡下方显得重复累赘 */}
                       {isGroup && !isMe && !sameGroupSpeakerAsPrevious && msg.senderName && (
                         <div className="text-[10px] leading-tight text-[#9a777f] px-1 mb-0.5 font-medium">
-                          {groupMessageCharacter?.name || groupMessageMember?.nickname || groupMessageMember?.name || msg.senderName}
+                          {_npcFallback?.name || groupMessageCharacter?.name || groupMessageMember?.nickname || groupMessageMember?.name || msg.senderName}
                         </div>
                       )}
                       {/* 引用回复预览 (Quoted message) */}
@@ -5564,7 +5851,15 @@ export function LineConversationView({
                       setContextMenuMsg(msg);
                     }}
                   >
-                    <div className="font-semibold">回复失败</div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-semibold">回复失败</div>
+                      <button
+                        type="button"
+                        onClick={() => setMessages(prev => prev.filter(m => m.id !== msg.id))}
+                        className="text-[9px] text-[#a66d7b] hover:text-[#8b5d68] px-1.5 py-0.5 rounded border border-[#ead9de] hover:bg-white cursor-pointer"
+                        title="删除这条失败消息"
+                      >删除</button>
+                    </div>
                     <div className="mt-1 text-[9px] text-[#9a6b75]">失败原因</div>
                     <div className="mt-0.5 font-mono text-[9px] leading-relaxed break-words text-[#9a6b75]">
                       {msg.error || '未提供错误详情'}
@@ -9303,7 +9598,8 @@ export function LineConversationView({
           const npc = allNpcs.find(item => item.id === key.slice(4));
           if (!npc) return null;
           const bound = importedCharacters.find(item => item.id === npc.boundCharacterId);
-          return { key, name: npc.name, avatar: npc.avatar || bound?.avatar || '', kind: 'NPC' as const };
+          const npcAv = npc.avatar || (bound ? bound.avatar : '') || '';
+          return { key, name: npc.name, avatar: npcAv, kind: 'NPC' as const };
         }).filter(Boolean) as Array<{ key: string; name: string; avatar: string; kind: '角色' | 'NPC' }>;
 
         const inviteableCharacters = importedCharacters.filter(c =>
@@ -9359,6 +9655,7 @@ export function LineConversationView({
                       if (!npc || !npc.boundCharacterId) continue;
                       if (members.some(m => m.npcId === npc.id)) continue;
                       const bound = importedCharacters.find(item => item.id === npc.boundCharacterId);
+                      const av = npc.avatar || (bound ? bound.avatar : '') || '';
                       members.push({
                         id: npc.id,
                         kind: 'npc',
@@ -9368,7 +9665,7 @@ export function LineConversationView({
                         nickname: npc.name,
                         role: 'member',
                         muted: false,
-                        avatar: npc.avatar || bound?.avatar || '',
+                        avatar: av,
                       });
                       added += 1;
                     }
@@ -9452,7 +9749,7 @@ export function LineConversationView({
                     const checked = groupInviteSelected.includes(key);
                     const bound = importedCharacters.find(item => item.id === npc.boundCharacterId);
                     const isBound = Boolean(npc.boundCharacterId && (bound || npc.boundCharacterName));
-                    const av = npc.avatar || bound?.avatar;
+                    const av = npc.avatar || (bound ? bound.avatar : '');
                     return (
                       <button
                         key={npc.id}
