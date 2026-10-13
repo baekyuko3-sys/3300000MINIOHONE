@@ -81,6 +81,7 @@ export interface AiReplyInput {
   stylePreset?: string;
   typingHabit?: string;
   cotTarget?: 'line' | 'offline' | 'group';
+  presetOutputEnabled?: boolean;
   cotPreset?: Pick<CotPreset, 'id' | 'title' | 'template' | 'tag'>;
   statusBarPreset?: Pick<StatusBarPreset, 'name' | 'promptSuffix' | 'regex' | 'html'>;
   temperature?: number;
@@ -442,8 +443,9 @@ export function buildCharacterSystemPrompt(input: AiReplyInput): string {
   // Preset App rules are the active generation preset; legacy COT is opt-in only.
   const cotPreset = input.cotPreset;
   const presetScope: PromptPresetScope = input.cotTarget === 'offline' ? 'offline' : input.isGroup ? 'group' : 'single';
-  const appPresetInstructions = buildPromptPresetInstructions(presetScope);
-  const presetFlowSteps = getPromptPresetFlowSteps(presetScope);
+  const presetOutputEnabled = input.presetOutputEnabled !== false;
+  const appPresetInstructions = presetOutputEnabled ? buildPromptPresetInstructions(presetScope) : '';
+  const presetFlowSteps = presetOutputEnabled ? getPromptPresetFlowSteps(presetScope) : [];
   const applicableWorldBooks = getApplicableWorldBooks(input);
   const scopedInput = { ...input, worldbooks: applicableWorldBooks };
   const scanDepth = Math.max(1, Math.min(50, Math.max(
@@ -548,7 +550,7 @@ export function buildCharacterSystemPrompt(input: AiReplyInput): string {
     '',
     input.stylePreset ? '【聊天风格预设】\n' + input.stylePreset : '【聊天风格预设】自然、沉浸、像真实聊天。',
     appPresetInstructions,
-    [
+    presetOutputEnabled ? [
       '【预设执行流程｜仅使用预设 App】',
       '当前生效预设的每个已启用条目都必须按顺序实际执行。先在 <preset_flow>...</preset_flow> 内输出完整的逐步执行记录，再输出角色正文。',
       '折叠区域展示的是预设执行记录：必须逐项列出本轮预设中的全部步骤，保留步骤名称和顺序；每步写明与当前消息相关的判断结论及该规则如何落实。不能只写总摘要、不能跳过步骤、不能把角色正文复制到流程里。',
@@ -558,6 +560,7 @@ export function buildCharacterSystemPrompt(input: AiReplyInput): string {
       '【本轮必须执行的预设步骤】',
       ...presetFlowSteps.map((step, index) => (index + 1) + '. ' + step.name + '\n规则内容：' + step.content)
     ].join('\n'),
+ : '',
     input.authorNote ? '【作者注释】\n' + input.authorNote : '【作者注释】无。',
     cotPreset ? [
       '【COT 角色回复决策器】先完成角色判断，再输出角色消息：结合当前消息与最近上下文 → 角色设定/关系 → 用户真实意图 → 角色情绪与立场 → 决定自然回应方式与长度 → 检查 OOC/未知信息/是否替用户行动。不要展示隐藏推理。',
@@ -577,7 +580,7 @@ export function buildCharacterSystemPrompt(input: AiReplyInput): string {
     '不要因为旧消息里出现过的问题、请求或关键词，就再次回答那个旧问题。',
     '',
     '【输出约束】',
-    '只使用预设 App 的规则执行流程，不要把独立 COT 当成预设。必须在 <preset_flow>...</preset_flow> 中逐项展示本轮所有启用条目的执行记录，保留完整步骤名称与顺序，并说明本轮的具体落实结论；不能只给摘要。不要输出私密逐字思维链。流程使用角色明确配置的语言；没有明确配置时跟随当前用户消息语言，中文对话默认简体中文。随后把角色真正发送的内容单独放进 <message>...</message>，绝不把流程内容混进正文。',
+    presetOutputEnabled ? '只使用预设 App 的规则执行流程，不要把独立 COT 当成预设。必须在 <preset_flow>...</preset_flow> 中逐项展示本轮所有启用条目的执行记录，保留完整步骤名称与顺序，并说明本轮的具体落实结论；不能只给摘要。不要输出私密逐字思维链。流程使用角色明确配置的语言；没有明确配置时跟随当前用户消息语言，中文对话默认简体中文。随后把角色真正发送的内容单独放进 <message>...</message>，绝不把流程内容混进正文。' : '预设 App 流程已关闭：不要执行或输出 <preset_flow>，直接输出正常角色正文。',
     '不要描述用户尚未明确做出的动作。',
     '不要把聊天回复写成旁白长文；保持手机消息的阅读节奏。',
     LINE_VROOM_CARD_RULE,
@@ -598,7 +601,7 @@ export function buildCharacterSystemPrompt(input: AiReplyInput): string {
     ].join('\n') : '当前没有额外的聊天打字习惯设置。',
     '',
     '【输出协议】',
-    '输出顺序固定为：完整预设执行记录 <preset_flow>...</preset_flow>，然后是角色正文 <message>...</message>。折叠开关只影响前端显示，不改变预设执行；不要输出【COT】、[COT]、<cot>、<think> 或其他流程标签作为正文内容。',
+    presetOutputEnabled ? '输出顺序固定为：完整预设执行记录 <preset_flow>...</preset_flow>，然后是角色正文 <message>...</message>。不要输出【COT】、[COT]、<cot>、<think> 或其他流程标签作为正文内容。' : '预设流程关闭时，直接输出角色正文，不要输出 <preset_flow>、【COT】、[COT]、<cot>、<think> 或其他流程标签。',
     input.authorNote?.includes('【线上动作描写：开启】')
       ? '动作描写开启：如果角色这一轮有自然动作/反应，输出一条简短具体的 <action>...</action>；不要把动作写成长篇旁白。'
       : '动作描写关闭：不要输出 <action>。',
