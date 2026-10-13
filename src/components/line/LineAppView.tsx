@@ -1974,7 +1974,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-[11px] font-semibold text-[#333] truncate">{persona.name || '未命名人设'} {persona.id === activePersonaId && <span className="text-[#ae7e89]">· 当前</span>}</div>
-                    <div className="text-[9px] text-[#aaa] truncate">{[persona.age, persona.profession].filter(Boolean).join(' · ') || '未填写基本信息'} · {persona.boundCharacterIds.length} 个绑定角色</div>
+                    <div className="text-[9px] text-[#aaa] truncate">{[persona.age, persona.profession].filter(Boolean).join(' · ') || '未填写基本信息'} · {(Array.isArray(persona.boundCharacterIds) ? persona.boundCharacterIds.length : 0)} 个绑定角色</div>
                   </div>
                   <span className="text-[#ccc] text-lg">›</span>
                 </button>
@@ -2099,7 +2099,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                     </div>
                     <div className="mt-5 text-[17px] font-semibold truncate">{persona.name || '未命名人设'}</div>
                     <div className={`mt-1 text-[9px] truncate ${index === personaEditorIndex ? 'text-white/55' : 'text-[#aaa]'}`}>
-                      {[persona.age, persona.profession].filter(Boolean).join(' · ') || '还没有基本资料'} · {persona.boundCharacterIds.length} 个角色
+                      {[persona.age, persona.profession].filter(Boolean).join(' · ') || '还没有基本资料'} · {(Array.isArray(persona.boundCharacterIds) ? persona.boundCharacterIds.length : 0)} 个角色
                     </div>
                   </button>
                 ))}
