@@ -5788,9 +5788,9 @@ export function LineConversationView({
                   <div className="relative">
                     <div className={`flex flex-col gap-1 ${isMe ? 'items-end' : 'items-start'}`}>
                       {/* 群聊角色名放在气泡上方，避免显示在气泡下方显得重复累赘 */}
-                      {isGroup && !isMe && !sameGroupSpeakerAsPrevious && msg.senderName && (
+                      {isGroup && !isMe && !sameGroupSpeakerAsPrevious && (
                         <div className="text-[10px] leading-tight text-[#9a777f] px-1 mb-0.5 font-medium">
-                          {_npcFallback?.name || groupMessageCharacter?.name || groupMessageMember?.nickname || groupMessageMember?.name || msg.senderName}
+                          {_npcFallback?.name || groupMessageCharacter?.name || groupMessageMember?.nickname || groupMessageMember?.name || msg.senderName || '群成员'}
                         </div>
                       )}
                       {/* 引用回复预览 (Quoted message) */}
