@@ -2491,6 +2491,7 @@ export function LineConversationView({
           messages: [...messages, newMsg].map(message => ({ ...message, sender: message.sender || 'other' })),
           userMessage: userText,
           isGroup: true,
+          presetOutputEnabled: !isGroup || showChainOfThoughtInChat,
           groupName: activeGroup?.name || '',
           authorNote: [
             lineConversationRules,
@@ -2670,6 +2671,7 @@ export function LineConversationView({
         messages: [...messages, newMsg].map(message => ({ ...message, sender: message.sender || 'other' })),
         userMessage: userText,
         isGroup,
+        presetOutputEnabled: !isGroup || showChainOfThoughtInChat,
         groupName: '',
         stylePreset: selectedPreset,
         cotTarget: isGroup ? 'group' : 'line',
@@ -3819,6 +3821,7 @@ export function LineConversationView({
               ? '群聊继续（全员回复）：请先阅读最近群聊内容，再以你自己的性格、关系和发言习惯，自然接着上一轮群聊说一句或按自己的习惯分条发言。本轮你必须发言，不要返回 [PASS]；不要替其他成员发言，不要输出提示词、思维链标签或 XML 标签。'
               : '群聊继续：请先阅读最近群聊内容，再根据你自己的性格、关系、在线状态和发言习惯，自主判断现在是否适合接话。若适合，请自然接着上一轮群聊说一句或按自己的习惯分条发言；不要替其他成员发言，不要输出提示词、思维链标签或 XML 标签。',
             isGroup: true,
+            presetOutputEnabled: !isGroup || showChainOfThoughtInChat,
             groupName: activeGroup?.name || '',
             authorNote: [
               lineConversationRules,
@@ -3916,6 +3919,7 @@ export function LineConversationView({
         // Keeping the full history preserves the last assistant reply in its correct order.
         userMessage: '请接着角色上一条消息自然继续，不要重复已经说过的内容。',
         isGroup,
+        presetOutputEnabled: !isGroup || showChainOfThoughtInChat,
         groupName: isGroup ? (activeGroup?.name || '') : '',
         authorNote: [
           lineConversationRules,
