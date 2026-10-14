@@ -1,3 +1,5 @@
+import { generateCreativeText, resolveChannelAiSettings } from '../ai/aiEngine';
+import { buildNpcRuntimeContext } from './npcContext';
 import { readPersistentState } from './usePersistentState';
 import type { SaneNpc } from './npcs';
 
@@ -83,6 +85,47 @@ export function setNpcFriendship(npcId: string, personaId: string, enabled: bool
   const next = links.filter(item => !(item.npcId === npcId && item.personaId === personaId));
   if (enabled) next.push({ npcId, personaId });
   window.localStorage.setItem(FRIENDSHIP_KEY, JSON.stringify(next));
+}
+
+/** Ask the model whether a specific social event plausibly makes the NPC want to add this persona. Cooldowns prevent repetitive requests. */
+export async function considerNpcFriendRequest(input: {
+  npc: SaneNpc;
+  personaId: string;
+  personaName: string;
+  source: Exclude<NpcFriendRequestSource, 'user-initiated'>;
+  sourceLabel: string;
+  eventContext: string;
+}): Promise<NpcFriendRequest | null> {
+  if (!canNpcConsiderFriendRequest(input.npc.id, input.personaId)) return null;
+  if (!input.npc.active) return null;
+  try {
+    const settings = resolveChannelAiSettings('moments');
+    const result = await generateCreativeText({
+      settings: { ...settings, maxOutputTokens: 80 },
+      systemPrompt: [
+        '你在判断一个独立 NPC 是否会自然地想添加某人为 LINE 好友。',
+        buildNpcRuntimeContext(input.npc, 'online-chat'),
+        '只输出 JSON：{"wantsToAdd":true或false,"message":"申请附言"}。',
+        '判断必须符合 NPC 自己的性格、关系、记忆与事件。不要为了推动剧情而强行想加好友。',
+        '刚见过一面、普通寒暄、没有兴趣或信任基础时通常为 false。已经是好友或最近申请过则不要申请。',
+      ].join('\\n\\n'),
+      userPrompt: '目标用户人设：' + input.personaName + '\\n事件来源：' + input.sourceLabel + '\\n事件经过：' + input.eventContext.slice(-2200),
+      temperature: 0.35,
+    });
+    const json = result.match(/\\{[\\s\\S]*\\}/)?.[0];
+    if (!json) return null;
+    const parsed = JSON.parse(json) as { wantsToAdd?: boolean; message?: string };
+    if (parsed.wantsToAdd !== true) return null;
+    return createNpcFriendRequest({
+      npc: input.npc,
+      personaId: input.personaId,
+      source: input.source,
+      sourceLabel: input.sourceLabel,
+      message: String(parsed.message || '最近和你相处后，我想认识你多一点。').slice(0, 500),
+    });
+  } catch {
+    return null;
+  }
 }
 
 export function canNpcConsiderFriendRequest(npcId: string, personaId: string): boolean {
