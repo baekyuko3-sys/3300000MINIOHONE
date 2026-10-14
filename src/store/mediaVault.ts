@@ -19,14 +19,14 @@ function openDb(): Promise<IDBDatabase> {
 
   dbPromise = new Promise((resolve, reject) => {
     const request = window.indexedDB.open(DB_NAME, DB_VERSION);
-    request.onerror = () => reject(request.error || new Error('MEDIA_DB_OPEN_FAILED'));
+    request.onerror = () => { dbPromise = null; reject(request.error || new Error('MEDIA_DB_OPEN_FAILED')); };
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: 'id' });
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => { const db = request.result; db.onclose = () => { dbPromise = null; }; resolve(db); };
   });
 
   return dbPromise;
@@ -101,7 +101,7 @@ export async function exportMedia(): Promise<Record<string, string>> {
   return output;
 }
 
-export async function importMedia(records: Record<string, string>): Promise<number> {
+export async function getMediaStats(): Promise<{ count: number; size: number }> {\n  const db = await openDb();\n  const records = await new Promise<MediaRecord[]>((resolve, reject) => {\n    const tx = db.transaction(STORE_NAME, 'readonly');\n    const request = tx.objectStore(STORE_NAME).getAll();\n    request.onsuccess = () => resolve((request.result || []) as MediaRecord[]);\n    request.onerror = () => reject(request.error || new Error('MEDIA_STATS_FAILED'));\n  });\n  return { count: records.length, size: records.reduce((total, record) => total + (record.blob?.size || 0), 0) };\n}\n\nexport async function importMedia(records: Record<string, string>): Promise<number> {
   let count = 0;
   for (const [id, dataUrl] of Object.entries(records || {})) {
     await putMedia(dataUrl, id);
