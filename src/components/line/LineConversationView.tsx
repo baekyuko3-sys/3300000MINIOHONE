@@ -1192,10 +1192,7 @@ export function LineConversationView({
         description: [npcForChat.identity, npcForChat.personality, npcForChat.background, npcForChat.relationship].filter(Boolean).join('\\n'),
         personality: npcForChat.personality || '',
         scenario: npcForChat.background || '',
-        systemPrompt: [
-          boundImportedCharacter?.systemPrompt || '',
-          buildNpcRuntimeContext(npcForChat, 'online-chat'),
-        ].filter(Boolean).join('\\n\\n'),
+        systemPrompt: buildNpcRuntimeContext(npcForChat, 'online-chat'),
         creatorNotes: [boundImportedCharacter?.creatorNotes || '', npcForChat.relationship || ''].filter(Boolean).join('\\n'),
       } as ImportedCharacter)
     : boundImportedCharacter;
