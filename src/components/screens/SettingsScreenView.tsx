@@ -913,7 +913,7 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
             </div>
             <div className="grid grid-cols-2 gap-2 mb-3">
               <div className="p-3 rounded-xl bg-white/55"><div className="text-base font-serif font-bold text-[#292724]">{mediaStats.count}</div><div className="text-[8px] text-[#8b8782]">IndexedDB 媒体文件</div><div className="mt-1 text-[9px] text-[#8b8782]">{prettyBytes(mediaStats.size)}</div></div>
-              <div className="p-3 rounded-xl bg-white/55"><div className="text-base font-serif font-bold text-[#292724]">{browserUsage === null ? '不可用' : prettyBytes(browserUsage)}</div><div className="text-[8px] text-[#8b8782]">浏览器站点总占用</div><div className="mt-1 text-[8px] text-[#8b8782]">含其他站点数据/缓存范围由浏览器决定</div></div>
+              <div className="p-3 rounded-xl bg-white/55"><div className="text-base font-serif font-bold text-[#292724]">{browserUsage === null ? '不可用' : prettyBytes(browserUsage)}</div><div className="text-[8px] text-[#8b8782]">浏览器站点总占用</div><div className="mt-1 text-[8px] text-[#8b8782]">当前站点存储总量，含浏览器统计到的缓存等</div></div>
             </div>
             <label className="mt-2.5 flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-white/55 border border-black/5 text-[9px] text-[#645c55]">
               <span>备份包含 API 密钥</span>
