@@ -559,8 +559,7 @@ export function buildCharacterSystemPrompt(input: AiReplyInput): string {
       '预设流程与角色正文必须分开。<preset_flow> 中只放流程记录；角色实际发送的内容放在 <message>...</message> 中。',
       '【本轮必须执行的预设步骤】',
       ...presetFlowSteps.map((step, index) => (index + 1) + '. ' + step.name + '\n规则内容：' + step.content)
-    ].join('\n'),
- : '',
+    ].join('\n') : '',
     input.authorNote ? '【作者注释】\n' + input.authorNote : '【作者注释】无。',
     cotPreset ? [
       '【COT 角色回复决策器】先完成角色判断，再输出角色消息：结合当前消息与最近上下文 → 角色设定/关系 → 用户真实意图 → 角色情绪与立场 → 决定自然回应方式与长度 → 检查 OOC/未知信息/是否替用户行动。不要展示隐藏推理。',
