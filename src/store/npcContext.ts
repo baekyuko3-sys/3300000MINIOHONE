@@ -1,4 +1,5 @@
 import { readPersistentState } from './usePersistentState';
+import { getCharacterMemory } from './characterMemory';
 import type { CharacterMemory } from './characterMemory';
 import type { ImportedCharacter } from '../data/characterImport';
 import type { ProjectManifest, WorldBook } from '../types';
@@ -105,6 +106,7 @@ export function buildNpcRuntimeContext(
 ): string {
   const books = readPersistentState<WorldBook[]>('phone:worldbooks', []);
   const selectedBooks = collectNpcRuntimeWorldBooks(npc, books, scope);
+  const memory = getCharacterMemory(npc.id, npc.name);
   const enabledEntries = selectedBooks.flatMap(book =>
     book.enabled
       ? book.entries
@@ -125,7 +127,9 @@ export function buildNpcRuntimeContext(
     '兴趣：' + (npc.interests || []).join('、'),
     '个性签名：' + (npc.statusMessage || ''),
     '简介：' + (npc.bio || ''),
-    'NPC 自己的长期记忆（不得与绑定角色记忆混为一谈）：' + (npc.memory || '暂无'),
+    'NPC 自己的长期记忆（不得与绑定角色记忆混为一谈）：' + (memory.summary || npc.memory || '暂无'),
+    ...memory.items.slice(0, 12).map(item => 'NPC 记忆：' + item.content),
+    ...(memory.recentSummaries || []).slice(0, 8).map(item => 'NPC 最近经历：' + item.content),
     'NPC 最近生活：' + (npc.recentLife || '未记录'),
     '绑定角色仅用于关联，不代表 NPC 与其拥有相同人格或经历：' + (npc.boundCharacterName || '未绑定'),
     '【NPC 专属/当前场景适用世界书】\\n' + (enabledEntries.join('\\n\\n') || '暂无适用条目'),
