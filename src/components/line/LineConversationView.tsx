@@ -2646,6 +2646,15 @@ export function LineConversationView({
               memory: [...(foundMember.memory || []), part.text.slice(0, 160)].slice(-20),
             });
             addLineGroupMemory(activeGroup?.id || '', (foundMember.name || part.rawSpeaker) + ' 在群聊中说：' + part.text.slice(0, 180));
+            const speakerCharacter = groupAiMembers[finalIdx]?.character;
+            if (speakerCharacter?.id) {
+              addRecentMemorySummary(
+                speakerCharacter.id,
+                speakerCharacter.name || foundMember.name || part.rawSpeaker,
+                '群聊「' + (activeGroup?.name || contactName) + '」中，' + (foundMember.name || part.rawSpeaker) + '说：' + part.text.slice(0, 240),
+                { source: 'line', importance: 55 },
+              );
+            }
           }
         }
         window.dispatchEvent(new CustomEvent('sane333:play-sound', { detail: { kind: 'message' } }));
