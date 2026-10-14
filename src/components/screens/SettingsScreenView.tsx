@@ -15,7 +15,8 @@ import { clearAiDebugLog, readAiDebugLog, type AiDebugEntry } from '../../store/
 import { listOpenAiCompatibleModels, testAiConnection } from '../../ai/aiEngine';
 import { generateImage, generateSpeech } from '../../ai/mediaEngine';
 import { playAppSound, saveSoundFile, type AppSoundKind } from '../../store/soundManager';
-import { exportMedia, importMedia } from '../../store/mediaVault';
+import { exportMedia, importMedia, getMediaStats } from '../../store/mediaVault';
+import { reportPersistenceIssue } from '../../store/usePersistentState';
 import {
   getBackgroundHeartbeat,
   requestNotificationPermission,
@@ -96,11 +97,35 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
 
   useEffect(() => { const fn=()=>setDebugLog(readAiDebugLog()); window.addEventListener('sane333:ai-debug-changed',fn); return () => window.removeEventListener('sane333:ai-debug-changed',fn); }, []);
 
-  const localStats = useMemo(() => {
-    const data = collectLocalData();
-    const size = new Blob([JSON.stringify(data)]).size;
-    return { keys: Object.keys(data).length, size };
+  const [mediaStats, setMediaStats] = useState<{ count: number; size: number }>({ count: 0, size: 0 });
+  const [browserUsage, setBrowserUsage] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refreshStorageStats = async () => {
+      const data = collectLocalData();
+      try {
+        const stats = await getMediaStats();
+        if (!cancelled) setMediaStats(stats);
+      } catch (error) {
+        reportPersistenceIssue('media-stats', 'IndexedDB 媒体统计失败', error);
+      }
+      try {
+        const estimate = await navigator.storage?.estimate?.();
+        if (!cancelled) setBrowserUsage(typeof estimate?.usage === 'number' ? estimate.usage : null);
+      } catch {
+        if (!cancelled) setBrowserUsage(null);
+      }
+      if (!cancelled) setLocalStats({ keys: Object.keys(data).length, size: new Blob([JSON.stringify(data)]).size });
+    };
+    void refreshStorageStats();
+    return () => { cancelled = true; };
   }, [notice, settings]);
+
+  const [localStats, setLocalStats] = useState(() => {
+    const data = collectLocalData();
+    return { keys: Object.keys(data).length, size: new Blob([JSON.stringify(data)]).size };
+  });
 
   const uploadSound = async (kind: AppSoundKind, file?: File) => {
     if (!file) return;
@@ -263,22 +288,40 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
     if (!file) return;
     try {
       const parsed = JSON.parse(await file.text());
-      const data = parsed?.data;
-      if (!data || typeof data !== 'object') throw new Error('备份文件格式不正确');
-
-      for (const [key, value] of Object.entries(data)) {
-        if (!key.startsWith('phone:') && !key.startsWith('line:')) continue;
-        localStorage.setItem(key, JSON.stringify(value));
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('备份文件格式不正确');
+      if (parsed.version !== undefined && (!Number.isInteger(parsed.version) || parsed.version < 1 || parsed.version > 4)) {
+        throw new Error('不支持这个备份版本；没有修改本机数据');
+      }
+      const data = parsed.data;
+      if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份缺少有效的 data 数据；没有修改本机数据');
+      const entries = Object.entries(data as Record<string, unknown>).filter(([key]) => key.startsWith('phone:') || key.startsWith('line:'));
+      if (!entries.length) throw new Error('备份里没有 phone:/line: 数据；没有修改本机数据');
+      const media = parsed.media === undefined ? {} : parsed.media;
+      if (!media || typeof media !== 'object' || Array.isArray(media)) throw new Error('备份媒体区格式错误；没有修改本机数据');
+      for (const [id, value] of Object.entries(media as Record<string, unknown>)) {
+        if (!id || typeof value !== 'string' || !/^data:[^;,]+(?:;[^,]*)?,/.test(value)) {
+          throw new Error('媒体文件格式无效：' + id + '；没有修改本机数据');
+        }
       }
 
-      if (parsed?.media && typeof parsed.media === 'object') {
-        await importMedia(parsed.media as Record<string, string>);
+      const previous = new Map<string, string | null>();
+      for (const [key] of entries) previous.set(key, localStorage.getItem(key));
+      try {
+        for (const [key, value] of entries) localStorage.setItem(key, JSON.stringify(value));
+        const mediaCount = await importMedia(media as Record<string, string>);
+        if (mediaCount !== Object.keys(media).length) throw new Error('媒体恢复数量不匹配');
+      } catch (restoreError) {
+        for (const [key, value] of previous) {
+          try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch { /* best effort rollback */ }
+        }
+        throw restoreError;
       }
 
       window.dispatchEvent(new Event('sane333:data-restored'));
-      notify('角色、聊天、设置与媒体已恢复；正在重新载入本机项目状态');
+      notify('备份已校验并恢复：' + entries.length + ' 项数据、' + Object.keys(media).length + ' 个媒体文件；正在重新载入');
       window.setTimeout(() => window.location.reload(), 500);
     } catch (error) {
+      reportPersistenceIssue('backup-import', '备份导入失败', error);
       notify(error instanceof Error ? error.message : '恢复失败');
     } finally {
       if (importRef.current) importRef.current.value = '';
@@ -289,7 +332,7 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
     if (backingUp) return;
     setBackingUp(true);
     try {
-      const media = await exportMedia().catch(() => ({} as Record<string, string>));
+      const media = await exportMedia();
       downloadJson(`sane333-full-backup-${Date.now()}.json`, {
         version: 4,
         exportedAt: new Date().toISOString(),
@@ -298,7 +341,8 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
       });
       notify(`完整备份已导出 · ${Object.keys(media).length} 个媒体文件`);
     } catch (error) {
-      notify(error instanceof Error ? error.message : '备份导出失败');
+      reportPersistenceIssue('backup-export', '完整备份导出失败', error);
+      notify('备份导出失败：' + (error instanceof Error ? error.message : '未知错误'));
     } finally {
       setBackingUp(false);
     }
@@ -856,22 +900,26 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
             <div className="flex items-center gap-2 text-[8px] font-mono tracking-[1.5px] text-[#8b8782] mb-3">
               <Database className="w-3.5 h-3.5" /> DATA / BACKUP
             </div>
-            <div className="grid grid-cols-2 gap-2 mb-3">
+            <div className="grid grid-cols-2 gap-2 mb-2">
               <div className="p-3 rounded-xl bg-white/55"><div className="text-lg font-serif font-bold text-[#292724]">{localStats.keys}</div><div className="text-[8px] text-[#8b8782]">本机数据项</div></div>
-              <div className="p-3 rounded-xl bg-white/55"><div className="text-lg font-serif font-bold text-[#292724]">{prettyBytes(localStats.size)}</div><div className="text-[8px] text-[#8b8782]">估算占用</div></div>
+              <div className="p-3 rounded-xl bg-white/55"><div className="text-lg font-serif font-bold text-[#292724]">{prettyBytes(localStats.size)}</div><div className="text-[8px] text-[#8b8782]">JSON 数据估算</div></div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div className="p-3 rounded-xl bg-white/55"><div className="text-base font-serif font-bold text-[#292724]">{mediaStats.count}</div><div className="text-[8px] text-[#8b8782]">IndexedDB 媒体文件</div><div className="mt-1 text-[9px] text-[#8b8782]">{prettyBytes(mediaStats.size)}</div></div>
+              <div className="p-3 rounded-xl bg-white/55"><div className="text-base font-serif font-bold text-[#292724]">{browserUsage === null ? '不可用' : prettyBytes(browserUsage)}</div><div className="text-[8px] text-[#8b8782]">浏览器站点总占用</div><div className="mt-1 text-[8px] text-[#8b8782]">含其他站点数据/缓存范围由浏览器决定</div></div>
             </div>
             <label className="mt-2.5 flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-white/55 border border-black/5 text-[9px] text-[#645c55]">
               <span>备份包含 API 密钥</span>
               <input type="checkbox" checked={includeSecretsInBackup} onChange={e => setIncludeSecretsInBackup(e.target.checked)} />
             </label>
-            <div className="mt-1 text-[8px] text-[#8b8782]">完整备份会同时包含 IndexedDB 中的图片/语音；默认不导出 API 密钥。</div>
+            <div className="mt-1 text-[8px] text-[#8b8782]">完整备份包含本地 phone:/line: JSON 与 IndexedDB 媒体；默认不导出 API 密钥。GitHub 同步只包含 JSON，不包含媒体文件。</div>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={exportFullBackup} disabled={backingUp} className="py-2.5 rounded-xl bg-[#292724] text-white text-[10px] flex items-center justify-center gap-1.5 disabled:opacity-50"><Download className="w-3.5 h-3.5" />{backingUp ? '整理备份…' : '导出完整备份'}</button>
               <button onClick={() => importRef.current?.click()} className="py-2.5 rounded-xl bg-white/75 border border-[rgba(40,36,31,.12)] text-[10px] flex items-center justify-center gap-1.5"><Save className="w-3.5 h-3.5" />导入 / 恢复</button>
             </div>
             <input ref={importRef} type="file" accept=".json" className="hidden" onChange={e => importBackup(e.target.files?.[0])} />
             <div className="mt-2.5 p-3 rounded-xl bg-white/55 border border-[rgba(40,36,31,.1)] space-y-2.5">
-              <div className="flex items-center justify-between"><div><div className="text-[10px] font-semibold">GitHub 数据库</div><div className="text-[8px] text-[#8b8782] mt-0.5">只同步项目 JSON 数据，不使用 Supabase。</div></div><span className="text-[8px] font-mono text-[#8b7560]">{githubConfig.lastSyncedAt ? '已同步' : '未同步'}</span></div>
+              <div className="flex items-center justify-between"><div><div className="text-[10px] font-semibold">GitHub 数据库</div><div className="text-[8px] text-[#8b8782] mt-0.5">只同步 phone:/line: JSON 数据，不包含 IndexedDB 图片、头像或音频；不使用 Supabase。</div></div><span className="text-[8px] font-mono text-[#8b7560]">{githubConfig.lastSyncedAt ? '已同步' : '未同步'}</span></div>
               <div className="grid grid-cols-2 gap-1.5">
                 <input value={githubConfig.owner} onChange={e => saveGithubField({ owner: e.target.value })} placeholder="Owner" className="p-2 bg-white/75 border border-black/5 rounded-lg text-[9px] outline-none" />
                 <input value={githubConfig.repo} onChange={e => saveGithubField({ repo: e.target.value })} placeholder="Repository" className="p-2 bg-white/75 border border-black/5 rounded-lg text-[9px] outline-none" />
