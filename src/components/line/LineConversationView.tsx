@@ -566,6 +566,8 @@ function hasImportedCharacterInStorage(name: string, characterId?: string): bool
 interface LineConversationViewProps {
   contactName: string;
   characterId?: string;
+  /** NPC 独立身份 ID；不可只靠绑定角色 ID 识别 NPC 私聊 */
+  npcId?: string;
   conversationId?: string;
   personaId?: string;
   onSwitchPersona?: () => void;
@@ -592,6 +594,7 @@ interface LineConversationViewProps {
 export function LineConversationView({
   contactName,
   characterId,
+  npcId,
   conversationId,
   personaId,
   onBack,
@@ -1176,9 +1179,26 @@ export function LineConversationView({
   const importedCharacters = Array.isArray(storedImportedCharacters)
     ? storedImportedCharacters.filter((character): character is ImportedCharacter => !!character && typeof character === 'object')
     : [];
-  const importedCharacter = characterId
+  const boundImportedCharacter = characterId
     ? importedCharacters.find(character => character && character.id === characterId) || null
     : importedCharacters.find(character => character && character.name === contactName) || null;
+  const npcForChat = !isGroup && npcId ? getNpcs().find(npc => npc.id === npcId) || null : null;
+  const importedCharacter: ImportedCharacter | null = npcForChat
+    ? ({
+        ...(boundImportedCharacter || ({} as ImportedCharacter)),
+        id: npcForChat.id,
+        name: npcForChat.name,
+        avatar: npcForChat.avatar || boundImportedCharacter?.avatar || '',
+        description: [npcForChat.identity, npcForChat.personality, npcForChat.background, npcForChat.relationship].filter(Boolean).join('\\n'),
+        personality: npcForChat.personality || '',
+        scenario: npcForChat.background || '',
+        systemPrompt: [
+          boundImportedCharacter?.systemPrompt || '',
+          buildNpcRuntimeContext(npcForChat, 'online-chat'),
+        ].filter(Boolean).join('\\n\\n'),
+        creatorNotes: [boundImportedCharacter?.creatorNotes || '', npcForChat.relationship || ''].filter(Boolean).join('\\n'),
+      } as ImportedCharacter)
+    : boundImportedCharacter;
   const characterMemoryForPersona = importedCharacter ? getCharacterMemory(importedCharacter.id, importedCharacter.name) : null;
 
   const [personaLiveWeather, setPersonaLiveWeather] = useState<LineWeatherSnapshot | null>(null);
