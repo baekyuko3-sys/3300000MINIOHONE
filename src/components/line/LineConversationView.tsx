@@ -1223,10 +1223,7 @@ export function LineConversationView({
         // NPC identity takes precedence over the linked character's persona.
         personality: npc.personality || '',
         scenario: npc.background || '',
-        systemPrompt: [
-          bound?.systemPrompt || '',
-          buildNpcRuntimeContext(npc, 'online-chat'),
-        ].filter(Boolean).join('\n\n'),
+        systemPrompt: buildNpcRuntimeContext(npc, 'online-chat'),
         creatorNotes: [bound?.creatorNotes || '', npc.relationship || ''].filter(Boolean).join('\n'),
       } as ImportedCharacter;
     }
