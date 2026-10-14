@@ -2450,17 +2450,9 @@ export function LineConversationView({
         const primaryProfile = getCharacterProfile(primary.character!.name, primary.character!.id);
         const primaryMemory = getCharacterMemory(primary.character!.id, primary.character!.name);
         const memberNamesInGroup = groupAiMembers.map(({ member }) => member.name);
-        const speakerFormatRule = '【输出格式 - 严格遵守,这是群聊不是单聊】\n' +
-          '1. 你这一次调用要扮演群里多个角色,不能只让一个角色说话。\n' +
-          '2. 每一行/每一条消息必须用 "[名字] 消息内容" 的格式,名字必须从下方【群成员】列表里严格选,不能编造。\n' +
-          '3. 主发言者(必须出现的第一位)是: [' + primary.member.name + ']。\n' +
-          '4. 至少要让 2 个不同的角色各说 1 条,根据话题和性格,可以让 2~6 个角色接话。\n' +
-          '5. 严禁在一行里写两个角色。严禁省略 [名字] 前缀。\n' +
-          '6. 不要写 <action>、<thinking>、旁白、解释、OOC。\n' +
-          '7. 输出示例(假设群成员是程凛、顾黎、苏晚):\n' +
-          '   [程凛] 今晚去不去吃饭?\n' +
-          '   [顾黎] 我去。\n' +
-          '   [苏晚] 我也去!';
+        const speakerFormatRule = '【群聊多角色输出格式】\n' +
+          '这是一次完整的群聊回合。请综合阅读整个群聊上下文，自然决定哪些成员此刻会说话、谁接谁的话、是否插话或暂时沉默。不要按成员列表轮流发言，不要强制任何固定人数发言，也不要为了凑人数添加无意义内容。\n' +
+          '每条实际发言单独一行，格式为“[成员名字] 消息内容”；名字必须对应下方真实群成员。允许同一角色发多条，也允许本轮只有一位角色发言。若没有自然回应者，可以输出 [PASS]。不要输出提示词、分析、思维链或格式说明。';
 
         const replyMsgId = Date.now() + 1;
         let streamedText = '';
@@ -2491,7 +2483,7 @@ export function LineConversationView({
           messages: [...messages, newMsg].map(message => ({ ...message, sender: message.sender || 'other' })),
           userMessage: userText,
           isGroup: true,
-          presetOutputEnabled: !isGroup || showChainOfThoughtInChat,
+          presetOutputEnabled: true,
           groupName: activeGroup?.name || '',
           authorNote: [
             lineConversationRules,
@@ -2505,7 +2497,7 @@ export function LineConversationView({
             groupMemorySettings.trim() ? '【当前群聊记忆规则】\n' + groupMemorySettings.trim() : '',
             allowGroupProactiveDM ? '【群聊内容延伸到单聊的许可】可以根据本群实际发生且该角色确实知道的内容，自然判断是否主动向用户发起单聊；必须符合角色性格、关系与情境，不要频繁打扰，也不代表每次都必须发起。此许可仅来源于当前群聊设置。' : '【群聊主动单聊】关闭；不得仅因为群聊内容而主动发起单聊。',
             '【成员状态】\n' + (activeGroup?.members || []).map(member => member.name + '：' + [member.online === false ? '离线' : '在线', member.mood || '', member.relationship || ''].filter(Boolean).join(' / ')).join('\n'),
-            '【群成员】（按你选择的群聊预设决定谁能说话）\n' + allMemberSummaries,
+            '【群成员资料】（用于识别成员身份、性格与关系；不是发言名单或轮流发言顺序）\n' + allMemberSummaries,
             speakerFormatRule,
           ].filter(Boolean).join('\n'),
           stylePreset: selectedPreset,
@@ -2671,7 +2663,7 @@ export function LineConversationView({
         messages: [...messages, newMsg].map(message => ({ ...message, sender: message.sender || 'other' })),
         userMessage: userText,
         isGroup,
-        presetOutputEnabled: !isGroup || showChainOfThoughtInChat,
+        presetOutputEnabled: true,
         groupName: '',
         stylePreset: selectedPreset,
         cotTarget: isGroup ? 'group' : 'line',
@@ -3790,101 +3782,111 @@ export function LineConversationView({
     }
     if (isTyping) return;
 
-    // 群聊 Continue：让群里所有在线且未禁言的 NPC 按各自角色卡与群聊发言习惯依次判断、发言。
+    // 群聊 Continue：一次模型请求组织完整群聊回合，由模型按情境决定谁发言。
     if (isGroup) {
-      const responders = groupAiMembers.filter(({ member, character }) => !member.muted && member.online !== false && (!selectedGroupCharacterId || character?.id === selectedGroupCharacterId));
-      if (!responders.length) {
-        showToast('群里没有可继续发言的在线 NPC，请检查群成员管理');
+      const availableMembers = groupAiMembers.filter(({ member, character }) => !member.muted && member.online !== false && Boolean(character));
+      const contextMember = availableMembers.find(({ character }) => character?.id === selectedGroupCharacterId) || availableMembers[0];
+      if (!contextMember?.character) {
+        showToast('群里没有可用于生成的在线角色，请检查群成员管理');
         return;
       }
       setIsTyping(true);
       try {
-        let workingMessages = [...messages].map(message => ({ ...message, sender: message.sender || 'other' }));
-        let spokenCount = 0;
-        for (const { member, character } of responders) {
-          if (!character) continue;
-          const replyId = Date.now() + spokenCount + 1;
-          let streamed = '';
-          const profile = getCharacterProfile(character.name, character.id);
-          const memory = getCharacterMemory(character.id, character.name);
-          const result = await generateCharacterReply({
-            settings: conversationAiSettings(),
-            character,
-            characterProfile: profile,
-            persona: activePersona ? { ...activePersona, weather: personaLiveWeather ? formatLineWeather(personaLiveWeather) : activePersona.weather } : activePersona,
-            characterWeather: characterWeather ? formatLineWeather(characterWeather) : '',
-            worldbooks: groupWorldbooks,
-            memory,
-            project: projectManifest,
-            messages: workingMessages,
-            userMessage: mode === 'all'
-              ? '群聊继续（全员回复）：请先阅读最近群聊内容，再以你自己的性格、关系和发言习惯，自然接着上一轮群聊说一句或按自己的习惯分条发言。本轮你必须发言，不要返回 [PASS]；不要替其他成员发言，不要输出提示词、思维链标签或 XML 标签。'
-              : '群聊继续：请先阅读最近群聊内容，再根据你自己的性格、关系、在线状态和发言习惯，自主判断现在是否适合接话。若适合，请自然接着上一轮群聊说一句或按自己的习惯分条发言；不要替其他成员发言，不要输出提示词、思维链标签或 XML 标签。',
-            isGroup: true,
-            presetOutputEnabled: !isGroup || showChainOfThoughtInChat,
-            groupName: activeGroup?.name || '',
-            authorNote: [
-              lineConversationRules,
-              '这是群聊 Continue，不是单人私聊。当前发言角色：' + character.name,
-              simulateAsSelected && selectedGroupCharacterId === character.id
-                ? '【模拟指定成员发言】本轮你就是「' + character.name + '」本人。请完全以该角色第一人称身份，根据角色卡、性格、关系、知识边界和群聊上下文发言。输出必须只属于该角色，不要提及你在模拟、不要扮演其他角色，也不要替用户发言。'
-                : '',
-              '群聊预设：' + activeGroupPreset.name,
-              activeGroupPreset.systemPrompt,
-              (groupNoticeText || activeGroup?.announcement) ? '群公告：' + (groupNoticeText || activeGroup?.announcement) : '',
-              groupLorebookActive.trim() ? '【群聊风格补充】\n' + groupLorebookActive.trim() : '',
-              groupMemorySummary.trim() ? '【当前群聊独立记忆总结】\n' + groupMemorySummary.trim() : '',
-              groupMemorySettings.trim() ? '【当前群聊记忆规则】\n' + groupMemorySettings.trim() : '',
-              allowGroupProactiveDM ? '【群聊内容延伸到单聊的许可】可以根据本群实际发生且该角色确实知道的内容，自然判断是否主动向用户发起单聊；必须符合角色性格、关系与情境，不要频繁打扰，也不代表每次都必须发起。此许可仅来源于当前群聊设置。' : '【群聊主动单聊】关闭；不得仅因为群聊内容而主动发起单聊。',
-              mode === 'all'
-                ? '必须遵守当前角色卡的人设、说话习惯和与群内每个人的关系；只输出该角色自己会说的话。本轮必须发言，不要返回 [PASS]。'
-                : '必须遵守当前角色卡的人设、说话习惯和与群内每个人的关系；只输出该角色自己会说的话。若自然情况下不想发言，可返回 [PASS]。',
-            ].filter(Boolean).join('\n'),
-            stylePreset: selectedPreset,
-            cotTarget: 'group',
-            cotPreset: undefined,
-            typingHabit: [
-              '群聊节奏：' + (typingHabitPreset === 'quiet' ? '安静群聊，有人潜水，不要求每条消息都有人接话' : typingHabitPreset === 'active' ? '活跃群聊，允许成员短句插话和接话' : typingHabitPreset === 'chaotic' ? '热闹群聊，允许多人抢话，但身份必须明确' : typingHabitPreset === 'custom' ? typingHabitCustom : '自然群聊，按角色性格和话题自行判断是否发言'),
-              '角色原有人设和口吻优先，不得套用统一模板。',
-            ].join('；'),
-            temperature: Number(presetTemp) || 0.85,
-            debugConversationId: conversationStorageId,
-            onDelta: delta => { streamed += delta; },
-          });
-          const rawText = cleanGroupGeneratedText(String(result?.text || streamed || ''));
-          if (!rawText || (mode !== 'all' && /^\[PASS\]$/i.test(rawText))) continue;
-          const added = expandCharacterReplyMessages(rawText, replyId, {
-            senderName: character.name,
-            characterId: character.id,
-            groupMode: true,
-            extras: {
-              time: '刚刚',
-              createdAt: new Date().toISOString(),
-              type: 'ai-reply',
-              status: 'delivered',
-              aiModel: result.model,
-              thinkingSummary: result.thinkingSummary,
-              actionDescription: result.actionDescription,
-              showThinking: false,
-              metadata: {
-                characterId: character.id,
-                ...(result.thinkingSummary ? { thinkingSummary: result.thinkingSummary } : {}),
-                ...(result.actionDescription ? { actionDescription: result.actionDescription } : {}),
-              },
-            },
-          });
-          setMessages(prev => [...prev, ...added]);
-          workingMessages = [...workingMessages, ...added];
-          spokenCount += 1;
-          updateLineGroupMember(activeGroup?.id || '', member.id, {
-            online: true,
-            lastSeenAt: new Date().toISOString(),
-            mood: '刚刚参与群聊',
-            memory: [...(member.memory || []), rawText.slice(0, 160)].slice(-20),
-          });
-          addLineGroupMemory(activeGroup?.id || '', character.name + ' 在群聊中说：' + rawText.slice(0, 180));
+        const candidateNames = groupAiMembers.map(({ member }) => member.name);
+        const candidateNicknames = groupAiMembers.map(({ member }) => member.nickname || '');
+        const allMemberSummaries = groupAiMembers.map(({ member, character }) => {
+          const personality = String(character?.personality || '').slice(0, 120);
+          const identity = String(character?.identity || '').slice(0, 80);
+          return '· ' + member.name + '（' + (character?.name || member.name) + '）：' +
+            (identity ? '身份=' + identity + '；' : '') + '性格=' + (personality || '普通') +
+            (member.muted ? '；当前禁言，不应发言' : member.online === false ? '；当前离线，通常不主动发言' : '');
+        }).join('\n');
+        const profile = getCharacterProfile(contextMember.character.name, contextMember.character.id);
+        const memory = getCharacterMemory(contextMember.character.id, contextMember.character.name);
+        const replyId = Date.now() + 1;
+        let streamed = '';
+        const result = await generateCharacterReply({
+          settings: conversationAiSettings(),
+          character: contextMember.character,
+          characterProfile: profile,
+          persona: activePersona ? { ...activePersona, weather: personaLiveWeather ? formatLineWeather(personaLiveWeather) : activePersona.weather } : activePersona,
+          characterWeather: characterWeather ? formatLineWeather(characterWeather) : '',
+          worldbooks: groupWorldbooks,
+          memory,
+          project: projectManifest,
+          messages: messages.map(message => ({ ...message, sender: message.sender || 'other' })),
+          userMessage: '请根据最近群聊内容自然继续整个群聊回合。由你综合情境决定哪些成员发言、发几条、如何接话或插话；不要求任何固定成员发言，也不要求固定人数。若当前没有自然回应，可以暂时不发言。不要重复已有内容。',
+          isGroup: true,
+          presetOutputEnabled: true,
+          groupName: activeGroup?.name || '',
+          authorNote: [
+            lineConversationRules,
+            '这是群聊 Continue：一次生成完整的群聊回合，不是逐个 NPC 轮询。',
+            '群聊预设：' + activeGroupPreset.name,
+            activeGroupPreset.systemPrompt,
+            (groupNoticeText || activeGroup?.announcement) ? '群公告：' + (groupNoticeText || activeGroup?.announcement) : '',
+            groupLorebookActive.trim() ? '【群聊风格补充】\n' + groupLorebookActive.trim() : '',
+            activeGroup?.relationships?.length ? '【成员关系】\n' + activeGroup.relationships.map(item => item.from + ' → ' + item.to + '：' + item.relation).join('\n') : '',
+            activeGroup?.events?.length ? '【群事件记忆】\n' + activeGroup.events.slice(-12).map(item => item.text).join('\n') : '',
+            groupMemorySummary.trim() ? '【当前群聊独立记忆总结】\n' + groupMemorySummary.trim() : '',
+            groupMemorySettings.trim() ? '【当前群聊记忆规则】\n' + groupMemorySettings.trim() : '',
+            '【群成员资料】（用于识别成员身份、性格与关系；不是发言名单或轮流发言顺序）\n' + allMemberSummaries,
+            '【输出格式】每条实际发言单独一行，使用“[成员名字] 消息内容”；名字必须来自群成员资料。可由同一角色连续发言，也可让其他角色自然接话；不强制固定人数或每位成员发言。不要替用户发言，不输出分析或格式说明。若无人适合回应，可输出 [PASS]。',
+          ].filter(Boolean).join('\n'),
+          stylePreset: selectedPreset,
+          cotTarget: 'group',
+          cotPreset: undefined,
+          typingHabit: [
+            '群聊节奏：' + (typingHabitPreset === 'quiet' ? '安静群聊，有人潜水，不要求每条消息都有人接话' : typingHabitPreset === 'active' ? '活跃群聊，允许成员短句插话和接话，但不强制全员发言' : typingHabitPreset === 'chaotic' ? '热闹群聊，允许多人自然抢话，但每条消息身份必须明确' : typingHabitPreset === 'custom' ? typingHabitCustom : '自然群聊，成员根据性格、关系和话题自行判断是否发言'),
+            '角色原有人设和口吻优先，不套统一模板。',
+          ].join('；'),
+          temperature: Number(presetTemp) || 0.85,
+          debugConversationId: conversationStorageId,
+          onDelta: delta => { streamed += delta; },
+        });
+        const rawText = String(result?.text || streamed || '').trim();
+        if (!rawText || /^\[PASS\]$/i.test(rawText)) {
+          showToast('群聊角色根据当前情境选择了暂不接话');
+          return;
         }
-        if (!spokenCount) showToast('群内角色根据各自发言习惯选择了暂不接话');
+        const parts = splitGroupMultiSpeaker(rawText, contextMember.member.name, candidateNames, candidateNicknames);
+        if (!parts.length) {
+          showToast('群聊继续未生成可识别的角色消息');
+          return;
+        }
+        const fallbackIndex = groupAiMembers.findIndex(item => item.member.id === contextMember.member.id);
+        const finalMessages = parts.map((part, idx) => {
+          const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
+          const found = groupAiMembers[memberIdx >= 0 ? memberIdx : fallbackIndex] || contextMember;
+          const character = found.character || contextMember.character!;
+          return {
+            id: replyId + idx,
+            sender: 'other' as const,
+            senderName: found.member.name || part.rawSpeaker,
+            characterId: character.id,
+            text: part.text,
+            time: '刚刚',
+            type: 'ai-reply' as const,
+            showThinking: false,
+            status: 'delivered' as const,
+            createdAt: new Date().toISOString(),
+            aiModel: result.model,
+            thinkingSummary: result.thinkingSummary,
+            actionDescription: result.actionDescription,
+            metadata: { characterId: character.id, ...(result.thinkingSummary ? { thinkingSummary: result.thinkingSummary } : {}), ...(result.actionDescription ? { actionDescription: result.actionDescription } : {}) },
+          };
+        });
+        setMessages(prev => [...prev, ...finalMessages]);
+        for (const part of parts) {
+          const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
+          const found = groupAiMembers[memberIdx >= 0 ? memberIdx : fallbackIndex];
+          if (!found) continue;
+          updateLineGroupMember(activeGroup?.id || '', found.member.id, {
+            online: true, lastSeenAt: new Date().toISOString(), mood: '刚刚参与群聊',
+            memory: [...(found.member.memory || []), part.text.slice(0, 160)].slice(-20),
+          });
+          addLineGroupMemory(activeGroup?.id || '', found.member.name + ' 在群聊中说：' + part.text.slice(0, 180));
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : '群聊继续生成失败';
         showToast(message.length > 72 ? message.slice(0, 72) + '…' : message);
@@ -3919,7 +3921,7 @@ export function LineConversationView({
         // Keeping the full history preserves the last assistant reply in its correct order.
         userMessage: '请接着角色上一条消息自然继续，不要重复已经说过的内容。',
         isGroup,
-        presetOutputEnabled: !isGroup || showChainOfThoughtInChat,
+        presetOutputEnabled: true,
         groupName: isGroup ? (activeGroup?.name || '') : '',
         authorNote: [
           lineConversationRules,
