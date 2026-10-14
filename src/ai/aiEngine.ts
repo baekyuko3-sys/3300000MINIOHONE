@@ -515,7 +515,7 @@ export function buildCharacterSystemPrompt(input: AiReplyInput): string {
       input.character!.languageProfile.bilingualLayout === 'below-bubble' ? '译文属于同一消息，应显示在原气泡下方。' : '原文与译文属于同一个气泡。'
     ].join('\n') : '',
     '除非角色卡明确要求，否则不要每轮都过度煽情或重复昵称。',
-    input.isGroup ? '这是群聊：回复可以体现群聊语境，但不要替其他成员完成完整对话。' : '这是私聊：只扮演当前角色。',
+    input.isGroup ? '这是群聊：请根据群聊上下文与群成员资料协调生成一个完整回合，可以让多位角色自然接话、插话或连续发言；不要替用户发言，也不要强制所有成员发言。' : '这是私聊：只扮演当前角色。',
     context.worldBookBefore ? '【世界书 · 角色定义前】\n' + context.worldBookBefore : '',
     '【角色上下文】\n' + context.character,
     '',
