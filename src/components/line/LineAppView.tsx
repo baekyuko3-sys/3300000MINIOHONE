@@ -21,6 +21,7 @@ import {
 import { LineConversationErrorBoundary } from './LineConversationErrorBoundary';
 import { createLineGroup, getLineGroupById } from '../../store/lineGroups';
 import { getNpcs, updateNpc, type SaneNpc } from '../../store/npcs';
+import { getNpcFriendRequests, respondToNpcFriendRequest, setNpcFriendship } from '../../store/npcSocial';
 import { NpcAvatar } from '../NpcAvatar';
 import { VroomImage } from '../VroomImage';
 import { putMedia } from '../../store/mediaVault';
@@ -485,6 +486,8 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   const [groupModalExpandedChars, setGroupModalExpandedChars] = useState<string[]>([]);
 
   const [showFriendModal, setShowFriendModal] = useState(false);
+  const [showNpcRequests, setShowNpcRequests] = useState(false);
+  const [npcRequestRevision, setNpcRequestRevision] = useState(0);
   const [friendSearchQuery, setFriendSearchQuery] = useState('');
   const [friendModalExpandedChars, setFriendModalExpandedChars] = useState<string[]>([]);
   const [showCreateFriendDrawer, setShowCreateFriendDrawer] = useState(false);
@@ -988,7 +991,13 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       .map(f => ({ ...f, note: typeof f.note === 'string' ? f.note : '', pinyin: typeof f.pinyin === 'string' ? f.pinyin : '' }))
     : [];
 
-  // Moments Posts are created by the user and imported characters; start empty.
+  useEffect(() => {
+    const refreshRequests = () => setNpcRequestRevision(value => value + 1);
+    window.addEventListener('sane333:npc-friend-requests-updated', refreshRequests);
+    return () => window.removeEventListener('sane333:npc-friend-requests-updated', refreshRequests);
+  }, []);
+
+    // Moments Posts are created by the user and imported characters; start empty.
   const [momentsPostsRaw, setMomentsPosts] = usePersistentState<any[]>('line:moments-posts', []);
   const momentsPosts = Array.isArray(momentsPostsRaw)
     ? momentsPostsRaw.filter((p): p is Record<string, any> => !!p && typeof p === 'object')
@@ -1604,6 +1613,14 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 title="添加好友"
               >
                 ＋
+              </button>
+              <button
+                onClick={() => { setShowNpcRequests(true); setNpcRequestRevision(value => value + 1); }}
+                className="relative w-[35px] h-[35px] border border-[#e7e7e8] rounded-full flex items-center justify-center text-[13px] text-[#555] hover:bg-[#f7f7f7] cursor-pointer"
+                title="NPC 好友申请"
+              >
+                <UserCheck className="w-4 h-4" />
+                {getNpcFriendRequests().filter(request => request.status === 'pending' && (!effectivePersonaId || request.personaId === effectivePersonaId)).length > 0 && <span className="absolute -right-0.5 -top-0.5 w-2 h-2 rounded-full bg-rose-400" />}
               </button>
             </div>
           </div>
@@ -4441,6 +4458,66 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
           </div>
         </div>
       )}
+
+      {showNpcRequests && (() => {
+        const pendingRequests = getNpcFriendRequests().filter(request => request.status === 'pending' && (!effectivePersonaId || request.personaId === effectivePersonaId));
+        return (
+          <div onClick={() => setShowNpcRequests(false)} className="absolute inset-0 bg-black/25 z-[90] flex items-end">
+            <div onClick={event => event.stopPropagation()} className="w-full max-h-[78%] overflow-y-auto rounded-t-[26px] bg-white p-5 pb-8 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[8px] tracking-[1.8px] font-mono text-[#aaa]">NPC FRIEND REQUESTS</div>
+                  <div className="mt-1 text-[18px] font-semibold text-[#202124]">好友申请</div>
+                  <div className="mt-1 text-[10px] text-[#999]">NPC 会根据相处经历决定是否想认识你；是否成为好友由你决定。</div>
+                </div>
+                <button onClick={() => setShowNpcRequests(false)} className="text-xl text-[#aaa]">×</button>
+              </div>
+              {pendingRequests.length ? pendingRequests.map(request => {
+                const npc = getNpcs().find(item => item.id === request.npcId);
+                if (!npc) return null;
+                const bound = importedCharacters.find(item => item.id === npc.boundCharacterId);
+                return (
+                  <div key={request.id} className="rounded-2xl border border-[#ececef] p-3.5 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-full overflow-hidden bg-[#f3f4f6] shrink-0 grid place-items-center">
+                        {(npc.avatar || bound?.avatar) ? <img src={npc.avatar || bound?.avatar || ''} alt="" className="w-full h-full object-cover" /> : <span>{npc.name.slice(0, 1)}</span>}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-semibold text-[#222]">{npc.name}</div>
+                        <div className="text-[10px] text-[#888]">{request.sourceLabel} · 想添加你</div>
+                      </div>
+                    </div>
+                    <div className="rounded-xl bg-[#f7f7f8] p-3 text-[11px] leading-5 text-[#555]">{request.message || '想认识你多一点。'}</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={() => { respondToNpcFriendRequest(request.id, 'declined'); setNpcRequestRevision(value => value + 1); }} className="h-10 rounded-xl border border-[#e6e6e8] text-[11px] text-[#666]">暂时不接受</button>
+                      <button onClick={() => {
+                        respondToNpcFriendRequest(request.id, 'accepted');
+                        setNpcFriendship(npc.id, request.personaId, true);
+                        const friend: LineFriend = {
+                          name: npc.name, characterId: npc.boundCharacterId, npcId: npc.id, kind: 'npc',
+                          note: 'NPC · 绑定 ' + (npc.boundCharacterName || bound?.name || '角色'),
+                          variantLabel: npc.boundCharacterName || 'NPC', online: true, pinyin: npc.name[0] || '',
+                          relationship: 'new-friend',
+                        };
+                        setFriendsList(previous => previous.some(item => item.npcId === npc.id) ? previous : [friend, ...previous]);
+                        setChatItems(previous => previous.some(chat => chat.npcId === npc.id && chat.personaId === request.personaId) ? previous : [{
+                          id: 'c_' + Date.now(), name: npc.name, characterId: npc.boundCharacterId, npcId: npc.id,
+                          personaId: request.personaId, time: '刚刚', preview: '你们已经成为好友，打个招呼吧',
+                          unread: 0, isPinned: false, isMuted: false, draft: '', isGroup: false,
+                          relationshipContext: request.sourceLabel, openingMode: 'none',
+                          relationship: 'new-friend', variantLabel: npc.boundCharacterName || 'NPC',
+                        }, ...previous]);
+                        setNpcRequestRevision(value => value + 1);
+                        showToast('已接受 ' + npc.name + ' 的好友申请');
+                      }} className="h-10 rounded-xl bg-[#292724] text-white text-[11px]">接受并成为好友</button>
+                    </div>
+                  </div>
+                );
+              }) : <div className="py-10 text-center text-[11px] text-[#999]">目前没有待处理的 NPC 好友申请。</div>}
+            </div>
+          </div>
+        );
+      })()}
 
       {addCharacterChatFriend && (() => {
         const isNpcFriend = Boolean(addCharacterChatFriend.npcId);
