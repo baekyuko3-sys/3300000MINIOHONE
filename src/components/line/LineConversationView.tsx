@@ -2648,6 +2648,7 @@ export function LineConversationView({
         });
         setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isRead: true } : m));
 
+        const friendRequestCheckedNpcIds = new Set<string>();
         for (let i = 0; i < parts.length; i += 1) {
           const part = parts[i];
           const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
@@ -2672,7 +2673,8 @@ export function LineConversationView({
             }
             if (foundMember.npcId || foundMember.kind === 'npc') {
               const speakerNpc = allNpcs.find(item => item.id === foundMember.npcId || item.name === foundMember.name);
-              if (speakerNpc && activePersona?.id) {
+              if (speakerNpc && activePersona?.id && !friendRequestCheckedNpcIds.has(speakerNpc.id)) {
+                friendRequestCheckedNpcIds.add(speakerNpc.id);
                 void considerNpcFriendRequest({
                   npc: speakerNpc,
                   personaId: activePersona.id,
