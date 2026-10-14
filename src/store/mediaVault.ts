@@ -102,10 +102,26 @@ export async function exportMedia(): Promise<Record<string, string>> {
 }
 
 export async function getMediaStats(): Promise<{ count: number; size: number }> {\n  const db = await openDb();\n  const records = await new Promise<MediaRecord[]>((resolve, reject) => {\n    const tx = db.transaction(STORE_NAME, 'readonly');\n    const request = tx.objectStore(STORE_NAME).getAll();\n    request.onsuccess = () => resolve((request.result || []) as MediaRecord[]);\n    request.onerror = () => reject(request.error || new Error('MEDIA_STATS_FAILED'));\n  });\n  return { count: records.length, size: records.reduce((total, record) => total + (record.blob?.size || 0), 0) };\n}\n\nexport async function importMedia(records: Record<string, string>): Promise<number> {
-  let count = 0;
-  for (const [id, dataUrl] of Object.entries(records || {})) {
-    await putMedia(dataUrl, id);
-    count += 1;
-  }
-  return count;
+  const entries = Object.entries(records || {});
+  // Decode every file before opening a write transaction. Invalid media must not
+  // leave a half-imported archive in IndexedDB.
+  const prepared = entries.map(([id, dataUrl]) => {
+    if (!id || typeof dataUrl !== 'string') throw new Error('MEDIA_IMPORT_RECORD_INVALID');
+    return {
+      id,
+      blob: dataUrlToBlob(dataUrl),
+      createdAt: new Date().toISOString(),
+    } satisfies MediaRecord;
+  });
+  if (!prepared.length) return 0;
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    for (const record of prepared) store.put(record);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('MEDIA_IMPORT_FAILED'));
+    tx.onabort = () => reject(tx.error || new Error('MEDIA_IMPORT_ABORTED'));
+  });
+  return prepared.length;
 }
