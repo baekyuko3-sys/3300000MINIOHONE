@@ -487,7 +487,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
 
   const [showFriendModal, setShowFriendModal] = useState(false);
   const [showNpcRequests, setShowNpcRequests] = useState(false);
-  const [npcRequestRevision, setNpcRequestRevision] = useState(0);
+  const [, setNpcRequestRevision] = useState(0);
   const [friendSearchQuery, setFriendSearchQuery] = useState('');
   const [friendModalExpandedChars, setFriendModalExpandedChars] = useState<string[]>([]);
   const [showCreateFriendDrawer, setShowCreateFriendDrawer] = useState(false);
