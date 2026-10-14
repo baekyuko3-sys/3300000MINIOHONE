@@ -1173,7 +1173,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   };
   const visibleMoments = momentsPosts.filter((p) => {
     if (isOwnMoment(p)) return true;
-    const authorKey = p.npcId ? 'npc:' + p.npcId : p.characterId ? 'character:' + p.characterId : '';
+    const authorKey = p.npcId ? 'npc:' + p.npcId : p.characterId ? 'character:' + p.characterId : p.name ? 'character-name:' + p.name : '';
     const viewerKey = 'persona:' + (effectivePersonaId || 'default');
     if (authorKey && isVroomBlockedEdge(viewerKey, authorKey)) return false;
     if (p.visibility === 'self') return false;
@@ -1187,7 +1187,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     if (authorKey) {
       const isFriend = p.npcId
         ? friendsList.some(f => !f.deleted && f.npcId === p.npcId)
-        : friendsList.some(f => !f.deleted && !f.npcId && (f.characterId === p.characterId || f.name === p.name));
+        : friendsList.some(f => !f.deleted && !f.npcId && ((p.characterId && f.characterId === p.characterId) || (p.name && f.name === p.name)));
       if (!isFriend && !isVroomAllowedEdge(viewerKey, authorKey)) return false;
     }
     if (hasBounds) {
