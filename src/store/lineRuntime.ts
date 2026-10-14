@@ -1,4 +1,5 @@
 import type { OfflineEvent } from '../types';
+import { reportPersistenceIssue } from './usePersistentState';
 
 export type LineMessageKind =
   | 'text' | 'image' | 'video' | 'file' | 'voice' | 'sticker'
@@ -59,14 +60,16 @@ function readJson<T>(key: string, fallback: T): T {
   try {
     const raw = window.localStorage.getItem(key);
     return raw ? JSON.parse(raw) as T : fallback;
-  } catch {
+  } catch (error) {
+    reportPersistenceIssue('line-read:' + key, 'LINE 本地数据读取或解析失败，已使用备用值', error);
     return fallback;
   }
 }
 
 function writeJson(key: string, value: unknown) {
   if (typeof window === 'undefined') return;
-  try { window.localStorage.setItem(key, JSON.stringify(value)); } catch {}
+  try { window.localStorage.setItem(key, JSON.stringify(value)); }
+  catch (error) { reportPersistenceIssue('line-write:' + key, 'LINE 会话数据写入失败；本次更改可能尚未保存', error); }
 }
 
 function conversationKey(id: string) {
