@@ -25,7 +25,7 @@ import { NpcAvatar } from '../NpcAvatar';
 import { VroomImage } from '../VroomImage';
 import { putMedia } from '../../store/mediaVault';
 import { markCharacterRead } from '../../store/worldRuntime';
-import { getLineConversationMeta, markLineConversationRead, markLineNotificationsReadForConversation } from '../../store/lineRuntime';
+import { getLineConversationMeta, markLineConversationRead, markLineNotificationsReadForConversation, touchLineConversation } from '../../store/lineRuntime';
 import { generateCreativeText, listOpenAiCompatibleModels, resolveChannelAiSettings, testAiConnection, type AiSettings } from '../../ai/aiEngine';
 import { readAppSettings, saveAppSettings, type ChannelAiSettings } from '../../store/appSettings';
 import { fetchLineWeather, formatLineWeather, type LineWeatherSnapshot } from '../../store/lineReality';
@@ -702,6 +702,9 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
           (group?.name && group.name !== id ? group.name : '') ||
           (runtimeName && runtimeName !== id ? runtimeName : '') ||
           character?.name || id;
+        if (name !== id && (!runtimeMeta || runtimeMeta.name !== name || runtimeMeta.isGroup !== Boolean(group))) {
+          touchLineConversation(id, { name, isGroup: Boolean(group), ...(group ? {} : { characterId: existing?.characterId || character?.id }) });
+        }
         const latestType = String(latest?.type || latest?.kind || '');
         const latestCategory = String(latest?.category || latest?.metadata?.category || '');
         const isVoice =
