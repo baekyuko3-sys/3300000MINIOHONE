@@ -203,7 +203,7 @@ function cleanGroupGeneratedText(text: string): string {
   // Group replies must never render private reasoning or transport-format tags as chat bubbles.
   value = value.replace(/<(?:cot|thinking|analysis|preset_flow)\b[^>]*>[\s\S]*?<\/(?:cot|thinking|analysis|preset_flow)\s*>/gi, '');
   value = value.replace(/<action\b[^>]*>[\s\S]*?<\/action\s*>/gi, '');
-  value = value.replace(/<statusbar?\b[^>]*>[\s\S]*?<\/statusbar?\s*>/gi, '');
+  value = value.replace(/<status(?:bar)?\b[^>]*>[\s\S]*?<\/status(?:bar)?\s*>/gi, '');
   // Keep the visible content inside message wrappers, removing only the wrapper tags.
   value = value.replace(/<\/?message\b[^>]*>/gi, '');
   value = value.replace(/<\/?(?:cot|thinking|analysis|final|response|output)\b[^>]*>/gi, '');
