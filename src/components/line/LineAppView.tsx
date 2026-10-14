@@ -26,6 +26,7 @@ import { VroomImage } from '../VroomImage';
 import { putMedia } from '../../store/mediaVault';
 import { markCharacterRead } from '../../store/worldRuntime';
 import { getLineConversationMeta, markLineConversationRead, markLineNotificationsReadForConversation, touchLineConversation } from '../../store/lineRuntime';
+import { reportPersistenceIssue } from '../../store/usePersistentState';
 import { generateCreativeText, listOpenAiCompatibleModels, resolveChannelAiSettings, testAiConnection, type AiSettings } from '../../ai/aiEngine';
 import { readAppSettings, saveAppSettings, type ChannelAiSettings } from '../../store/appSettings';
 import { fetchLineWeather, formatLineWeather, type LineWeatherSnapshot } from '../../store/lineReality';
@@ -675,6 +676,72 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         unread: Number.isFinite(c.unread) ? c.unread : 0,
       }))
     : [];
+
+  // Repair legacy chat-list records in place. Keep each conversation's existing
+  // storage ID so its messages/settings are not orphaned; repair display identity
+  // from stable character/group/NPC associations instead of replacing IDs.
+  useEffect(() => {
+    try {
+      const rawFriends = window.localStorage.getItem('line:friends-list');
+      const storedFriends = rawFriends ? JSON.parse(rawFriends) : [];
+      const friends: LineFriend[] = Array.isArray(storedFriends) ? storedFriends : [];
+      const rawMeta = window.localStorage.getItem('line:runtime:conversations');
+      const runtimeMeta = rawMeta ? JSON.parse(rawMeta) : {};
+      const metaById = runtimeMeta && typeof runtimeMeta === 'object' ? runtimeMeta : {};
+      const looksLikeInternalId = (value: unknown, id: string) => {
+        if (typeof value !== 'string' || !value.trim()) return true;
+        const text = value.trim();
+        return text === id || /^(?:c_\d+|group-[a-z0-9]+|member-.+|line-msg-\d+)$/.test(text);
+      };
+
+      setChatItems(prev => {
+        if (!Array.isArray(prev) || !prev.length) return prev;
+        let changed = false;
+        const next = prev.map(item => {
+          const meta = metaById[item.id] && typeof metaById[item.id] === 'object' ? metaById[item.id] : {};
+          const groupId = item.groupId || (item.isGroup || item.id.startsWith('group-') ? item.id : '');
+          const group = groupId ? getLineGroupById(groupId) : null;
+          const friend = friends.find(f =>
+            (item.npcId && f.npcId === item.npcId) ||
+            (item.characterId && f.characterId === item.characterId && (!item.npcId || f.npcId === item.npcId)) ||
+            (looksLikeInternalId(item.name, item.id) && f.name && (
+              (meta.characterId && f.characterId === meta.characterId) ||
+              (item.npcId && f.npcId === item.npcId)
+            ))
+          );
+          const characterId = item.characterId || meta.characterId || friend?.characterId || undefined;
+          const character = importedCharacters.find(c => c.id === characterId) ||
+            (!looksLikeInternalId(item.name, item.id) ? importedCharacters.find(c => c.name === item.name) : undefined);
+          const resolvedName =
+            (group?.name && group.name.trim()) ||
+            (friend?.name && friend.name.trim()) ||
+            (character?.name && character.name.trim()) ||
+            (typeof meta.name === 'string' && !looksLikeInternalId(meta.name, item.id) ? meta.name.trim() : '') ||
+            item.name;
+          const resolvedGroup = Boolean(item.isGroup || group);
+          const patch: LineChatItem = {
+            ...item,
+            name: resolvedName,
+            ...(characterId ? { characterId } : {}),
+            ...(group ? { groupId: group.id } : {}),
+            isGroup: resolvedGroup,
+          };
+          if (patch.name !== item.name || patch.characterId !== item.characterId || patch.groupId !== item.groupId || patch.isGroup !== item.isGroup) changed = true;
+          if (patch.name && patch.name !== item.id) {
+            const existingMeta = metaById[item.id];
+            if (!existingMeta || existingMeta.name !== patch.name || existingMeta.isGroup !== patch.isGroup || existingMeta.characterId !== patch.characterId) {
+              touchLineConversation(item.id, { name: patch.name, isGroup: patch.isGroup, ...(patch.characterId ? { characterId: patch.characterId } : {}) });
+            }
+          }
+          return patch;
+        });
+        return changed ? next : prev;
+      });
+    } catch (error) {
+      reportPersistenceIssue('line-chat-migration', 'LINE 聊天条目关联修复失败', error);
+    }
+  }, [chatItemsRaw, importedCharacters]);
+
 
   // 恢复已经存在但 Chat 入口丢失的聊天。只从真实 conversation 数据恢复。
   useEffect(() => {
