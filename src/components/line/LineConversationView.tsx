@@ -2953,7 +2953,8 @@ export function LineConversationView({
     const amount = formatMoneyAmount(redPacketAmount);
     if (!amount) { showToast('请填写红包金额'); return; }
     const blessing = redPacketBlessing.trim() || '恭喜发财';
-    const count = isGroup ? Math.max(1, Math.min(99, Number.parseInt(redPacketCount, 10) || 1)) : 1;
+    const memberLimit = isGroup ? Math.max(1, groupMembers.length) : 1;
+    const count = isGroup ? Math.max(1, Math.min(memberLimit, 99, Number.parseInt(redPacketCount, 10) || 1)) : 1;
     if (isGroup && Number(amount) < 0.01 * count) { showToast('红包总金额至少要能分给每个人 0.01 元'); return; }
     const newMsg = {
       id: Date.now(), sender: 'me' as const, type: 'red-packet', kind: 'red-packet' as const,
@@ -6707,15 +6708,34 @@ export function LineConversationView({
         const alreadyClaimed = claims.some((claim: any) => claim?.userId === 'me');
         const claimPacket = () => {
           if (alreadyClaimed || claims.length >= count) return;
-          const remainingSlots = Math.max(1, count - claims.length);
-          const remainingCents = Math.max(0, Math.round(amount * 100) - claims.reduce((sum: number, claim: any) => sum + Math.round(Number(claim.amount || 0) * 100), 0));
-          const cents = packet.redPacketMode === 'equal' || meta.mode === 'equal' ? Math.floor(remainingCents / remainingSlots) : remainingSlots <= 1 ? remainingCents : Math.max(1, Math.min(remainingCents - (remainingSlots - 1), Math.round(remainingCents / remainingSlots * (0.35 + Math.random() * 1.3))));
-          const claim = { userId: 'me', name: '我', amount: (cents / 100).toFixed(2), time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
-          const nextClaims = [...claims, claim];
-          const updated = { ...packet, redPacketClaims: nextClaims, redPacketStatus: nextClaims.length >= count ? 'claimed' : 'partial', metadata: { ...meta, claims: nextClaims, status: nextClaims.length >= count ? 'claimed' : 'partial' } };
+          const remainingCents = Math.max(0, Math.round(amount * 100));
+          const equalMode = packet.redPacketMode === 'equal' || meta.mode === 'equal';
+          const shares: number[] = [];
+          let centsLeft = remainingCents;
+          for (let slot = 0; slot < count; slot += 1) {
+            const slotsLeft = count - slot;
+            const share = slotsLeft === 1 ? centsLeft : equalMode
+              ? Math.floor(remainingCents / count) + (slot < remainingCents % count ? 1 : 0)
+              : Math.max(1, Math.min(centsLeft - (slotsLeft - 1), Math.round(centsLeft / slotsLeft * (0.35 + Math.random() * 1.3))));
+            shares.push(share);
+            centsLeft -= share;
+          }
+          if (!equalMode) shares.sort(() => Math.random() - 0.5);
+          const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const userClaim = { userId: 'me', name: '我', amount: ((shares[0] || 0) / 100).toFixed(2), time: now() };
+          const nextClaims = [userClaim];
+          const npcMembers = groupMembers.filter((member: any) => member && member.kind !== 'user' && member.name !== currentUserNameFallback());
+          for (let index = 1; index < count && index <= npcMembers.length; index += 1) {
+            const member = npcMembers[index - 1];
+            nextClaims.push({ userId: String(member.id || member.characterId || member.npcId || member.name), name: String(member.nickname || member.name || '群成员'), amount: ((shares[index] || 0) / 100).toFixed(2), time: now() });
+          }
+          const nextStatus = nextClaims.length >= count ? 'claimed' : 'partial';
+          const updated = { ...packet, redPacketClaims: nextClaims, redPacketStatus: nextStatus, metadata: { ...meta, claims: nextClaims, status: nextStatus } };
           setMessages((prev) => prev.map((item: any) => String(item.id) === String(packet.id) ? updated : item));
           updateLineMessage(conversationStorageId, packet.id, { redPacketClaims: nextClaims, redPacketStatus: updated.redPacketStatus, metadata: updated.metadata } as any);
           setActiveRedPacket(updated);
+          if (nextClaims.length >= count) showToast('红包已被领完');
+          else showToast(`你领取了 ¥${userClaim.amount}，群成员已自动领取`);
         };
         return <div className="absolute inset-0 z-[90] flex items-center justify-center bg-black/45 p-5" onClick={() => setShowRedPacketModal(false)}><div className="relative w-full max-w-[300px] overflow-hidden rounded-[16px] bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="bg-[#c96e7d] px-4 pb-4 pt-5 text-center text-white"><button type="button" onClick={() => setShowRedPacketModal(false)} className="absolute right-3 top-2 text-[22px] leading-none text-white/80">×</button><div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-[10px] bg-white/15 text-[20px]">🧧</div><div className="text-[12px] text-white/80">{String(packet.sender === 'me' ? '我' : packet.senderName || '群成员')} 的红包</div><div className="mt-1 text-[14px] font-medium">{String(packet.redPacketBlessing || meta.blessing || '恭喜发财')}</div>{alreadyClaimed ? <div className="mt-3 text-[28px] font-semibold">¥{String(claims.find((claim: any) => claim.userId === 'me')?.amount || '0.00')}</div> : <div className="mt-3 text-[13px] text-white/85">{packet.redPacketStatus === 'claimed' ? '红包已领完' : '恭喜发财，大吉大利'}</div>}</div><div className="p-4">{!alreadyClaimed && packet.redPacketStatus !== 'claimed' && claims.length < count && <button type="button" onClick={claimPacket} className="mb-3 w-full rounded-[10px] bg-[#f2c65c] py-2.5 text-[13px] font-semibold text-[#6d4518] active:scale-[0.99]">开红包</button>}{alreadyClaimed && <div className="mb-3 text-center text-[11px] text-[#999]">已领取红包，下面是领取详情</div>}<div className="flex items-center justify-between border-b border-[#f0f0f1] pb-2 text-[11px] text-[#777]"><span>领取详情</span><span>{claims.length}/{count} 个红包</span></div><div className="max-h-[220px] overflow-y-auto">{claims.length ? claims.map((claim: any, index: number) => <div key={`${claim.userId || claim.name}-${index}`} className="flex items-center gap-2.5 border-b border-[#f5f5f6] py-2.5 last:border-0"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f4f4f5] text-[11px] text-[#666]">{String(claim.name || '成员').slice(0, 1)}</div><div className="min-w-0 flex-1"><div className="truncate text-[12px] font-medium text-[#333]">{String(claim.name || '群成员')}</div><div className="mt-0.5 text-[10px] text-[#aaa]">{String(claim.time || '')}</div></div><div className="text-[13px] font-semibold text-[#333]">¥{Number(claim.amount || 0).toFixed(2)}</div></div>) : <div className="py-5 text-center text-[11px] text-[#aaa]">还没有人领取</div>}</div><div className="mt-2 text-[10px] text-[#aaa]">已领取 ¥{claims.reduce((sum: number, claim: any) => sum + Number(claim.amount || 0), 0).toFixed(2)} · 剩余 {Math.max(0, count - claims.length)} 个</div></div></div></div>;
       })()}
