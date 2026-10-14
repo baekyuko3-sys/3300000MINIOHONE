@@ -255,6 +255,36 @@ function splitGroupMultiSpeaker(
     .filter(x => x.name)
     .sort((a, b) => b.name.length - a.name.length);
 
+  // The AI engine unwraps the single <message> payload before returning text.
+  // Split each speaker-prefixed line back into its own message while retaining
+  // any unprefixed continuation lines as part of the preceding speaker's text.
+  const startsSpeakerLine = (line: string): boolean => {
+    const value = line.trim();
+    if (!value) return false;
+    return [...nameSorted, ...nickSorted].some(({ name }) =>
+      value.startsWith('[' + name + ']') ||
+      value.startsWith('【' + name + '】') ||
+      value.startsWith(name + '：') ||
+      value.startsWith(name + ':')
+    );
+  };
+  const expandedBlocks: string[] = [];
+  for (const block of blocks) {
+    let current = '';
+    for (const line of block.split('\n')) {
+      if (startsSpeakerLine(line)) {
+        if (current.trim()) expandedBlocks.push(current.trim());
+        current = line.trim();
+      } else if (current) {
+        current += '\n' + line;
+      } else if (line.trim()) {
+        current = line.trim();
+      }
+    }
+    if (current.trim()) expandedBlocks.push(current.trim());
+  }
+  blocks.splice(0, blocks.length, ...expandedBlocks);
+
   const out: Array<{ rawSpeaker: string; text: string; primary: boolean }> = [];
 
   for (const block of blocks) {
