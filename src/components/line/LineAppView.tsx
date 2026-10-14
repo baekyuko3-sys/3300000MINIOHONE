@@ -694,7 +694,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         const latest = realMessages[realMessages.length - 1];
         const existing = chatItems.find(item => item.id === id || item.characterId === id);
         const runtimeMeta = getLineConversationMeta(id);
-        const group = getLineGroupById(existing?.groupId || (runtimeMeta?.isGroup ? id : ''));
+        const group = getLineGroupById(existing?.groupId || (runtimeMeta?.isGroup || id.startsWith('group-') ? id : ''));
         const character = importedCharacters.find(item => item.id === existing?.characterId || item.id === runtimeMeta?.characterId || item.id === id);
         const existingName = typeof existing?.name === 'string' ? existing.name.trim() : '';
         const runtimeName = typeof runtimeMeta?.name === 'string' ? runtimeMeta.name.trim() : '';
