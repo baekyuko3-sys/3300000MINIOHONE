@@ -5221,13 +5221,17 @@ export function LineConversationView({
           const currentCharacterKey = String(msg.characterId || msg.metadata?.characterId || msg.senderName || '').trim();
           const sameGroupSpeakerAsPrevious = Boolean(isGroup && !isMe && previousMessage && previousMessage.sender !== 'me' && previousMessage.type !== 'system-nudge' && msg.type !== 'system-nudge' && previousCharacterKey && previousCharacterKey === currentCharacterKey);
           const groupMessageMember = isGroup && !isMe
-            ? (messageCharacterId
-                ? safeGroupMembers.find(member => String(member.characterId || '').trim() === messageCharacterId) ||
-                  safeGroupMembers.find(member => String(member.npcId || '').trim() === messageCharacterId) ||
-                  null
-                : safeGroupMembers.find(member =>
-                    [member.nickname, member.name].filter(Boolean).some(name => String(name).trim() === messageSenderName)
-                  ) || null)
+            ? (
+                (messageSenderName
+                  ? safeGroupMembers.find(member => [member.nickname, member.name].filter(Boolean).some(name => String(name).trim() === messageSenderName))
+                  : null) ||
+                (messageCharacterId
+                  ? safeGroupMembers.find(member => String(member.npcId || '').trim() === messageCharacterId) ||
+                    safeGroupMembers.find(member => String(member.id || '').trim() === messageCharacterId) ||
+                    safeGroupMembers.find(member => String(member.characterId || '').trim() === messageCharacterId) ||
+                    null
+                  : null)
+              )
             : null;
           const groupMessageCharacter = isGroup && !isMe
             ? (messageCharacterId
@@ -5271,7 +5275,15 @@ export function LineConversationView({
             }
           }
           const groupMessageAvatar = isGroup
-            ? (_npcFallback?.avatar || groupMessageCharacter?.avatar || groupMessageMember?.avatar || '')
+            ? (() => {
+                const memberNpc = groupMessageMember?.npcId
+                  ? allNpcs.find(n => String(n.id) === String(groupMessageMember.npcId))
+                  : null;
+                const boundCharacter = importedCharacters.find(character =>
+                  String(character.id || '') === String(memberNpc?.boundCharacterId || groupMessageMember?.characterId || '')
+                );
+                return memberNpc?.avatar || _npcFallback?.avatar || groupMessageMember?.avatar || groupMessageCharacter?.avatar || boundCharacter?.avatar || '';
+              })()
             : (importedCharacter?.avatar || '');
           const thinkingContent = msg.thinkingSummary || msg.metadata?.thinkingSummary || msg.thinking || msg.metadata?.thinking || '';
           const hasThinking = Boolean(String(thinkingContent).trim()) && showChainOfThoughtInChat;
@@ -5403,7 +5415,7 @@ export function LineConversationView({
                       ? (groupMessageAvatar || '')
                       : (importedCharacter?.avatar || '');
                     const senderLabel = isGroup
-                      ? (_npcFallback?.name || groupMessageCharacter?.name || groupMessageMember?.nickname || groupMessageMember?.name || msg.senderName || characterProfile.nickname)
+                      ? (groupMessageMember?.nickname || groupMessageMember?.name || _npcFallback?.name || groupMessageCharacter?.name || msg.senderName || characterProfile.nickname)
                       : (msg.senderName || characterProfile.nickname);
                     return avatarSrc ? (
                       <img src={avatarSrc} alt={senderLabel} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
