@@ -1193,7 +1193,7 @@ export function LineConversationView({
         personality: npcForChat.personality || '',
         scenario: npcForChat.background || '',
         systemPrompt: buildNpcRuntimeContext(npcForChat, 'online-chat'),
-        creatorNotes: [boundImportedCharacter?.creatorNotes || '', npcForChat.relationship || ''].filter(Boolean).join('\\n'),
+        creatorNotes: npcForChat.relationship || '',
       } as ImportedCharacter)
     : boundImportedCharacter;
   const characterMemoryForPersona = importedCharacter ? getCharacterMemory(importedCharacter.id, importedCharacter.name) : null;
