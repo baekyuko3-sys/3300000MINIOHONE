@@ -25,6 +25,7 @@ import { getGroupPreset, getGroupPresets } from '../../store/groupPresets';
 import { getLineGroups, updateLineGroupMember, addLineGroupMemory, setLineGroupRelationships } from '../../store/lineGroups';
 import { getNpcs } from '../../store/npcs';
 import { buildNpcRuntimeContext } from '../../store/npcContext';
+import { considerNpcFriendRequest } from '../../store/npcSocial';
 import {
   activateLineTogetherIsland,
   clearLineTogetherIsland,
@@ -2654,6 +2655,21 @@ export function LineConversationView({
                 '群聊「' + (activeGroup?.name || contactName) + '」中，' + (foundMember.name || part.rawSpeaker) + '说：' + part.text.slice(0, 240),
                 { source: 'line', importance: 55 },
               );
+            }
+            if (foundMember.npcId || foundMember.kind === 'npc') {
+              const speakerNpc = allNpcs.find(item => item.id === foundMember.npcId || item.name === foundMember.name);
+              if (speakerNpc && activePersona?.id) {
+                void considerNpcFriendRequest({
+                  npc: speakerNpc,
+                  personaId: activePersona.id,
+                  personaName: activePersona.name || '我',
+                  source: 'group-chat',
+                  sourceLabel: '群聊「' + (activeGroup?.name || contactName) + '」',
+                  eventContext: '群聊「' + (activeGroup?.name || contactName) + '」的对话：' + parts.map(item => item.rawSpeaker + '：' + item.text).join('\\n').slice(-2200),
+                }).then(request => {
+                  if (request) window.dispatchEvent(new CustomEvent('sane333:npc-friend-requests-updated'));
+                });
+              }
             }
           }
         }
