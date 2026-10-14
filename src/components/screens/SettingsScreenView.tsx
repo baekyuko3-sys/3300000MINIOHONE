@@ -16,7 +16,7 @@ import { listOpenAiCompatibleModels, testAiConnection } from '../../ai/aiEngine'
 import { generateImage, generateSpeech } from '../../ai/mediaEngine';
 import { playAppSound, saveSoundFile, type AppSoundKind } from '../../store/soundManager';
 import { exportMedia, importMedia, getMediaStats } from '../../store/mediaVault';
-import { reportPersistenceIssue } from '../../store/usePersistentState';
+import { reportPersistenceIssue, readPersistenceDiagnostics, type PersistenceDiagnostic } from '../../store/usePersistentState';
 import {
   getBackgroundHeartbeat,
   requestNotificationPermission,
@@ -93,9 +93,11 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
   const [apiPresets, setApiPresets] = useState<ApiPreset[]>(() => readApiPresets());
   const [apiPresetName, setApiPresetName] = useState('');
   const [debugLog, setDebugLog] = useState<AiDebugEntry[]>(() => readAiDebugLog());
+  const [persistenceDiagnostics, setPersistenceDiagnostics] = useState<PersistenceDiagnostic[]>(() => readPersistenceDiagnostics());
 
 
   useEffect(() => { const fn=()=>setDebugLog(readAiDebugLog()); window.addEventListener('sane333:ai-debug-changed',fn); return () => window.removeEventListener('sane333:ai-debug-changed',fn); }, []);
+  useEffect(() => { const fn=()=>setPersistenceDiagnostics(readPersistenceDiagnostics()); window.addEventListener('sane333:persistence-diagnostic',fn); return () => window.removeEventListener('sane333:persistence-diagnostic',fn); }, []);
 
   const [mediaStats, setMediaStats] = useState<{ count: number; size: number }>({ count: 0, size: 0 });
   const [browserUsage, setBrowserUsage] = useState<number | null>(null);
@@ -923,6 +925,23 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
               <button onClick={() => importRef.current?.click()} className="py-2.5 rounded-xl bg-white/75 border border-[rgba(40,36,31,.12)] text-[10px] flex items-center justify-center gap-1.5"><Save className="w-3.5 h-3.5" />导入 / 恢复</button>
             </div>
             <input ref={importRef} type="file" accept=".json" className="hidden" onChange={e => importBackup(e.target.files?.[0])} />
+            <div className="mt-2.5 p-3 rounded-xl bg-white/55 border border-[rgba(40,36,31,.1)]">
+              <div className="flex items-center justify-between gap-2">
+                <div><div className="text-[10px] font-semibold">本地保存诊断</div><div className="text-[8px] text-[#8b8782] mt-0.5">读取、JSON 解析或写入失败会记录在这里，并同步写入浏览器控制台。</div></div>
+                <span className="text-[9px] font-mono text-[#8b7560]">{persistenceDiagnostics.length} 条</span>
+              </div>
+              {persistenceDiagnostics.length ? (
+                <div className="mt-2 max-h-36 overflow-y-auto space-y-1.5">
+                  {persistenceDiagnostics.slice(-5).reverse().map(item => (
+                    <div key={item.id} className="rounded-lg bg-white/70 border border-black/5 p-2">
+                      <div className="text-[9px] font-semibold text-[#8f5f65]">{item.message}</div>
+                      <div className="mt-0.5 text-[8px] text-[#8b8782]">{item.area} · {new Date(item.time).toLocaleString()}</div>
+                      {item.detail && <div className="mt-1 text-[8px] font-mono break-all text-[#6f6860]">{item.detail}</div>}
+                    </div>
+                  ))}
+                </div>
+              ) : <div className="mt-2 text-[8px] text-[#8b8782]">暂未记录本地保存错误。</div>}
+            </div>
             <div className="mt-2.5 p-3 rounded-xl bg-white/55 border border-[rgba(40,36,31,.1)] space-y-2.5">
               <div className="flex items-center justify-between"><div><div className="text-[10px] font-semibold">GitHub 数据库</div><div className="text-[8px] text-[#8b8782] mt-0.5">只同步 phone:/line: JSON 数据，不包含 IndexedDB 图片、头像或音频；不使用 Supabase。</div></div><span className="text-[8px] font-mono text-[#8b7560]">{githubConfig.lastSyncedAt ? '已同步' : '未同步'}</span></div>
               <div className="grid grid-cols-2 gap-1.5">
