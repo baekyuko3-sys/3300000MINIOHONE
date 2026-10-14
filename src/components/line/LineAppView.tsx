@@ -735,6 +735,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
           openingMode: existing?.openingMode || 'none',
           openingGreeting: existing?.openingGreeting || '',
           personaId: existing?.personaId || effectivePersonaId || undefined,
+          groupId: existing?.groupId || group?.id,
           time: latest?.time || '刚刚',
           preview,
           unread: existing?.unread || 0,
