@@ -24,6 +24,7 @@ import { getLineGroupByName, getLineGroupById, upsertLineGroup } from '../../sto
 import { getGroupPreset, getGroupPresets } from '../../store/groupPresets';
 import { getLineGroups, updateLineGroupMember, addLineGroupMemory, setLineGroupRelationships } from '../../store/lineGroups';
 import { getNpcs } from '../../store/npcs';
+import { buildNpcRuntimeContext } from '../../store/npcContext';
 import {
   activateLineTogetherIsland,
   clearLineTogetherIsland,
@@ -1201,6 +1202,14 @@ export function LineConversationView({
         name: npc.name,
         avatar: resAvatar,
         description: resDesc,
+        // NPC identity takes precedence over the linked character's persona.
+        personality: npc.personality || '',
+        scenario: npc.background || '',
+        systemPrompt: [
+          bound?.systemPrompt || '',
+          buildNpcRuntimeContext(npc, 'online-chat'),
+        ].filter(Boolean).join('\n\n'),
+        creatorNotes: [bound?.creatorNotes || '', npc.relationship || ''].filter(Boolean).join('\n'),
       } as ImportedCharacter;
     }
     return importedCharacters.find(character => character.id === member.characterId || character.name === member.name) || null;
