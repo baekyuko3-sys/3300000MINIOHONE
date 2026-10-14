@@ -3787,11 +3787,23 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                       <span className="text-[#aaa]">{postDetail.name?.[0] || '·'}</span>
                     )}
                   </div>
-                  <div className="ml-3">
+                  <div className="ml-3 flex-1 min-w-0">
                     <div className="text-[13px] font-semibold">{postDetail.name}</div>
                     <div className="text-[9px] text-[#aaa]">{postDetail.time}{postDetail.tag ? ` · ${postDetail.tag}` : ''}</div>
                   </div>
                 </div>
+                {(() => {
+                  const postNpc = allLineNpcs.find(npc => npc.id === postDetail.npcId || (postDetail.npcId == null && npc.name === postDetail.name));
+                  if (!postNpc) return null;
+                  const alreadyFriend = friendsList.some(friend => friend.npcId === postNpc.id);
+                  if (alreadyFriend) return null;
+                  return (
+                    <button type="button" onClick={() => { setPostDetail(null); selectNpcAsFriendCandidate(postNpc); }}
+                      className="mt-3 w-full h-10 rounded-xl border border-[#e5e5e7] bg-[#fafafa] text-[11px] font-medium text-[#444]">
+                      添加好友并开启私聊
+                    </button>
+                  );
+                })()}
                 {Array.isArray(postDetail.mentionIds) && postDetail.mentionIds.length > 0 && (
                   <div className="mt-4 text-[12px] text-[#8c5f6b]">
                     {(Array.isArray(postDetail.mentionIds) ? postDetail.mentionIds : [])
