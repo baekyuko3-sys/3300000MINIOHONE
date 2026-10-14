@@ -2576,6 +2576,11 @@ export function LineConversationView({
         });
 
         const finalText = cleanGroupGeneratedText(String(result?.text || streamedText || ''));
+        if (/^\[PASS\]$/i.test(finalText)) {
+          setMessages(prev => prev.filter(m => !String(m.id).startsWith(String(placeholderId))));
+          setIsTyping(false);
+          return;
+        }
         if (!finalText) {
           setMessages(prev => prev.map(m => String(m.id).startsWith(String(placeholderId)) ? { ...m, status: 'failed', error: 'AI 没有返回任何内容', text: '回复失败：AI 没有返回任何内容（可点击下方按钮删除）' } : m));
           showToast('群聊 AI 没有返回内容');
