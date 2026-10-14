@@ -9,6 +9,7 @@ import {
 } from './momentsComments';
 import { readPersistentState } from './usePersistentState';
 import type { SaneNpc } from './npcs';
+import { buildNpcRuntimeContext } from './npcContext';
 
 function readPosts(): any[] {
   return readPersistentState<any[]>(MOMENTS_POSTS_KEY, []);
@@ -133,6 +134,7 @@ async function makeNpcMomentText(npc: SaneNpc, hint: string): Promise<string> {
       '性格：' + (npc.personality || ''),
       '背景：' + (npc.background || ''),
       '近况：' + (npc.recentLife || ''),
+      buildNpcRuntimeContext(npc, 'online-chat'),
       '只输出动态正文，30-120字，有生活感，不要@用户，不要解释，不要自称AI/NPC。',
     ].join('\n'),
     userPrompt: hint || '按你最近的生活发一条朋友圈。',
