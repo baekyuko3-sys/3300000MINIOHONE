@@ -1171,23 +1171,35 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       || ''
     );
   };
-  const visibleMoments = hasBounds
-    ? momentsPosts.filter((p) => {
-      if (isOwnMoment(p)) return true;
+  const visibleMoments = momentsPosts.filter((p) => {
+    if (isOwnMoment(p)) return true;
+    const authorKey = p.npcId ? 'npc:' + p.npcId : p.characterId ? 'character:' + p.characterId : '';
+    const viewerKey = 'persona:' + (effectivePersonaId || 'default');
+    if (authorKey && isVroomBlockedEdge(viewerKey, authorKey)) return false;
+    if (p.visibility === 'self') return false;
+    const allowedIds = Array.isArray(p.allowedIds) ? p.allowedIds.map(String) : [];
+    const blockedIds = Array.isArray(p.blockedIds) ? p.blockedIds.map(String) : [];
+    const viewerIds = [effectivePersonaId || '', 'persona:' + (effectivePersonaId || 'default'), activePersonaForFilter?.name || '', currentUser.name || '', 'user'].filter(Boolean);
+    if (blockedIds.some(id => viewerIds.includes(id))) return false;
+    if (['group', 'partial', 'custom'].includes(String(p.visibility || '')) && allowedIds.length && !allowedIds.some(id => viewerIds.includes(id))) return false;
+    // Only LINE friends (or explicitly allowed VROOM edges) appear in the phone's feed.
+    // A public post does not turn an unadded stranger into a LINE friend.
+    if (authorKey) {
+      const isFriend = p.npcId
+        ? friendsList.some(f => !f.deleted && f.npcId === p.npcId)
+        : friendsList.some(f => !f.deleted && !f.npcId && (f.characterId === p.characterId || f.name === p.name));
+      if (!isFriend && !isVroomAllowedEdge(viewerKey, authorKey)) return false;
+    }
+    if (hasBounds) {
       if (p.npcId) {
         const npc = allLineNpcs.find(n => n.id === p.npcId);
         const bound = npc?.boundCharacterId || p.characterId;
         return !bound || boundSet.has(bound);
       }
-      return (
-        !p.characterId
-        || boundSet.has(p.characterId)
-        || p.name === activePersonaForFilter?.name
-        || p.name === currentUser.name
-        || (p.personaId && p.personaId === effectivePersonaId)
-      );
-    })
-    : momentsPosts;
+      if (p.characterId && !boundSet.has(p.characterId)) return false;
+    }
+    return true;
+  });
   const myMoments = visibleMoments.filter(isOwnMoment);
 
   /** 兼容旧帖：单 textCard 时正文在 post.text；新帖 caption / 卡片正文分开 */
