@@ -693,8 +693,15 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         if (!realMessages.length) continue;
         const latest = realMessages[realMessages.length - 1];
         const existing = chatItems.find(item => item.id === id || item.characterId === id);
-        const character = importedCharacters.find(item => item.id === existing?.characterId || item.id === id);
-        const name = existing?.name || character?.name || id;
+        const runtimeMeta = getLineConversationMeta(id);
+        const group = getLineGroupById(existing?.groupId || (runtimeMeta?.isGroup ? id : ''));
+        const character = importedCharacters.find(item => item.id === existing?.characterId || item.id === runtimeMeta?.characterId || item.id === id);
+        const existingName = typeof existing?.name === 'string' ? existing.name.trim() : '';
+        const runtimeName = typeof runtimeMeta?.name === 'string' ? runtimeMeta.name.trim() : '';
+        const name = (existingName && existingName !== id ? existingName : '') ||
+          (group?.name && group.name !== id ? group.name : '') ||
+          (runtimeName && runtimeName !== id ? runtimeName : '') ||
+          character?.name || id;
         const latestType = String(latest?.type || latest?.kind || '');
         const latestCategory = String(latest?.category || latest?.metadata?.category || '');
         const isVoice =
@@ -721,7 +728,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         recovered.push({
           id,
           name,
-          characterId: existing?.characterId || character?.id,
+          characterId: existing?.characterId || runtimeMeta?.characterId || (!group ? character?.id : undefined),
           variantLabel: existing?.variantLabel || '默认版本',
           relationship: existing?.relationship || 'new-friend',
           relationshipContext: existing?.relationshipContext || '',
@@ -734,7 +741,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
           isPinned: existing?.isPinned || false,
           isMuted: existing?.isMuted || false,
           draft: existing?.draft || '',
-          isGroup: existing?.isGroup || false,
+          isGroup: Boolean(existing?.isGroup || runtimeMeta?.isGroup || group),
         });
       }
       if (!recovered.length) return;
