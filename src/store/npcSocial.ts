@@ -108,11 +108,11 @@ export async function considerNpcFriendRequest(input: {
         '只输出 JSON：{"wantsToAdd":true或false,"message":"申请附言"}。',
         '判断必须符合 NPC 自己的性格、关系、记忆与事件。不要为了推动剧情而强行想加好友。',
         '刚见过一面、普通寒暄、没有兴趣或信任基础时通常为 false。已经是好友或最近申请过则不要申请。',
-      ].join('\\n\\n'),
+      ].join('\n\n'),
       userPrompt: '目标用户人设：' + input.personaName + '\\n事件来源：' + input.sourceLabel + '\\n事件经过：' + input.eventContext.slice(-2200),
       temperature: 0.35,
     });
-    const json = result.match(/\\{[\\s\\S]*\\}/)?.[0];
+    const json = result.match(/\{[\s\S]*\}/)?.[0];
     if (!json) return null;
     const parsed = JSON.parse(json) as { wantsToAdd?: boolean; message?: string };
     if (parsed.wantsToAdd !== true) return null;
