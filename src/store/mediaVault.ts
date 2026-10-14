@@ -101,7 +101,18 @@ export async function exportMedia(): Promise<Record<string, string>> {
   return output;
 }
 
-export async function getMediaStats(): Promise<{ count: number; size: number }> {\n  const db = await openDb();\n  const records = await new Promise<MediaRecord[]>((resolve, reject) => {\n    const tx = db.transaction(STORE_NAME, 'readonly');\n    const request = tx.objectStore(STORE_NAME).getAll();\n    request.onsuccess = () => resolve((request.result || []) as MediaRecord[]);\n    request.onerror = () => reject(request.error || new Error('MEDIA_STATS_FAILED'));\n  });\n  return { count: records.length, size: records.reduce((total, record) => total + (record.blob?.size || 0), 0) };\n}\n\nexport async function importMedia(records: Record<string, string>): Promise<number> {
+export async function getMediaStats(): Promise<{ count: number; size: number }> {
+  const db = await openDb();
+  const records = await new Promise<MediaRecord[]>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const request = tx.objectStore(STORE_NAME).getAll();
+    request.onsuccess = () => resolve((request.result || []) as MediaRecord[]);
+    request.onerror = () => reject(request.error || new Error('MEDIA_STATS_FAILED'));
+  });
+  return { count: records.length, size: records.reduce((total, record) => total + (record.blob?.size || 0), 0) };
+}
+
+export async function importMedia(records: Record<string, string>): Promise<number> {
   const entries = Object.entries(records || {});
   // Decode every file before opening a write transaction. Invalid media must not
   // leave a half-imported archive in IndexedDB.
