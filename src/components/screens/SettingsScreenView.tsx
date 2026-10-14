@@ -118,7 +118,14 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
       } catch {
         if (!cancelled) setBrowserUsage(null);
       }
-      if (!cancelled) {\n        let chatArchives = 0;\n        for (const [key, value] of Object.entries(data)) {\n          if (!key.startsWith('line:conversation:')) continue;\n          if (Array.isArray(value) && value.some((message: any) => message && typeof message === 'object' && message.kind !== 'system-nudge' && message.type !== 'system-nudge')) chatArchives += 1;\n        }\n        setLocalStats({ keys: Object.keys(data).length, size: new Blob([JSON.stringify(data)]).size, chatArchives });\n      }
+      if (!cancelled) {
+        let chatArchives = 0;
+        for (const [key, value] of Object.entries(data)) {
+          if (!key.startsWith('line:conversation:')) continue;
+          if (Array.isArray(value) && value.some((message: any) => message && typeof message === 'object' && message.kind !== 'system-nudge' && message.type !== 'system-nudge')) chatArchives += 1;
+        }
+        setLocalStats({ keys: Object.keys(data).length, size: new Blob([JSON.stringify(data)]).size, chatArchives });
+      }
     };
     void refreshStorageStats();
     return () => { cancelled = true; };
