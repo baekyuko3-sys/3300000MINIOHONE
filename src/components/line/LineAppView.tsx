@@ -4592,6 +4592,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                       relationship: newChatRelationship,
                     };
                     const context = relationshipContext.trim();
+                    if (effectivePersonaId) setNpcFriendship(npcFriend.id, effectivePersonaId, true);
                     setFriendsList(prev => prev.some(item => item.npcId === npcFriend.id) ? prev : [friend, ...prev]);
                     setChatItems(prev => {
                       if (prev.some(chat => chat.npcId === npcFriend.id && chat.personaId === effectivePersonaId)) return prev;
