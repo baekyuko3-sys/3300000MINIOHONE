@@ -160,10 +160,14 @@ export interface WidgetConfig {
   weatherTemp: string;
   weatherCondition: string;
   weatherHighLow: string;
+  weatherStyle?: string;
   quoteContent: string;
   quoteAuthor: string;
+  noteStyle?: string;
   musicTitle: string;
   musicArtist: string;
+  musicStyle?: string;
+  dateStyle?: string;
   anniversaryDays: number;
   anniversaryText: string;
 }

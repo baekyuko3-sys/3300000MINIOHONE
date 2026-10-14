@@ -56,6 +56,10 @@ export function SaneHomeScreenView({ onNavigate, onOpenSheet, onToggleTheme }: S
   const [draggingDesktopItem, setDraggingDesktopItem] = useState<string | null>(null);
   const [dragGuides, setDragGuides] = useState<{ x?: number; y?: number }>({});
   const dragStartRef = useRef<{ id: string; x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+  const update = <K extends keyof AppearanceScheme>(key: K, value: AppearanceScheme[K]) => {
+    const next = saveAppearance({ [key]: value });
+    setAppearance(next);
+  };
 
   const getDefaultLayout = (page: DesktopPage) => page === 1 ? defaultPage1Layout : defaultPage2Layout;
   const pageKey = (page: DesktopPage) => page === 1 ? 'page1' : 'page2';

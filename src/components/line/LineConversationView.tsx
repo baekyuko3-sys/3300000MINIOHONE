@@ -564,6 +564,7 @@ function hasImportedCharacterInStorage(name: string, characterId?: string): bool
 interface LineConversationViewProps {
   contactName: string;
   characterId?: string;
+  npcId?: string;
   conversationId?: string;
   personaId?: string;
   onSwitchPersona?: () => void;
@@ -590,6 +591,7 @@ interface LineConversationViewProps {
 export function LineConversationView({
   contactName,
   characterId,
+  npcId,
   conversationId,
   personaId,
   onBack,

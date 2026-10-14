@@ -22,7 +22,7 @@ interface AppearanceScreenViewProps {
   onSelectTheme: (theme: ThemeMode) => void;
 }
 
-type Section = 'theme' | 'home' | 'widgets' | 'icons' | 'apps' | 'schemes';
+type Section = 'theme' | 'home' | 'widgets' | 'icons' | 'apps' | 'lock' | 'shell' | 'schemes';
 
 const themeOptions: Array<{ id: ThemeMode; title: string; note: string }> = [
   { id: 'nordic-light', title: '胶片原色', note: '米白 / 纸张 / 安静' },

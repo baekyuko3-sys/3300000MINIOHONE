@@ -13,6 +13,7 @@ export interface ImportedCharacter {
   variantLabel: string;
   avatar?: string;
   description: string;
+  identity?: string;
   personality: string;
   scenario: string;
   firstMessage: string;

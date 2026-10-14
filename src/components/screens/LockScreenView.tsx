@@ -20,6 +20,8 @@ export function LockScreenView({ themeMode, onUnlock }: LockScreenViewProps) {
   const [error, setError] = useState('');
   const [fingerprintProgress, setFingerprintProgress] = useState(0);
   const [showHint, setShowHint] = useState(false);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const touchStartY = useRef<number | null>(null);
   const touchStartTime = useRef<number>(0);
   const isDark = themeMode === 'dark-luxury';
@@ -67,20 +69,37 @@ export function LockScreenView({ themeMode, onUnlock }: LockScreenViewProps) {
   const hasSwipe = appearance.lockMethods.includes('swipe');
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (stage !== 'idle' || !hasSwipe) return;
     touchStartY.current = event.clientY;
     touchStartTime.current = performance.now();
+    setIsDragging(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const startY = touchStartY.current;
+    if (startY === null || stage !== 'idle' || !hasSwipe) return;
+    setSwipeOffset(Math.min(190, Math.max(0, startY - event.clientY)));
   };
   const handlePointerUp = (event: PointerEvent<HTMLDivElement>) => {
     const startY = touchStartY.current;
     const startTime = touchStartTime.current;
     touchStartY.current = null;
+    setIsDragging(false);
     if (startY === null) return;
     const dy = startY - event.clientY;
     const dt = performance.now() - startTime;
-    // 上滑距离 > 80 且时间 < 600ms，视为上滑解锁
-    if (dy > 80 && dt < 800 && stage === 'idle') {
+    const velocity = dy / Math.max(1, dt);
+    if (stage === 'idle' && hasSwipe && (dy > 112 || (dy > 58 && velocity > 0.55))) {
+      setSwipeOffset(240);
       handleSwipeUp();
+    } else {
+      setSwipeOffset(0);
     }
+  };
+  const handlePointerCancel = () => {
+    touchStartY.current = null;
+    setIsDragging(false);
+    setSwipeOffset(0);
   };
 
   const handleSwipeUp = () => {
@@ -129,12 +148,27 @@ export function LockScreenView({ themeMode, onUnlock }: LockScreenViewProps) {
   // iOS 风格：大号时间、居中显示
   const isLarge = appearance.lockStyle === 'ios-large';
   const timeFontSize = isLarge ? 96 : 64;
+  const swipeProgress = Math.min(1, swipeOffset / 150);
+  const lockContentStyle = {
+    transform: stage === 'success'
+      ? 'translateY(-38%) scale(0.96)'
+      : `translateY(${-swipeOffset * 0.72}px) scale(${1 - swipeProgress * 0.035})`,
+    opacity: stage === 'success' ? 0 : 1 - swipeProgress * 0.28,
+    transition: isDragging ? 'none' : 'transform 520ms cubic-bezier(.2,.9,.16,1), opacity 360ms ease',
+  };
+  const bottomChromeStyle = {
+    transform: stage === 'success' ? 'translateY(120px)' : `translateY(${swipeOffset * 0.24}px)`,
+    opacity: stage === 'success' ? 0 : 1 - swipeProgress * 0.45,
+    transition: isDragging ? 'none' : 'transform 520ms cubic-bezier(.2,.9,.16,1), opacity 360ms ease',
+  };
 
   return (
     <div
       className="absolute inset-0 z-[30] flex h-full select-none flex-col overflow-hidden text-white"
       onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
       style={{
         background: wallpaperIsImage
           ? `linear-gradient(180deg, rgba(0,0,0,.15) 0%, rgba(0,0,0,.04) 35%, rgba(0,0,0,.55) 100%), url("${wallpaper}") center / cover no-repeat`
@@ -149,7 +183,7 @@ export function LockScreenView({ themeMode, onUnlock }: LockScreenViewProps) {
 
       {/* 顶部状态：已锁定徽标 */}
       {stage === 'idle' && (
-        <div className="relative z-10 flex items-center justify-center pt-[12px]">
+        <div className="relative z-10 flex items-center justify-center pt-[12px]" style={lockContentStyle}>
           <div className="flex items-center gap-1.5 rounded-full bg-black/15 px-3 py-1 text-[10px] font-medium text-white/90 backdrop-blur-md">
             <Lock className="h-3 w-3" strokeWidth={2.2} />
             <span>已锁定</span>
@@ -159,7 +193,7 @@ export function LockScreenView({ themeMode, onUnlock }: LockScreenViewProps) {
 
       {/* iOS 大号时间 */}
       {stage === 'idle' && (
-        <div className="relative z-10 mt-[60px] flex-1 flex flex-col items-center justify-start">
+        <div className="relative z-10 mt-[60px] flex-1 flex flex-col items-center justify-start" style={lockContentStyle}>
           <div className="text-center" style={{ textShadow: '0 2px 18px rgba(0,0,0,.45)' }}>
             <div className="text-[15px] font-medium tracking-wide text-white/95">{weekdayDate}</div>
             <div
@@ -272,12 +306,12 @@ export function LockScreenView({ themeMode, onUnlock }: LockScreenViewProps) {
 
       {/* 成功瞬间：短暂白闪 */}
       {stage === 'success' && (
-        <div className="pointer-events-none absolute inset-0 z-50 bg-white/95 transition-opacity" />
+        <div className="pointer-events-none absolute inset-0 z-50 bg-white/80 transition-opacity" />
       )}
 
       {/* 底部：手电筒 + 解锁提示 + 相机 */}
       {stage === 'idle' && (
-        <div className="relative z-10 mt-auto px-8 pb-8">
+        <div className="relative z-10 mt-auto px-8 pb-8" style={bottomChromeStyle}>
           <div className="mb-7 flex items-center justify-between">
             <button
               type="button"
@@ -309,8 +343,7 @@ export function LockScreenView({ themeMode, onUnlock }: LockScreenViewProps) {
               <Camera className="h-[19px] w-[19px]" />
             </button>
           </div>
-          {/* Home 指示条：modern 用横线，classic 用 Home 圆键（指示在 PhoneSimulator 绘制） */}
-          <div className="mx-auto h-[5px] w-[118px] rounded-full bg-white/90 shadow-sm" />
+          {isModern && <div className="mx-auto h-[5px] w-[118px] rounded-full bg-white/90 shadow-sm" />}
         </div>
       )}
     </div>

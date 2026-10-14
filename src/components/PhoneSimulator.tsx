@@ -423,6 +423,8 @@ export function PhoneSimulator({
             />
           )}
         </div>
+        </div>
+      )}
 
         {/* ========== Classic iPhone 8 (Round Home Button) ========== */}
 
@@ -430,14 +432,14 @@ export function PhoneSimulator({
         {appearance.phoneShell === 'classic-round' && (
           <div
             data-theme={isDark ? 'dark' : 'light'}
-            className="relative w-[360px] sm:w-[390px] h-[780px] sm:h-[844px] overflow-hidden rounded-[38px] border-[8px] border-[var(--frame,#1e1d1b)] shadow-[0_30px_100px_rgba(20,18,15,.28)] flex flex-col select-none"
-            style={{ background: globalBg, color: 'var(--ink, #242323)', fontFamily: activeFont ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif' : undefined, fontSize: `${appearance.customFontSize || 1}em` }}
+            className="relative w-[342px] sm:w-[375px] h-[740px] sm:h-[812px] overflow-hidden rounded-[42px] border-[9px] border-[#1c1c1e] shadow-[inset_0_0_0_1px_rgba(255,255,255,.15),0_30px_100px_rgba(20,18,15,.32)] flex flex-col select-none"
+            style={{ background: isDark ? '#171719' : '#f6f6f7', color: 'var(--ink, #242323)', fontFamily: activeFont ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif' : undefined, fontSize: `${appearance.customFontSize || 1}em` }}
           >
             {/* iPhone 8 top bezel (speaker / sensor) */}
-            <div className="relative h-[36px] flex items-center justify-center">
-              <div className="absolute left-1/2 -translate-x-1/2 top-[7px] flex gap-[6px]">
-                <div className="w-[8px] h-[8px] rounded-full bg-black/30" />
-                <div className="w-[28px] h-[5px] rounded-full bg-black/20" />
+            <div className="relative h-[62px] shrink-0 flex items-center justify-center">
+              <div className="absolute left-1/2 -translate-x-1/2 top-[22px] flex items-center gap-[8px]">
+                <div className="w-[6px] h-[6px] rounded-full bg-black/35 shadow-[inset_0_1px_1px_rgba(255,255,255,.25)]" />
+                <div className="w-[42px] h-[5px] rounded-full bg-black/40 shadow-[inset_0_1px_1px_rgba(255,255,255,.2)]" />
               </div>
             </div>
 
@@ -496,24 +498,24 @@ export function PhoneSimulator({
               {currentScreen === 'spy-phone' && <SpyPhoneScreenView onNavigate={navigateFromApp} />}
               {currentScreen === 'threads' && <ThreadsScreenView onNavigate={navigateFromApp} />}
               {currentScreen === 'offline-story' && <OfflineStoryHtmlView onNavigate={navigateTo} />}
-              {currentScreen === 'settings' && <SettingsScreenView onNavigate={navigateFromApp} onSelectTheme={onSelectTheme} />}
+              {currentScreen === 'settings' && <SettingsScreenView onNavigate={navigateFromApp} />}
               {currentScreen === 'project-studio' && <ProjectStudioScreenView onNavigate={navigateFromApp} />}
               {currentScreen === 'memory' && <MemoryScreenView onNavigate={navigateFromApp} />}
-              {currentScreen === 'appearance' && <AppearanceScreenView onNavigate={navigateFromApp} themeMode={themeMode} onSelectTheme={onSelectTheme} />}
+              {currentScreen === 'appearance' && <AppearanceScreenView onNavigate={navigateFromApp} currentTheme={themeMode} onSelectTheme={onSelectTheme} />}
               {currentScreen === 'npc' && <NpcScreenView onNavigate={setCurrentScreen} />}
               {currentScreen === 'group-presets' && <GroupPresetScreenView onNavigate={setCurrentScreen} />}
               {isLocked && <LockScreenView themeMode={themeMode} onUnlock={() => setIsLocked(false)} />}
             </div>
 
             {/* iPhone 8 bottom chrome with round Home button */}
-            <div className="relative h-[72px] flex items-center justify-center">
+            <div className="relative h-[78px] shrink-0 flex items-center justify-center">
               <button
                 type="button"
                 onClick={() => setCurrentScreen('home')}
-                className="w-[62px] h-[62px] rounded-full border-2 border-white/50 bg-gradient-to-b from-white/20 to-white/5 shadow-[inset_0_1px_3px_rgba(255,255,255,.5),0_3px_8px_rgba(0,0,0,.4)] active:scale-95 transition flex items-center justify-center"
+                className="w-[48px] h-[48px] rounded-full border border-black/35 bg-[linear-gradient(145deg,#fbfbfc,#d6d6d9)] shadow-[inset_0_1px_1px_rgba(255,255,255,.9),0_1px_2px_rgba(0,0,0,.18)] active:scale-95 transition flex items-center justify-center"
                 aria-label="Home"
               >
-                <span className="w-7 h-7 rounded-full border border-white/40" />
+                <span className="w-[39px] h-[39px] rounded-full border border-black/15 shadow-[inset_0_0_0_1px_rgba(255,255,255,.5)]" />
               </button>
             </div>
           </div>
@@ -523,14 +525,14 @@ export function PhoneSimulator({
         {appearance.phoneShell === 'classic-square' && (
           <div
             data-theme={isDark ? 'dark' : 'light'}
-            className="relative w-[360px] sm:w-[390px] h-[780px] sm:h-[844px] overflow-hidden rounded-[20px] border-[8px] border-[var(--frame,#1e1d1b)] shadow-[0_30px_100px_rgba(20,18,15,.28)] flex flex-col select-none"
-            style={{ background: globalBg, color: 'var(--ink, #242323)', fontFamily: activeFont ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif' : undefined, fontSize: `${appearance.customFontSize || 1}em` }}
+            className="relative w-[320px] sm:w-[350px] h-[665px] sm:h-[728px] overflow-hidden rounded-[10px] border-[8px] border-[#1c1c1e] shadow-[inset_0_0_0_1px_rgba(255,255,255,.15),0_28px_85px_rgba(20,18,15,.30)] flex flex-col select-none"
+            style={{ background: isDark ? '#171719' : '#f6f6f7', color: 'var(--ink, #242323)', fontFamily: activeFont ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif' : undefined, fontSize: `${appearance.customFontSize || 1}em` }}
           >
             {/* Top bezel */}
-            <div className="relative h-[36px] flex items-center justify-center">
-              <div className="absolute left-1/2 -translate-x-1/2 top-[7px] flex gap-[6px]">
-                <div className="w-[8px] h-[8px] rounded-full bg-black/30" />
-                <div className="w-[28px] h-[5px] rounded-full bg-black/20" />
+            <div className="relative h-[56px] shrink-0 flex items-center justify-center">
+              <div className="absolute left-1/2 -translate-x-1/2 top-[20px] flex items-center gap-[8px]">
+                <div className="w-[6px] h-[6px] rounded-full bg-black/35" />
+                <div className="w-[38px] h-[5px] rounded-full bg-black/40" />
               </div>
             </div>
 
@@ -589,24 +591,24 @@ export function PhoneSimulator({
               {currentScreen === 'spy-phone' && <SpyPhoneScreenView onNavigate={navigateFromApp} />}
               {currentScreen === 'threads' && <ThreadsScreenView onNavigate={navigateFromApp} />}
               {currentScreen === 'offline-story' && <OfflineStoryHtmlView onNavigate={navigateTo} />}
-              {currentScreen === 'settings' && <SettingsScreenView onNavigate={navigateFromApp} onSelectTheme={onSelectTheme} />}
+              {currentScreen === 'settings' && <SettingsScreenView onNavigate={navigateFromApp} />}
               {currentScreen === 'project-studio' && <ProjectStudioScreenView onNavigate={navigateFromApp} />}
               {currentScreen === 'memory' && <MemoryScreenView onNavigate={navigateFromApp} />}
-              {currentScreen === 'appearance' && <AppearanceScreenView onNavigate={navigateFromApp} themeMode={themeMode} onSelectTheme={onSelectTheme} />}
+              {currentScreen === 'appearance' && <AppearanceScreenView onNavigate={navigateFromApp} currentTheme={themeMode} onSelectTheme={onSelectTheme} />}
               {currentScreen === 'npc' && <NpcScreenView onNavigate={setCurrentScreen} />}
               {currentScreen === 'group-presets' && <GroupPresetScreenView onNavigate={setCurrentScreen} />}
               {isLocked && <LockScreenView themeMode={themeMode} onUnlock={() => setIsLocked(false)} />}
             </div>
 
             {/* Bottom chrome with square Home button */}
-            <div className="relative h-[72px] flex items-center justify-center">
+            <div className="relative h-[72px] shrink-0 flex items-center justify-center">
               <button
                 type="button"
                 onClick={() => setCurrentScreen('home')}
-                className="w-[52px] h-[52px] rounded-[12px] border-2 border-white/50 bg-gradient-to-b from-white/20 to-white/5 shadow-[inset_0_1px_3px_rgba(255,255,255,.5),0_3px_8px_rgba(0,0,0,.4)] active:scale-95 transition flex items-center justify-center"
+                className="w-[44px] h-[44px] rounded-full border border-black/35 bg-[linear-gradient(145deg,#fbfbfc,#d6d6d9)] shadow-[inset_0_1px_1px_rgba(255,255,255,.9),0_1px_2px_rgba(0,0,0,.18)] active:scale-95 transition flex items-center justify-center"
                 aria-label="Home"
               >
-                <span className="w-6 h-6 rounded-[4px] border border-white/40" />
+                <span className="w-[25px] h-[25px] rounded-[6px] border border-black/25 shadow-[inset_0_0_0_1px_rgba(255,255,255,.5)]" />
               </button>
             </div>
           </div>
@@ -631,9 +633,5 @@ export function PhoneSimulator({
         />
 
       </div>
-
-
-
-    </div>
   );
 }
