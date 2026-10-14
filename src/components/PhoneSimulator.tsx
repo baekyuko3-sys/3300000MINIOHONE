@@ -46,6 +46,8 @@ export function PhoneSimulator({
   const [appearance, setAppearance] = useState(() => readAppearance());
   const [screenHistory, setScreenHistory] = useState<ScreenType[]>(['home']);
   const [statusBarNow, setStatusBarNow] = useState(() => new Date());
+  // 锁屏状态：首次打开时为 true，解锁后变为 false
+  const [isLocked, setIsLocked] = useState(true);
 
   useEffect(() => {
     const refreshClock = () => setStatusBarNow(new Date());
@@ -224,68 +226,60 @@ export function PhoneSimulator({
     <div className="relative mx-auto flex flex-col items-center">
       {fontFaceCss ? <style>{fontFaceCss}</style> : null}
       
-      {/* Authentic Physical Phone Chassis (Exact CSS from user template) */}
-      <div 
-        data-theme={isDark ? 'dark' : 'light'}
-        className={`relative w-[360px] sm:w-[390px] h-[780px] sm:h-[844px] overflow-hidden rounded-[43px] border-[7px] border-[var(--frame,#1e1d1b)] shadow-[0_30px_100px_rgba(20,18,15,.28)] flex flex-col select-none ${
-          isDark ? 'dark-theme-mode' : ''
-        }`}
-        style={{ background: globalBg, color: 'var(--ink, #242323)', fontFamily: activeFont ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif' : undefined, fontSize: `${appearance.customFontSize || 1}em` }}
-      >
-        
-        {/* Statusbar (Exact from user template) */}
-        <div className="absolute z-20 top-0 left-0 right-0 h-[42px] flex items-center justify-between px-6 text-[12px] font-[650] tracking-[0.2px] text-[var(--ink)]">
-          <div className="flex items-baseline gap-1.5 tabular-nums" aria-label={statusBarNow.toLocaleString()}>
-            <span>{statusBarTime}</span>
-            <span className="text-[9px] font-medium tracking-normal opacity-75">{statusBarDate}</span>
-          </div>
-
-          <div className="flex items-center gap-[7px]">
-            <span className="text-[11px]">⌁</span>
-            <span className="text-[11px] font-normal">Wi‑Fi</span>
-            {/* Battery icon with inner fill */}
-            <div className="w-[21px] h-[10px] border-[1.4px] border-current rounded-[3px] relative">
-              <div className="absolute -right-[3px] top-[2.5px] w-[2px] h-[4px] bg-current rounded-[1px]" />
-              <div className="w-[72%] h-full bg-current rounded-[1px]" />
+      {/* Physical Phone Chassis — shape depends on phoneShell */}
+      {appearance.phoneShell === 'modern' && (
+        <div
+          data-theme={isDark ? 'dark' : 'light'}
+          className={`relative w-[360px] sm:w-[390px] h-[780px] sm:h-[844px] overflow-hidden rounded-[43px] border-[7px] border-[var(--frame,#1e1d1b)] shadow-[0_30px_100px_rgba(20,18,15,.28)] flex flex-col select-none ${
+            isDark ? 'dark-theme-mode' : ''
+          }`}
+          style={{ background: globalBg, color: 'var(--ink, #242323)', fontFamily: activeFont ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif' : undefined, fontSize: `${appearance.customFontSize || 1}em` }}
+        >
+          {/* Statusbar */}
+          <div className="absolute z-20 top-0 left-0 right-0 h-[42px] flex items-center justify-between px-6 text-[12px] font-[650] tracking-[0.2px] text-[var(--ink)]">
+            <div className="flex items-baseline gap-1.5 tabular-nums" aria-label={statusBarNow.toLocaleString()}>
+              <span>{statusBarTime}</span>
+              <span className="text-[9px] font-medium tracking-normal opacity-75">{statusBarDate}</span>
+            </div>
+            <div className="flex items-center gap-[7px]">
+              <span className="text-[11px]">⌁</span>
+              <span className="text-[11px] font-normal">Wi‑Fi</span>
+              <div className="w-[21px] h-[10px] border-[1.4px] border-current rounded-[3px] relative">
+                <div className="absolute -right-[3px] top-[2.5px] w-[2px] h-[4px] bg-current rounded-[1px]" />
+                <div className="w-[72%] h-full bg-current rounded-[1px]" />
+              </div>
             </div>
           </div>
-        </div>
-
-        {/* Dynamic Island A+D — 外观设置可关；真机自带岛时建议隐藏 */}
-        <DynamicIsland
-          enabled={appearance.showDynamicIsland !== false}
-          onOpenMusic={() => setCurrentScreen('music')}
-          island={{
-            islandShowIdleDot: appearance.islandShowIdleDot === true,
-            islandIdleLabel: appearance.islandIdleLabel || '',
-            islandDotColor: appearance.islandDotColor || '#34d399',
-            islandCollapsedStyle: appearance.islandCollapsedStyle === 'black' ? 'black' : 'glass',
-            islandFontFamily: appearance.islandFontFamily || '',
-          }}
-        />
-
-        {/* Screen Content Viewport */}
-        <div
-          data-sane333-home-viewport
-          className="flex-1 relative overflow-hidden"
-          style={{
-            fontSize: appBeauty.fontScale ? `${appBeauty.fontScale}em` : undefined,
-            background: appBeauty.background || globalBg,
-            ['--phone-bg' as any]: globalBg,
-            ['--paper' as any]: globalBg,
-            ['--screen' as any]: globalBg,
-            ['--page' as any]: globalBg,
-            ['--glass' as any]: 'color-mix(in srgb, ' + globalBg + ' 78%, white 22%)',
-            ['--icon' as any]: 'color-mix(in srgb, ' + globalBg + ' 86%, white 14%)',
-            ['--app-accent' as any]: appBeauty.accent || '#292724',
-            ['--app-radius' as any]: `${appBeauty.radius ?? 18}px`,
-            // Tailwind's font-sans utility reads --font-sans. Keep LINE's many
-            // font-sans elements aligned with the phone-wide custom font.
-            ['--font-sans' as any]: activeFont
-              ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif'
-              : undefined,
-          }}
-        >
+          <DynamicIsland
+            enabled={appearance.showDynamicIsland !== false}
+            onOpenMusic={() => setCurrentScreen('music')}
+            island={{
+              islandShowIdleDot: appearance.islandShowIdleDot === true,
+              islandIdleLabel: appearance.islandIdleLabel || '',
+              islandDotColor: appearance.islandDotColor || '#34d399',
+              islandCollapsedStyle: appearance.islandCollapsedStyle === 'black' ? 'black' : 'glass',
+              islandFontFamily: appearance.islandFontFamily || '',
+            }}
+          />
+          <div
+            data-sane333-home-viewport
+            className="flex-1 relative overflow-hidden"
+            style={{
+              fontSize: appBeauty.fontScale ? `${appBeauty.fontScale}em` : undefined,
+              background: appBeauty.background || globalBg,
+              ['--phone-bg' as any]: globalBg,
+              ['--paper' as any]: globalBg,
+              ['--screen' as any]: globalBg,
+              ['--page' as any]: globalBg,
+              ['--glass' as any]: 'color-mix(in srgb, ' + globalBg + ' 78%, white 22%)',
+              ['--icon' as any]: 'color-mix(in srgb, ' + globalBg + ' 86%, white 14%)',
+              ['--app-accent' as any]: appBeauty.accent || '#292724',
+              ['--app-radius' as any]: `${appBeauty.radius ?? 18}px`,
+              ['--font-sans' as any]: activeFont
+                ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif'
+                : undefined,
+            }}
+          >
           {appBeauty.background && (
             <div
               className="absolute inset-0 z-[4] pointer-events-none opacity-[0.12] bg-center bg-cover"
@@ -422,21 +416,211 @@ export function PhoneSimulator({
             <GroupPresetScreenView onNavigate={setCurrentScreen} />
           )}
 
-          {currentScreen === 'lock' && (
+          {isLocked && (
             <LockScreenView
               themeMode={themeMode}
-              onUnlock={() => setCurrentScreen('home')}
+              onUnlock={() => setIsLocked(false)}
             />
           )}
         </div>
 
+        {/* ========== Classic iPhone 8 (Round Home Button) ========== */}
 
-        {/* Home Indicator Bar (Exact from user template) */}
-        <div 
-          onClick={() => setCurrentScreen('home')}
-          className="absolute z-20 bottom-[7px] left-1/2 -translate-x-1/2 w-[118px] h-[4px] rounded-[5px] bg-[#242321] cursor-pointer hover:w-[130px] transition-all"
-          title="点击返回主屏幕"
-        />
+        {/* iPhone 8 body wrapper — holds viewport + classic chrome */}
+        {appearance.phoneShell === 'classic-round' && (
+          <div
+            data-theme={isDark ? 'dark' : 'light'}
+            className="relative w-[360px] sm:w-[390px] h-[780px] sm:h-[844px] overflow-hidden rounded-[38px] border-[8px] border-[var(--frame,#1e1d1b)] shadow-[0_30px_100px_rgba(20,18,15,.28)] flex flex-col select-none"
+            style={{ background: globalBg, color: 'var(--ink, #242323)', fontFamily: activeFont ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif' : undefined, fontSize: `${appearance.customFontSize || 1}em` }}
+          >
+            {/* iPhone 8 top bezel (speaker / sensor) */}
+            <div className="relative h-[36px] flex items-center justify-center">
+              <div className="absolute left-1/2 -translate-x-1/2 top-[7px] flex gap-[6px]">
+                <div className="w-[8px] h-[8px] rounded-full bg-black/30" />
+                <div className="w-[28px] h-[5px] rounded-full bg-black/20" />
+              </div>
+            </div>
+
+            {/* iPhone 8 Viewport */}
+            <div
+              className="flex-1 relative overflow-hidden"
+              style={{
+                background: appBeauty.background || globalBg,
+                ['--phone-bg' as any]: globalBg,
+                ['--paper' as any]: globalBg,
+                ['--screen' as any]: globalBg,
+                ['--page' as any]: globalBg,
+                ['--glass' as any]: 'color-mix(in srgb, ' + globalBg + ' 78%, white 22%)',
+                ['--icon' as any]: 'color-mix(in srgb, ' + globalBg + ' 86%, white 14%)',
+                ['--app-accent' as any]: appBeauty.accent || '#292724',
+                ['--app-radius' as any]: `${appBeauty.radius ?? 18}px`,
+                ['--font-sans' as any]: activeFont
+                  ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif'
+                  : undefined,
+              }}
+            >
+              {appBeauty.background && (
+                <div className="absolute inset-0 z-[4] pointer-events-none opacity-[0.12] bg-center bg-cover" style={{ backgroundImage: `url(${appBeauty.background})` }} />
+              )}
+              {/* Statusbar */}
+              <div className="absolute z-20 top-0 left-0 right-0 h-[42px] flex items-center justify-between px-6 text-[12px] font-[650] tracking-[0.2px] text-[var(--ink)]">
+                <div className="flex items-baseline gap-1.5 tabular-nums">
+                  <span>{statusBarTime}</span>
+                  <span className="text-[9px] font-medium tracking-normal opacity-75">{statusBarDate}</span>
+                </div>
+                <div className="flex items-center gap-[7px]">
+                  <span className="text-[11px]">⌁</span>
+                  <span className="text-[11px] font-normal">Wi‑Fi</span>
+                  <div className="w-[21px] h-[10px] border-[1.4px] border-current rounded-[3px] relative">
+                    <div className="absolute -right-[3px] top-[2.5px] w-[2px] h-[4px] bg-current rounded-[1px]" />
+                    <div className="w-[72%] h-full bg-current rounded-[1px]" />
+                  </div>
+                </div>
+              </div>
+
+              {currentScreen === 'home' && <SaneHomeScreenView onNavigate={navigateTo} onOpenSheet={() => setIsSheetOpen(true)} onToggleTheme={handleToggleTheme} />}
+              {(currentScreen === 'chat' || currentScreen === 'inbox') && (
+                <AppErrorBoundary where={`screen:${currentScreen}`} resetLabel="重新打开" onReset={() => { window.localStorage.removeItem('line:chat-items'); window.localStorage.removeItem('line:friends-list'); window.localStorage.removeItem('line:global-favorites'); window.localStorage.removeItem('line:moments-posts'); window.localStorage.removeItem('line:moments-screen-posts'); window.location.reload(); }}>
+                  <LineAppView onNavigateHome={goBack} onNavigateScreen={navigateTo} />
+                </AppErrorBoundary>
+              )}
+              {currentScreen === 'character-profile' && <CharacterProfileView themeMode={themeMode} onNavigate={navigateFromApp} />}
+              {currentScreen === 'moments' && <MomentsScreenView themeMode={themeMode} onNavigate={navigateFromApp} />}
+              {currentScreen === 'gallery' && <GalleryScreenView themeMode={themeMode} onNavigate={navigateFromApp} />}
+              <div className={currentScreen === 'music' ? 'absolute inset-0 z-[5]' : 'absolute inset-0 z-0 invisible pointer-events-none'}>
+                <MusicHtmlView active={currentScreen === 'music'} onNavigate={navigateFromApp} />
+              </div>
+              {currentScreen === 'notes' && <NotesScreenView onNavigate={navigateFromApp} />}
+              {currentScreen === 'calendar' && <CalendarScreenView onNavigate={navigateFromApp} />}
+              {currentScreen === 'world-book' && <WorldBookScreenView onNavigate={navigateFromApp} />}
+              {currentScreen === 'spy-phone' && <SpyPhoneScreenView onNavigate={navigateFromApp} />}
+              {currentScreen === 'threads' && <ThreadsScreenView onNavigate={navigateFromApp} />}
+              {currentScreen === 'offline-story' && <OfflineStoryHtmlView onNavigate={navigateTo} />}
+              {currentScreen === 'settings' && <SettingsScreenView onNavigate={navigateFromApp} onSelectTheme={onSelectTheme} />}
+              {currentScreen === 'project-studio' && <ProjectStudioScreenView onNavigate={navigateFromApp} />}
+              {currentScreen === 'memory' && <MemoryScreenView onNavigate={navigateFromApp} />}
+              {currentScreen === 'appearance' && <AppearanceScreenView onNavigate={navigateFromApp} themeMode={themeMode} onSelectTheme={onSelectTheme} />}
+              {currentScreen === 'npc' && <NpcScreenView onNavigate={setCurrentScreen} />}
+              {currentScreen === 'group-presets' && <GroupPresetScreenView onNavigate={setCurrentScreen} />}
+              {isLocked && <LockScreenView themeMode={themeMode} onUnlock={() => setIsLocked(false)} />}
+            </div>
+
+            {/* iPhone 8 bottom chrome with round Home button */}
+            <div className="relative h-[72px] flex items-center justify-center">
+              <button
+                type="button"
+                onClick={() => setCurrentScreen('home')}
+                className="w-[62px] h-[62px] rounded-full border-2 border-white/50 bg-gradient-to-b from-white/20 to-white/5 shadow-[inset_0_1px_3px_rgba(255,255,255,.5),0_3px_8px_rgba(0,0,0,.4)] active:scale-95 transition flex items-center justify-center"
+                aria-label="Home"
+              >
+                <span className="w-7 h-7 rounded-full border border-white/40" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ========== Classic iPhone SE (Square Home Button) ========== */}
+        {appearance.phoneShell === 'classic-square' && (
+          <div
+            data-theme={isDark ? 'dark' : 'light'}
+            className="relative w-[360px] sm:w-[390px] h-[780px] sm:h-[844px] overflow-hidden rounded-[20px] border-[8px] border-[var(--frame,#1e1d1b)] shadow-[0_30px_100px_rgba(20,18,15,.28)] flex flex-col select-none"
+            style={{ background: globalBg, color: 'var(--ink, #242323)', fontFamily: activeFont ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif' : undefined, fontSize: `${appearance.customFontSize || 1}em` }}
+          >
+            {/* Top bezel */}
+            <div className="relative h-[36px] flex items-center justify-center">
+              <div className="absolute left-1/2 -translate-x-1/2 top-[7px] flex gap-[6px]">
+                <div className="w-[8px] h-[8px] rounded-full bg-black/30" />
+                <div className="w-[28px] h-[5px] rounded-full bg-black/20" />
+              </div>
+            </div>
+
+            {/* Viewport */}
+            <div
+              className="flex-1 relative overflow-hidden"
+              style={{
+                background: appBeauty.background || globalBg,
+                ['--phone-bg' as any]: globalBg,
+                ['--paper' as any]: globalBg,
+                ['--screen' as any]: globalBg,
+                ['--page' as any]: globalBg,
+                ['--glass' as any]: 'color-mix(in srgb, ' + globalBg + ' 78%, white 22%)',
+                ['--icon' as any]: 'color-mix(in srgb, ' + globalBg + ' 86%, white 14%)',
+                ['--app-accent' as any]: appBeauty.accent || '#292724',
+                ['--app-radius' as any]: `${appBeauty.radius ?? 18}px`,
+                ['--font-sans' as any]: activeFont
+                  ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif'
+                  : undefined,
+              }}
+            >
+              {appBeauty.background && (
+                <div className="absolute inset-0 z-[4] pointer-events-none opacity-[0.12] bg-center bg-cover" style={{ backgroundImage: `url(${appBeauty.background})` }} />
+              )}
+              {/* Statusbar */}
+              <div className="absolute z-20 top-0 left-0 right-0 h-[42px] flex items-center justify-between px-6 text-[12px] font-[650] tracking-[0.2px] text-[var(--ink)]">
+                <div className="flex items-baseline gap-1.5 tabular-nums">
+                  <span>{statusBarTime}</span>
+                  <span className="text-[9px] font-medium tracking-normal opacity-75">{statusBarDate}</span>
+                </div>
+                <div className="flex items-center gap-[7px]">
+                  <span className="text-[11px]">⌁</span>
+                  <span className="text-[11px] font-normal">Wi‑Fi</span>
+                  <div className="w-[21px] h-[10px] border-[1.4px] border-current rounded-[3px] relative">
+                    <div className="absolute -right-[3px] top-[2.5px] w-[2px] h-[4px] bg-current rounded-[1px]" />
+                    <div className="w-[72%] h-full bg-current rounded-[1px]" />
+                  </div>
+                </div>
+              </div>
+
+              {currentScreen === 'home' && <SaneHomeScreenView onNavigate={navigateTo} onOpenSheet={() => setIsSheetOpen(true)} onToggleTheme={handleToggleTheme} />}
+              {(currentScreen === 'chat' || currentScreen === 'inbox') && (
+                <AppErrorBoundary where={`screen:${currentScreen}`} resetLabel="重新打开" onReset={() => { window.localStorage.removeItem('line:chat-items'); window.localStorage.removeItem('line:friends-list'); window.localStorage.removeItem('line:global-favorites'); window.localStorage.removeItem('line:moments-posts'); window.localStorage.removeItem('line:moments-screen-posts'); window.location.reload(); }}>
+                  <LineAppView onNavigateHome={goBack} onNavigateScreen={navigateTo} />
+                </AppErrorBoundary>
+              )}
+              {currentScreen === 'character-profile' && <CharacterProfileView themeMode={themeMode} onNavigate={navigateFromApp} />}
+              {currentScreen === 'moments' && <MomentsScreenView themeMode={themeMode} onNavigate={navigateFromApp} />}
+              {currentScreen === 'gallery' && <GalleryScreenView themeMode={themeMode} onNavigate={navigateFromApp} />}
+              <div className={currentScreen === 'music' ? 'absolute inset-0 z-[5]' : 'absolute inset-0 z-0 invisible pointer-events-none'}>
+                <MusicHtmlView active={currentScreen === 'music'} onNavigate={navigateFromApp} />
+              </div>
+              {currentScreen === 'notes' && <NotesScreenView onNavigate={navigateFromApp} />}
+              {currentScreen === 'calendar' && <CalendarScreenView onNavigate={navigateFromApp} />}
+              {currentScreen === 'world-book' && <WorldBookScreenView onNavigate={navigateFromApp} />}
+              {currentScreen === 'spy-phone' && <SpyPhoneScreenView onNavigate={navigateFromApp} />}
+              {currentScreen === 'threads' && <ThreadsScreenView onNavigate={navigateFromApp} />}
+              {currentScreen === 'offline-story' && <OfflineStoryHtmlView onNavigate={navigateTo} />}
+              {currentScreen === 'settings' && <SettingsScreenView onNavigate={navigateFromApp} onSelectTheme={onSelectTheme} />}
+              {currentScreen === 'project-studio' && <ProjectStudioScreenView onNavigate={navigateFromApp} />}
+              {currentScreen === 'memory' && <MemoryScreenView onNavigate={navigateFromApp} />}
+              {currentScreen === 'appearance' && <AppearanceScreenView onNavigate={navigateFromApp} themeMode={themeMode} onSelectTheme={onSelectTheme} />}
+              {currentScreen === 'npc' && <NpcScreenView onNavigate={setCurrentScreen} />}
+              {currentScreen === 'group-presets' && <GroupPresetScreenView onNavigate={setCurrentScreen} />}
+              {isLocked && <LockScreenView themeMode={themeMode} onUnlock={() => setIsLocked(false)} />}
+            </div>
+
+            {/* Bottom chrome with square Home button */}
+            <div className="relative h-[72px] flex items-center justify-center">
+              <button
+                type="button"
+                onClick={() => setCurrentScreen('home')}
+                className="w-[52px] h-[52px] rounded-[12px] border-2 border-white/50 bg-gradient-to-b from-white/20 to-white/5 shadow-[inset_0_1px_3px_rgba(255,255,255,.5),0_3px_8px_rgba(0,0,0,.4)] active:scale-95 transition flex items-center justify-center"
+                aria-label="Home"
+              >
+                <span className="w-6 h-6 rounded-[4px] border border-white/40" />
+              </button>
+            </div>
+          </div>
+        )}
+
+
+        {/* Home Indicator (modern only — classic shells have built-in Home) */}
+        {appearance.phoneShell === 'modern' && (
+          <div
+            onClick={() => setCurrentScreen('home')}
+            className="absolute z-20 bottom-[7px] left-1/2 -translate-x-1/2 w-[118px] h-[4px] rounded-[5px] bg-[#242321] cursor-pointer hover:w-[130px] transition-all"
+            title="点击返回主屏幕"
+          />
+        )}
 
         {/* Customization Sheet Modal */}
         <HomeCustomizeSheet

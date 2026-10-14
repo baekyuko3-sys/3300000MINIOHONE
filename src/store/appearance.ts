@@ -43,6 +43,16 @@ export interface AppearanceScheme {
   islandCollapsedStyle: 'glass' | 'black';
   /** 灵动岛专用字体名（CSS font-family）；空 = 跟手机字体 */
   islandFontFamily: string;
+  /** 锁屏独立壁纸；空 = 跟主屏幕 */
+  lockWallpaper: string;
+  /** 锁屏时间格式风格：'ios-large' | 'classic' */
+  lockStyle: 'ios-large' | 'classic';
+  /** 解锁方式组合：可叠加，例如 ['swipe','passcode','fingerprint'] */
+  lockMethods: Array<'swipe' | 'passcode' | 'fingerprint'>;
+  /** 4-6 位数字密码（明文存本地，仅演示） */
+  lockPasscode: string;
+  /** 手机外形 */
+  phoneShell: 'modern' | 'classic-round' | 'classic-square';
   updatedAt: string;
 }
 
@@ -73,6 +83,11 @@ export const DEFAULT_APPEARANCE: AppearanceScheme = {
   islandDotColor: '#34d399',
   islandCollapsedStyle: 'glass',
   islandFontFamily: '',
+  lockWallpaper: '',
+  lockStyle: 'ios-large',
+  lockMethods: ['swipe'],
+  lockPasscode: '',
+  phoneShell: 'modern',
   widget: {
     weatherCity: 'YOUR CITY',
     weatherTemp: '21°',
@@ -131,6 +146,13 @@ function normalizeAppearance(value: Partial<AppearanceScheme>): AppearanceScheme
     islandDotColor: String(value.islandDotColor || '#34d399'),
     islandCollapsedStyle: value.islandCollapsedStyle === 'black' ? 'black' : 'glass',
     islandFontFamily: String(value.islandFontFamily || ''),
+    lockWallpaper: String(value.lockWallpaper ?? ''),
+    lockStyle: value.lockStyle === 'classic' ? 'classic' : 'ios-large',
+    lockMethods: Array.isArray(value.lockMethods)
+      ? (value.lockMethods as string[]).filter((item): item is 'swipe' | 'passcode' | 'fingerprint' => item === 'swipe' || item === 'passcode' || item === 'fingerprint')
+      : ['swipe'],
+    lockPasscode: String(value.lockPasscode || '').replace(/\D/g, '').slice(0, 6),
+    phoneShell: value.phoneShell === 'classic-round' || value.phoneShell === 'classic-square' ? value.phoneShell : 'modern',
     updatedAt: String(value.updatedAt || new Date().toISOString()),
   };
 }

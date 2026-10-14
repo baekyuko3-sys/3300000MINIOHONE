@@ -24,6 +24,7 @@ export function SaneHomeScreenView({ onNavigate, onOpenSheet, onToggleTheme }: S
   const [currentMonthString, setCurrentMonthString] = useState('OCTOBER · FRIDAY · 2026');
   const [archiveCap, setArchiveCap] = useState('PRIVATE ARCHIVE');
   const [worldUnread, setWorldUnread] = useState(0);
+  const [widgetPanelOpen, setWidgetPanelOpen] = useState(false);
 
   type DesktopItem = { id: string; x: number; y: number };
   type DesktopPage = 1 | 2;
@@ -348,23 +349,32 @@ export function SaneHomeScreenView({ onNavigate, onOpenSheet, onToggleTheme }: S
         </div>
 
         <button 
-          onClick={() => window.dispatchEvent(new CustomEvent('sane333:open-desktop-editor', { detail: { page: currentPage } }))}
-          className="w-[35px] h-[35px] rounded-full bg-[var(--icon,rgba(248,245,239,.72))] border border-[var(--edge,rgba(255,255,255,.6))] backdrop-blur-md grid place-items-center text-base hover:scale-105 active:scale-95 transition-all text-[var(--ink)] shadow-xs"
-          title="自由摆放 App 与小组件"
-          aria-label="自由摆放 App 与小组件"
+          onClick={() => {
+            if (desktopEditing) {
+              setWidgetPanelOpen(true);
+            } else {
+              window.dispatchEvent(new CustomEvent('sane333:open-desktop-editor', { detail: { page: currentPage } }));
+            }
+          }}
+          className="w-[35px] h-[35px] rounded-full bg-[var(--icon,rgba(248,245,239,.72))] border border-[var(--edge,rgba(255,255,255,.6))] backdrop-blur-md grid place-items-center text-lg font-bold hover:scale-105 active:scale-95 transition-all text-[var(--ink)] shadow-xs"
+          title={desktopEditing ? "添加小组件" : "自由摆放 App 与小组件"}
+          aria-label={desktopEditing ? "添加小组件" : "自由摆放 App 与小组件"}
         >
-          ⌘
+          {desktopEditing ? '+' : '⌘'}
         </button>
       </div>
 
       {/* ========================================================================= */}
       {/* PAGE 1: 经典胶片主屏幕 (LINE + IG + 音乐 + 线下剧情) */}
       {/* ========================================================================= */}
-      {currentPage === 1 && (
+      {currentPage === 1 && (() => {
+        const dateStyle = appearance.widget.dateStyle || 'date-classic';
+        const dateWrap = dateStyle === 'date-box' ? 'p-4 bg-[var(--paper,#eee9df)] rounded-2xl border border-black/5' : dateStyle === 'date-glass' ? 'p-4 bg-[var(--glass,rgba(248,246,242,.72))] backdrop-blur-2xl border border-[var(--edge)] rounded-2xl' : '';
+        return (
         <div className="animate-in fade-in duration-300">
-          
+
           {/* Date & Literary Section */}
-          <div className={`absolute z-10 ${desktopEditing ? "ring-1 ring-[#b7a59a]/45 rounded-xl cursor-grab active:cursor-grabbing touch-none" : ""}`} style={{ left: itemPosition(1, "widget-date").x, top: itemPosition(1, "widget-date").y }} onPointerDown={e=>beginDesktopDrag(1,"widget-date",e)} onPointerMove={e=>continueDesktopDrag(1,"widget-date",e)} onPointerUp={endDesktopDrag} onPointerCancel={endDesktopDrag}>
+          <div className={`absolute z-10 ${dateWrap} ${desktopEditing ? "ring-1 ring-[#b7a59a]/45 rounded-xl cursor-grab active:cursor-grabbing touch-none" : ""}`} style={{ left: itemPosition(1, "widget-date").x, top: itemPosition(1, "widget-date").y }} onPointerDown={e=>beginDesktopDrag(1,"widget-date",e)} onPointerMove={e=>continueDesktopDrag(1,"widget-date",e)} onPointerUp={endDesktopDrag} onPointerCancel={endDesktopDrag}>
             <div className="font-serif text-[55px] leading-[0.9] font-normal tracking-[-3px] text-[var(--ink)]">
               {currentDateNumber}
             </div>
@@ -429,7 +439,13 @@ export function SaneHomeScreenView({ onNavigate, onOpenSheet, onToggleTheme }: S
           <div className="absolute inset-0 z-10 pointer-events-none">
 
             {/* Weather Card */}
-            {!isHidden(1, 'widget-weather') && (
+            {!isHidden(1, 'widget-weather') && (() => {
+              const style = appearance.widget.weatherStyle || 'weather-glass';
+              const styleClass =
+                style === 'weather-dark' ? 'bg-[#1a1a1a] border-black text-white' :
+                style === 'weather-light' ? 'bg-white border-black/5 text-[#1a1a1a]' :
+                'bg-[var(--glass,rgba(248,246,242,.72))] border-[var(--edge,rgba(255,255,255,.6))] text-[var(--ink)]';
+              return (
               <button
                 style={{ left: itemPosition(1, 'widget-weather').x, top: itemPosition(1, 'widget-weather').y }}
                 onPointerDown={e=>beginDesktopDrag(1,'widget-weather',e)}
@@ -437,25 +453,34 @@ export function SaneHomeScreenView({ onNavigate, onOpenSheet, onToggleTheme }: S
                 onPointerUp={endDesktopDrag}
                 onPointerCancel={endDesktopDrag}
                 onClick={() => { if (!desktopEditing) setCityIndex((prev) => (prev + 1) % cities.length); }}
-                className={`pointer-events-auto absolute w-[160px] h-[112px] overflow-hidden border border-[var(--edge,rgba(255,255,255,.6))] bg-[var(--glass,rgba(248,246,242,.72))] backdrop-blur-2xl rounded-[21px] p-[15px] shadow-[0_6px_22px_rgba(40,35,30,.045)] text-left cursor-pointer active:scale-98 transition-all ${desktopEditing ? 'ring-1 ring-[#b7a59a]/45 cursor-grab active:cursor-grabbing touch-none' : ''}`}
+                className={`pointer-events-auto absolute w-[160px] h-[112px] overflow-hidden border backdrop-blur-2xl rounded-[21px] p-[15px] shadow-[0_6px_22px_rgba(40,35,30,.045)] text-left cursor-pointer active:scale-98 transition-all ${styleClass} ${desktopEditing ? 'ring-1 ring-[#b7a59a]/45 cursor-grab active:cursor-grabbing touch-none' : ''}`}
                 title="点击切换城市天气"
               >
                 {desktopEditing && <span onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();hideDesktopItem(1,'widget-weather')}} className="absolute -right-2 -top-2 z-20 w-5 h-5 rounded-full bg-[#292724] text-white text-[10px] grid place-items-center cursor-pointer">×</span>}
-                <div className="absolute -right-7 -top-8 w-24 h-24 border border-[rgba(67,58,49,.09)] rounded-full pointer-events-none" />
-                <div className="text-[10px] text-[#8b8782] tracking-[1.6px] font-mono">{currentCity.city}</div>
+                <div className={`absolute -right-7 -top-8 w-24 h-24 border rounded-full pointer-events-none ${style === 'weather-dark' ? 'border-white/10' : 'border-[rgba(67,58,49,.09)]'}`} />
+                <div className={`text-[10px] tracking-[1.6px] font-mono ${style === 'weather-dark' ? 'text-white/60' : 'text-[#8b8782]'}`}>{currentCity.city}</div>
                 <div className="flex items-end justify-between mt-3">
                   <div>
-                    <div className="text-[27px] font-light tracking-[-1px] text-[var(--ink)] leading-none">{currentCity.temp}</div>
-                    <div className="text-[9px] text-[#8b8782] tracking-[1px] mt-1 font-mono">{currentCity.sky}</div>
-                    <div className="text-[8px] text-[#9b8f84] tracking-[.5px] mt-1 font-mono">{currentCity.note}</div>
+                    <div className={`text-[27px] font-light tracking-[-1px] leading-none ${style === 'weather-dark' ? 'text-white' : 'text-[var(--ink)]'}`}>{currentCity.temp}</div>
+                    <div className={`text-[9px] tracking-[1px] mt-1 font-mono ${style === 'weather-dark' ? 'text-white/60' : 'text-[#8b8782]'}`}>{currentCity.sky}</div>
+                    <div className={`text-[8px] tracking-[.5px] mt-1 font-mono ${style === 'weather-dark' ? 'text-white/40' : 'text-[#9b8f84]'}`}>{currentCity.note}</div>
                   </div>
-                  <div className="text-[28px] text-[#8b7560] leading-none">{currentCity.icon}</div>
+                  <div className={`text-[28px] leading-none ${style === 'weather-dark' ? 'text-white/80' : 'text-[#8b7560]'}`}>{currentCity.icon}</div>
                 </div>
               </button>
-            )}
+              );
+            })()}
 
             {/* Private Memory Note */}
-            {!isHidden(1, 'widget-note') && (
+            {!isHidden(1, 'widget-note') && (() => {
+              const noteStyle = appearance.widget.noteStyle || 'note-paper';
+              const noteClass =
+                noteStyle === 'note-glass' ? 'bg-[var(--glass,rgba(248,246,242,.72))] border-[var(--edge,rgba(255,255,255,.6))] text-[var(--ink)]' :
+                noteStyle === 'note-dark' ? 'bg-[#1a1a1a] border-black text-white' :
+                'bg-[var(--paper,eee9df)] border-black/10 text-[#5f554f]';
+              const labelClass = noteStyle === 'note-dark' ? 'text-white/60' : 'text-[#8b8782]';
+              const subClass = noteStyle === 'note-dark' ? 'text-white/40' : 'text-[#8b8782]';
+              return (
               <button
                 style={{ left: itemPosition(1, 'widget-note').x, top: itemPosition(1, 'widget-note').y }}
                 onPointerDown={e=>beginDesktopDrag(1,'widget-note',e)}
@@ -463,52 +488,62 @@ export function SaneHomeScreenView({ onNavigate, onOpenSheet, onToggleTheme }: S
                 onPointerUp={endDesktopDrag}
                 onPointerCancel={endDesktopDrag}
                 onClick={() => { if (!desktopEditing) onNavigate('notes'); }}
-                className={`pointer-events-auto absolute w-[160px] h-[112px] overflow-hidden border border-[var(--edge,rgba(255,255,255,.6))] bg-[var(--glass,rgba(248,246,242,.72))] backdrop-blur-2xl rounded-[21px] p-[15px] shadow-[0_6px_22px_rgba(40,35,30,.045)] text-left cursor-pointer active:scale-98 transition-all ${desktopEditing ? 'ring-1 ring-[#b7a59a]/45 cursor-grab active:cursor-grabbing touch-none' : ''}`}
+                className={`pointer-events-auto absolute w-[160px] h-[112px] overflow-hidden border backdrop-blur-2xl rounded-[21px] p-[15px] shadow-[0_6px_22px_rgba(40,35,30,.045)] text-left cursor-pointer active:scale-98 transition-all ${noteClass} ${desktopEditing ? 'ring-1 ring-[#b7a59a]/45 cursor-grab active:cursor-grabbing touch-none' : ''}`}
               >
                 {desktopEditing && <span onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();hideDesktopItem(1,'widget-note')}} className="absolute -right-2 -top-2 z-20 w-5 h-5 rounded-full bg-[#292724] text-white text-[10px] grid place-items-center cursor-pointer">×</span>}
-                <div className="text-[10px] text-[#8b8782] tracking-[1.6px] font-mono">NOTE</div>
-                <div className="mt-3 font-serif text-[14px] leading-[1.35] text-[var(--ink)] line-clamp-2">{appearance.widget.quoteContent || '此刻正在发生'}</div>
-                <div className="mt-1 text-[8px] text-[#8b8782] font-mono truncate">{appearance.widget.quoteAuthor || 'PRIVATE NOTE'}</div>
+                <div className={`text-[10px] tracking-[1.6px] font-mono ${labelClass}`}>NOTE</div>
+                <div className="mt-3 font-serif text-[14px] leading-[1.35] line-clamp-2">{appearance.widget.quoteContent || '此刻正在发生'}</div>
+                <div className={`mt-1 text-[8px] font-mono truncate ${subClass}`}>{appearance.widget.quoteAuthor || 'PRIVATE NOTE'}</div>
                 {appearance.widget.anniversaryDays > 0 && <div className="absolute bottom-3 left-[15px] right-[15px] text-[7px] text-[#9b625b] font-mono truncate">{appearance.widget.anniversaryText} · DAY {appearance.widget.anniversaryDays}</div>}
               </button>
-            )}
+              );
+            })()}
 
             {/* Music Player — independent full-width card */}
-            {!isHidden(1, 'widget-music') && (
+            {!isHidden(1, 'widget-music') && (() => {
+              const mStyle = appearance.widget.musicStyle || 'music-glass';
+              const mClass =
+                mStyle === 'music-dark' ? 'bg-[#1a1a1a] border-black text-white' :
+                mStyle === 'music-light' ? 'bg-white border-black/5 text-[#1a1a1a]' :
+                'bg-[var(--glass,rgba(248,246,242,.72))] border-[var(--edge,rgba(255,255,255,.6))] text-[var(--ink)]';
+              const mSubClass = mStyle === 'music-dark' ? 'text-white/60' : 'text-[#8b8782]';
+              return (
               <div
                 style={{ left: itemPosition(1, 'widget-music').x, top: itemPosition(1, 'widget-music').y }}
                 onPointerDown={e=>beginDesktopDrag(1,'widget-music',e)}
                 onPointerMove={e=>continueDesktopDrag(1,'widget-music',e)}
                 onPointerUp={endDesktopDrag}
                 onPointerCancel={endDesktopDrag}
-                className={`pointer-events-auto absolute w-[334px] h-[84px] border border-[var(--edge,rgba(255,255,255,.6))] bg-[var(--glass,rgba(248,246,242,.72))] backdrop-blur-2xl rounded-[21px] p-[15px] shadow-[0_6px_22px_rgba(40,35,30,.045)] flex items-center gap-3 transition-all relative ${desktopEditing ? 'ring-1 ring-[#b7a59a]/45 cursor-grab active:cursor-grabbing touch-none' : ''}`}
+                className={`pointer-events-auto absolute w-[334px] h-[84px] border backdrop-blur-2xl rounded-[21px] p-[15px] shadow-[0_6px_22px_rgba(40,35,30,.045)] flex items-center gap-3 transition-all relative ${mClass} ${desktopEditing ? 'ring-1 ring-[#b7a59a]/45 cursor-grab active:cursor-grabbing touch-none' : ''}`}
               >
                 {desktopEditing && <span onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();hideDesktopItem(1,'widget-music')}} className="absolute -right-2 -top-2 z-20 w-5 h-5 rounded-full bg-[#292724] text-white text-[10px] grid place-items-center cursor-pointer">×</span>}
                 <div onClick={() => { if (!desktopEditing) onNavigate('music'); }} className={`w-[54px] h-[54px] rounded-[13px] shrink-0 grid place-items-center text-white font-serif text-[21px] shadow-[0_5px_13px_rgba(40,32,26,.15)] cursor-pointer hover:scale-105 transition-transform ${isPlaying ? 'animate-[spin_12s_linear_infinite]' : ''}`} style={{ background: 'linear-gradient(145deg, #9e9489, #38332f)' }}>♪</div>
                 <div onClick={() => { if (!desktopEditing) onNavigate('music'); }} className="flex-1 min-w-0 cursor-pointer">
-                  <b className="text-[13px] font-semibold text-[var(--ink)] truncate block">{appearance.widget.musicTitle}</b>
-                  <p className="m-0 mt-1 text-[#8b8782] text-[10px] truncate font-mono">{appearance.widget.musicArtist}</p>
+                  <b className={`text-[13px] font-semibold truncate block ${mStyle === 'music-dark' ? 'text-white' : 'text-[var(--ink)]'}`}>{appearance.widget.musicTitle}</b>
+                  <p className={`m-0 mt-1 text-[10px] truncate font-mono ${mSubClass}`}>{appearance.widget.musicArtist}</p>
                 </div>
                 <button onClick={() => { if (!desktopEditing) setIsPlaying(!isPlaying); }} className="w-8 h-8 rounded-full bg-[#2d2b29] text-white grid place-items-center text-xs hover:scale-105 active:scale-95 transition-transform shrink-0" title={isPlaying ? "暂停" : "播放"}>{isPlaying ? 'Ⅱ' : '▶'}</button>
               </div>
-            )}
+              );
+            })()}
 
           </div>
 
-          {/* Page 1 Apps */}
+          {/* Page 1 Apps - 统一64x64图标 */}
           <section className="absolute z-10 inset-0 pointer-events-none">
             {[
-              ['line','LINE','chat','bg-[#36332f] text-[#eee]','chat'],
-              ['moments','IG','ig','bg-[#9b8068] text-white','moments'],
-              ['music','音乐','music','bg-[var(--icon,rgba(248,245,239,.72))] text-[var(--ink)] border border-[var(--edge,rgba(255,255,255,.6))]','music'],
-              ['offline-story','线下剧情','book','bg-[var(--icon,rgba(248,245,239,.72))] text-[var(--ink)] border border-[var(--edge,rgba(255,255,255,.6))]','offline-story'],
-            ].map(([id,label,symbol,iconClass,screen]) => { if (isHidden(1,'app-'+id)) return null; const pos=itemPosition(1,'app-'+id); return <button key={id} onClick={()=>{if(!desktopEditing) onNavigate(screen as ScreenType)}} onPointerDown={e=>beginDesktopDrag(1,'app-'+id,e)} onPointerMove={e=>continueDesktopDrag(1,'app-'+id,e)} onPointerUp={endDesktopDrag} onPointerCancel={endDesktopDrag} className={`absolute pointer-events-auto flex flex-col items-center gap-2 text-[10px] tracking-[0.4px] text-[var(--sub,#68625b)] select-none touch-none ${desktopEditing?'cursor-grab active:cursor-grabbing':''}`} style={{left:pos.x,top:pos.y}}>
-                <div className={`w-[64px] h-[64px] rounded-[21px] shadow-[0_6px_18px_rgba(52,43,34,.055)] grid place-items-center ${iconClass}`}>{renderAppIcon(id,symbol,'w-6 h-6')}{id==='line'&&worldUnread>0&&<span className="absolute -top-1 right-[-2px] w-4 h-4 rounded-full bg-[#9b625b] text-white text-[9px] font-bold flex items-center justify-center">{worldUnread>99?'99+':worldUnread}</span>}</div><span className="font-medium">{label}</span>
+              ['line','LINE','chat','chat'],
+              ['moments','IG','ig','moments'],
+              ['music','音乐','music','music'],
+              ['offline-story','线下剧情','book','offline-story'],
+            ].map(([id,label,symbol,screen]) => { if (isHidden(1,'app-'+id)) return null; const pos=itemPosition(1,'app-'+id); return <button key={id} onClick={()=>{if(!desktopEditing) onNavigate(screen as ScreenType)}} onPointerDown={e=>beginDesktopDrag(1,'app-'+id,e)} onPointerMove={e=>continueDesktopDrag(1,'app-'+id,e)} onPointerUp={endDesktopDrag} onPointerCancel={endDesktopDrag} className={`absolute pointer-events-auto flex flex-col items-center gap-2 text-[10px] tracking-[0.4px] text-[var(--sub,#68625b)] select-none touch-none ${desktopEditing?'cursor-grab active:cursor-grabbing':''}`} style={{left:pos.x,top:pos.y}}>
+                <div className={`w-[64px] h-[64px] rounded-[20px] shadow-[0_6px_18px_rgba(52,43,34,.055)] grid place-items-center ${id==='line'?'bg-[#36332f] text-[#eee]':id==='moments'?'bg-[#9b8068] text-white':'bg-[var(--icon,rgba(248,245,239,.72))] text-[var(--ink)] border border-[var(--edge,rgba(255,255,255,.6))]'}`}>{renderAppIcon(id,symbol,'w-6 h-6')}{id==='line'&&worldUnread>0&&<span className="absolute -top-1 right-[-2px] w-4 h-4 rounded-full bg-[#9b625b] text-white text-[9px] font-bold flex items-center justify-center">{worldUnread>99?'99+':worldUnread}</span>}</div><span className="font-medium">{label}</span>
               </button>; })}
           </section>
 
         </div>
-      )}
+        );
+      })()}
 
       {/* ========================================================================= */}
       {/* PAGE 2: 自由桌面 */}
@@ -620,6 +655,65 @@ export function SaneHomeScreenView({ onNavigate, onOpenSheet, onToggleTheme }: S
         <button onClick={() => showAllDesktopItems(1)} className="absolute z-20 bottom-[126px] left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-white/80 border border-black/5 text-[8px] font-mono text-[#777]">
           恢复隐藏项目
         </button>
+      )}
+
+      {/* 小组件选择面板 */}
+      {widgetPanelOpen && (
+        <div 
+          className="fixed inset-0 z-[200] bg-black/50 flex items-end"
+          onClick={() => setWidgetPanelOpen(false)}
+        >
+          <div 
+            className="w-full max-w-md mx-auto bg-white rounded-t-3xl p-4 pb-8 max-h-[70vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold">添加小组件</h3>
+              <button 
+                onClick={() => setWidgetPanelOpen(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-lg font-bold"
+              >
+                ×
+              </button>
+            </div>
+            <p className="text-[9px] text-gray-500 mb-3">选择要添加的小组件类型</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                ['weather', '☀️', '天气', '显示天气信息'],
+                ['clock', '🕐', '时钟', '显示当前时间'],
+                ['calendar', '📅', '日历', '显示日期'],
+                ['battery', '🔋', '电池', '显示电量'],
+                ['health', '❤️', '健康', '显示步数'],
+                ['notes', '📝', '便签', '快速记录'],
+                ['music', '🎵', '音乐', '正在播放'],
+                ['timer', '⏱️', '计时器', '专注时间'],
+                ['world-clock', '🌍', '世界时钟', '多时区'],
+              ].map(([type, icon, name, desc]) => (
+                <button
+                  key={type}
+                  onClick={() => {
+                    // 添加小组件 - 使用默认位置
+                    const newId = `widget-${type}-${Date.now()}`;
+                    const newItem: DesktopItem = { id: newId, x: 26, y: 100 };
+                    const pageKey = currentPage === 1 ? 'page1' : 'page2';
+                    const next = {
+                      ...desktopLayouts,
+                      [pageKey]: { ...desktopLayouts[pageKey], [newId]: newItem }
+                    };
+                    setDesktopLayouts(next);
+                    update('desktopLayouts', next);
+                    setWidgetPanelOpen(false);
+                  }}
+                  className="p-3 rounded-2xl bg-gray-50 border border-black/5 flex flex-col items-center gap-1 hover:bg-blue-50 hover:border-blue-200 active:scale-95 transition-all"
+                >
+                  <span className="text-2xl">{icon}</span>
+                  <span className="text-[9px] font-medium text-gray-700">{name}</span>
+                  <span className="text-[7px] text-gray-400">{desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

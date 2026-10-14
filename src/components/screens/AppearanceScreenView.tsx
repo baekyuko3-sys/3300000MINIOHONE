@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, ChevronDown, Copy, Palette, Plus, Sparkles, Trash2, Type, Wand2 } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, Copy, Lock, Palette, Plus, Smartphone, Sparkles, Trash2, Type, Wand2 } from 'lucide-react';
 import type { ScreenType, ThemeMode } from '../../types';
 import {
   applyAppearanceScheme,
@@ -84,19 +84,20 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
   };
 
   const iconItems = [
-    ['line', 'LINE'],
-    ['moments', 'IG / Moments'],
-    ['music', '音乐'],
-    ['offline-story', '线下剧情'],
-    ['character-profile', '角色档案'],
-    ['world-book', '世界书'],
-    ['appearance', '外观'],
-    ['settings', '设置'],
-    ['threads', 'Threads'],
-    ['npc', 'NPC'],
-    ['group-presets', '预设'],
-    ['spy-phone', '查手机'],
-    ['memory', 'Memory'],
+    ['line', 'LINE', 'LINE', 'bg-[#36332f]', 'text-[#eee]', 'border-transparent'],
+    ['moments', 'IG', 'IG', 'bg-[#9b8068]', 'text-white', 'border-transparent'],
+    ['music', '音乐', 'MUSIC', 'bg-[var(--icon)]', 'text-[var(--ink)]', 'border-[var(--edge)]'],
+    ['offline-story', '线下剧情', 'BOOK', 'bg-[var(--icon)]', 'text-[var(--ink)]', 'border-[var(--edge)]'],
+    ['character-profile', '角色档案', 'CARD', 'bg-[var(--icon)]', 'text-[var(--ink)]', 'border-[var(--edge)]'],
+    ['world-book', '世界书', 'GLOBE', 'bg-[var(--icon)]', 'text-[var(--ink)]', 'border-[var(--edge)]'],
+    ['appearance', '外观', 'LOOK', 'bg-[var(--icon)]', 'text-[var(--ink)]', 'border-[var(--edge)]'],
+    ['settings', '设置', 'GEAR', 'bg-[var(--icon)]', 'text-[var(--ink)]', 'border-[var(--edge)]'],
+    ['threads', 'Threads', 'THREADS', 'bg-[#1a1a1a]', 'text-white', 'border-transparent'],
+    ['npc', 'NPC', 'NPC', 'bg-[#ebe2dc]', 'text-[#5f554f]', 'border border-black/5'],
+    ['group-presets', '预设', '预', 'bg-[#f0ebe5]', 'text-[#63584f]', 'border border-black/5'],
+    ['spy-phone', '查手机', 'SPY', 'bg-[#9b625b]', 'text-white', 'border-transparent'],
+    ['memory', 'Memory', 'M', 'bg-[#292724]', 'text-white', 'border-transparent'],
+    ['studio', 'Studio', 'STUDIO', 'bg-[#242220]', 'text-white', 'border-transparent'],
   ] as const;
 
   const chooseTheme = (theme: ThemeMode) => {
@@ -133,6 +134,8 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
     ['widgets', '小组件', Wand2],
     ['icons', '图标', Sparkles],
     ['apps', '应用美化', Wand2],
+    ['lock', '锁屏', Lock],
+    ['shell', '外形', Smartphone],
     ['schemes', '方案', Copy],
   ] as const, []);
 
@@ -621,24 +624,109 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
         )}
 
         {section === 'widgets' && (
-          <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
-            {([
-              ['weatherCity', '天气城市', 'text'],
-              ['weatherTemp', '温度', 'text'],
-              ['weatherCondition', '天气状态', 'text'],
-              ['weatherHighLow', '高低温', 'text'],
-              ['quoteContent', '便签 / Quote', 'text'],
-              ['quoteAuthor', 'Quote 作者', 'text'],
-              ['musicTitle', '音乐标题', 'text'],
-              ['musicArtist', '音乐副标题', 'text'],
-              ['anniversaryDays', '纪念日天数', 'number'],
-              ['anniversaryText', '纪念日标题', 'text'],
-            ] as const).map(([key, label, type]) => (
-              <label key={key} className="text-[9px] block">
-                {label}
-                <input type={type} value={appearance.widget[key]} onChange={event => updateWidget(key, type === 'number' ? Number(event.target.value) || 0 : event.target.value)} className="mt-1 w-full p-2.5 rounded-xl bg-white/80 text-[9px] outline-none" />
-              </label>
-            ))}
+          <div className="space-y-3">
+            <div className="p-3 rounded-2xl bg-[#ebe6de] border border-black/5">
+              <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">WIDGET DESIGN</div>
+              <div className="mt-1 text-[11px] font-semibold">选择小组件设计</div>
+              <div className="mt-1 text-[8px] text-[#777069] leading-relaxed">为每个小组件选择喜欢的视觉风格</div>
+            </div>
+
+            {/* 天气小组件样式 */}
+            <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
+              <div className="text-[10px] font-semibold flex items-center gap-1.5">
+                <span>☀️</span>
+                <span>天气小组件</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'weather-glass', name: '玻璃', bg: 'bg-[var(--glass)] backdrop-blur-2xl border border-[var(--edge)]', text: 'text-[var(--ink)]' },
+                  { id: 'weather-dark', name: '暗色', bg: 'bg-[#1a1a1a]', text: 'text-white' },
+                  { id: 'weather-light', name: '极简', bg: 'bg-white border border-black/5', text: 'text-[#1a1a1a]' },
+                ].map(style => (
+                  <button
+                    key={style.id}
+                    onClick={() => updateWidget('weatherStyle', style.id)}
+                    className={`p-2.5 rounded-xl flex flex-col items-center gap-1.5 ${style.bg} ${style.text} ${appearance.widget.weatherStyle === style.id ? 'ring-2 ring-[#9b625b]' : ''}`}
+                  >
+                    <div className="text-[16px] font-bold">{appearance.widget.weatherTemp || '21°'}</div>
+                    <div className="text-[7px]">{style.name}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 便签小组件样式 */}
+            <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
+              <div className="text-[10px] font-semibold flex items-center gap-1.5">
+                <span>📝</span>
+                <span>便签小组件</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'note-paper', name: '纸张', bg: 'bg-[var(--paper)]', text: 'text-[#5f554f]' },
+                  { id: 'note-glass', name: '玻璃', bg: 'bg-[var(--glass)] backdrop-blur-2xl border border-[var(--edge)]', text: 'text-[var(--ink)]' },
+                  { id: 'note-dark', name: '黑板', bg: 'bg-[#1a1a1a]', text: 'text-white' },
+                ].map(style => (
+                  <button
+                    key={style.id}
+                    onClick={() => updateWidget('noteStyle', style.id)}
+                    className={`p-2.5 rounded-xl flex flex-col items-center gap-1.5 ${style.bg} ${style.text} ${appearance.widget.noteStyle === style.id ? 'ring-2 ring-[#9b625b]' : ''}`}
+                  >
+                    <div className="text-[8px] font-serif leading-tight">{appearance.widget.quoteContent?.slice(0, 8) || '便签'}</div>
+                    <div className="text-[7px]">{style.name}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 音乐小组件样式 */}
+            <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
+              <div className="text-[10px] font-semibold flex items-center gap-1.5">
+                <span>🎵</span>
+                <span>音乐小组件</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'music-glass', name: '玻璃', bg: 'bg-[var(--glass)] backdrop-blur-2xl border border-[var(--edge)]', text: 'text-[var(--ink)]' },
+                  { id: 'music-dark', name: '暗色', bg: 'bg-[#1a1a1a]', text: 'text-white' },
+                  { id: 'music-light', name: '极简', bg: 'bg-white border border-black/5', text: 'text-[#1a1a1a]' },
+                ].map(style => (
+                  <button
+                    key={style.id}
+                    onClick={() => updateWidget('musicStyle', style.id)}
+                    className={`p-2.5 rounded-xl flex flex-col items-center gap-1.5 ${style.bg} ${style.text} ${appearance.widget.musicStyle === style.id ? 'ring-2 ring-[#9b625b]' : ''}`}
+                  >
+                    <div className="text-[8px] font-bold truncate w-full text-center">{appearance.widget.musicTitle?.slice(0, 6) || '音乐'}</div>
+                    <div className="text-[7px]">{style.name}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 日期小组件样式 */}
+            <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
+              <div className="text-[10px] font-semibold flex items-center gap-1.5">
+                <span>📅</span>
+                <span>日期小组件</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'date-classic', name: '经典', bg: 'bg-transparent', text: 'text-[var(--ink)]' },
+                  { id: 'date-box', name: '卡片', bg: 'bg-[var(--paper)]', text: 'text-[#1a1a1a]' },
+                  { id: 'date-glass', name: '玻璃', bg: 'bg-[var(--glass)] backdrop-blur-2xl border border-[var(--edge)]', text: 'text-[var(--ink)]' },
+                ].map(style => (
+                  <button
+                    key={style.id}
+                    onClick={() => updateWidget('dateStyle', style.id)}
+                    className={`p-2.5 rounded-xl flex flex-col items-center gap-1.5 ${style.bg} ${style.text} ${appearance.widget.dateStyle === style.id ? 'ring-2 ring-[#9b625b]' : ''}`}
+                  >
+                    <div className="text-[18px] font-serif font-bold leading-none">02</div>
+                    <div className="text-[6px] font-mono">OCT</div>
+                    <div className="text-[7px]">{style.name}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -666,22 +754,23 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
               </label>
             </div>
             <div className="space-y-1.5">
-              {iconItems.map(([key, label]) => (
+              {iconItems.map(([key, label, text, bg, textColor, border]) => (
                 <div key={key} className="p-2.5 rounded-2xl bg-white/65 border border-black/5 flex items-center gap-2">
-                  <div className="w-10 h-10 rounded-xl bg-[#ebe7df] border border-black/5 overflow-hidden shrink-0 grid place-items-center">
+                  {/* 图标预览 - 64x64统一大小 */}
+                  <div className={`w-[52px] h-[52px] rounded-[14px] shadow-[0_4px_12px_rgba(52,43,34,.06)] flex items-center justify-center overflow-hidden shrink-0 ${bg} ${border}`}>
                     {appearance.appIcons[key] ? (
                       <img src={appearance.appIcons[key]} alt="" className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-[8px] font-mono text-[#8b8782]">DEFAULT</span>
+                      <span className={`text-[10px] font-bold ${textColor}`}>{text}</span>
                     )}
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 space-y-1">
                     <div className="text-[10px] font-semibold">{label}</div>
                     <input
                       value={appearance.appIcons[key] || ''}
                       onChange={event => updateIcon(key, event.target.value)}
                       placeholder="图片链接"
-                      className="mt-1 w-full p-2 rounded-xl bg-white/80 text-[8px] outline-none"
+                      className="w-full p-2 rounded-lg bg-white/80 text-[8px] outline-none"
                     />
                   </div>
                   <button
@@ -748,6 +837,22 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
           </>
         )}
 
+        {section === 'lock' && (
+          <LockScreenSection
+            appearance={appearance}
+            update={update}
+            notify={notify}
+          />
+        )}
+
+        {section === 'shell' && (
+          <PhoneShellSection
+            appearance={appearance}
+            update={update}
+            notify={notify}
+          />
+        )}
+
         {section === 'schemes' && (
           <>
             <div className="p-3 rounded-2xl bg-[#ebe6de] border border-black/5">
@@ -785,5 +890,283 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
 
       {notice && <div className="absolute bottom-5 left-4 right-4 z-30 p-2.5 rounded-xl bg-[#292724] text-white text-[9px] text-center">{notice}</div>}
     </div>
+  );
+}
+
+// ========== 锁屏设置 Section ==========
+
+function LockScreenSection({ appearance, update, notify }: {
+  appearance: ReturnType<typeof readAppearance>;
+  update: <K extends keyof ReturnType<typeof readAppearance>>(key: K, value: ReturnType<typeof readAppearance>[K]) => void;
+  notify: (text: string) => void;
+}) {
+  const [passcodeDraft, setPasscodeDraft] = useState(appearance.lockPasscode || '');
+  const [wallpaperDraft, setWallpaperDraft] = useState(appearance.lockWallpaper || '');
+
+  useEffect(() => {
+    setPasscodeDraft(appearance.lockPasscode || '');
+    setWallpaperDraft(appearance.lockWallpaper || '');
+  }, [appearance.lockPasscode, appearance.lockWallpaper]);
+
+  const toggleMethod = (method: 'swipe' | 'passcode' | 'fingerprint') => {
+    const current = appearance.lockMethods;
+    const next = current.includes(method)
+      ? current.filter(item => item !== method)
+      : [...current, method];
+    // 至少保留一种
+    const safe = next.length ? next : ['swipe' as const];
+    update('lockMethods', safe);
+  };
+
+  const handleWallpaperFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) {
+      notify('图片过大，请使用 4MB 以下');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      setWallpaperDraft(dataUrl);
+      update('lockWallpaper', dataUrl);
+      notify('锁屏壁纸已更换');
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  };
+
+  const useMainWallpaper = () => {
+    setWallpaperDraft(appearance.wallpaper);
+    update('lockWallpaper', appearance.wallpaper);
+    notify('锁屏壁纸已与主屏幕同步');
+  };
+
+  const clearWallpaper = () => {
+    setWallpaperDraft('');
+    update('lockWallpaper', '');
+    notify('锁屏壁纸已清除');
+  };
+
+  const savePasscode = () => {
+    const cleaned = passcodeDraft.replace(/\D/g, '').slice(0, 6);
+    if (cleaned.length < 4) {
+      notify('密码至少 4 位数字');
+      return;
+    }
+    update('lockPasscode', cleaned);
+    if (!appearance.lockMethods.includes('passcode')) {
+      update('lockMethods', [...appearance.lockMethods.filter(item => item !== 'swipe'), 'passcode']);
+    }
+    setPasscodeDraft(cleaned);
+    notify('锁屏密码已设置');
+  };
+
+  const clearPasscode = () => {
+    setPasscodeDraft('');
+    update('lockPasscode', '');
+    update('lockMethods', appearance.lockMethods.filter(item => item !== 'passcode'));
+    notify('锁屏密码已清除');
+  };
+
+  const presetWallpapers = [
+    'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800',
+    'https://images.unsplash.com/photo-1518837695005-2083093ee35b?w=800',
+    'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=800',
+    'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800',
+  ];
+
+  return (
+    <>
+      <div className="p-3.5 rounded-2xl bg-[#ebe6de] border border-black/5">
+        <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">LOCK SCREEN</div>
+        <div className="mt-1 text-[12px] font-semibold">锁屏外观与解锁方式</div>
+        <div className="mt-1 text-[9px] text-[#777069] leading-relaxed">iOS 风格布局：居中大号时间、底部小滑条上滑解锁。可选密码 / 指纹 / 上滑。</div>
+      </div>
+
+      {/* 锁屏风格 */}
+      <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
+        <div className="text-[8px] font-mono tracking-[1.5px] text-[#8b8782]">时间样式</div>
+        <div className="grid grid-cols-2 gap-1.5">
+          {[
+            ['ios-large', 'iOS 大号', '居中 96px'],
+            ['classic', '经典数字', '居中 64px'],
+          ].map(([value, label, desc]) => (
+            <button
+              key={value}
+              onClick={() => update('lockStyle', value as 'ios-large' | 'classic')}
+              className={appearance.lockStyle === value
+                ? 'p-2.5 rounded-xl bg-[#292724] text-white text-left'
+                : 'p-2.5 rounded-xl bg-white/80 border border-black/5 text-left'}
+            >
+              <div className="text-[10px] font-semibold">{label}</div>
+              <div className={appearance.lockStyle === value ? 'mt-0.5 text-[7px] text-white/65' : 'mt-0.5 text-[7px] text-[#8b8782]'}>{desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 锁屏壁纸 */}
+      <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
+        <div className="text-[8px] font-mono tracking-[1.5px] text-[#8b8782]">锁屏壁纸</div>
+        {wallpaperDraft ? (
+          <div className="relative h-28 w-full overflow-hidden rounded-xl border border-black/5">
+            <img src={wallpaperDraft} alt="锁屏壁纸" className="absolute inset-0 h-full w-full object-cover" />
+            <button onClick={clearWallpaper} className="absolute right-1.5 top-1.5 px-2 py-0.5 rounded-full bg-black/60 text-white text-[8px]">移除</button>
+          </div>
+        ) : (
+          <div className="h-20 w-full rounded-xl border border-dashed border-black/15 grid place-items-center text-[9px] text-[#999]">未设置锁屏壁纸（用主屏幕）</div>
+        )}
+        <div className="flex gap-1.5">
+          <label className="flex-1 py-2 rounded-xl bg-white border border-black/5 text-[9px] text-center cursor-pointer">
+            上传图片
+            <input type="file" accept="image/*" className="hidden" onChange={handleWallpaperFile} />
+          </label>
+          <button onClick={useMainWallpaper} className="flex-1 py-2 rounded-xl bg-white border border-black/5 text-[9px]">同步主屏</button>
+        </div>
+        <div className="grid grid-cols-4 gap-1.5">
+          {presetWallpapers.map(url => (
+            <button
+              key={url}
+              onClick={() => { setWallpaperDraft(url); update('lockWallpaper', url); notify('锁屏壁纸已应用'); }}
+              className="aspect-[9/16] rounded-lg overflow-hidden border border-black/5"
+            >
+              <img src={url} alt="preset" className="h-full w-full object-cover" />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 解锁方式 */}
+      <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
+        <div className="text-[8px] font-mono tracking-[1.5px] text-[#8b8782]">解锁方式</div>
+        <div className="space-y-1.5">
+          {[
+            { key: 'swipe', label: '上滑解锁', desc: '屏幕底部小滑条上滑' },
+            { key: 'passcode', label: '密码解锁', desc: '4-6 位数字密码' },
+            { key: 'fingerprint', label: '指纹解锁', desc: 'Touch ID 模拟' },
+          ].map(item => {
+            const active = appearance.lockMethods.includes(item.key as 'swipe' | 'passcode' | 'fingerprint');
+            return (
+              <button
+                key={item.key}
+                onClick={() => toggleMethod(item.key as 'swipe' | 'passcode' | 'fingerprint')}
+                className={active
+                  ? 'w-full p-2.5 rounded-xl bg-[#292724] text-white text-left flex items-center gap-2'
+                  : 'w-full p-2.5 rounded-xl bg-white/80 border border-black/5 text-left flex items-center gap-2'}
+              >
+                <div className={active ? 'w-7 h-7 rounded-full bg-white/15 grid place-items-center' : 'w-7 h-7 rounded-full bg-[#f0ede7] grid place-items-center'}>
+                  {item.key === 'swipe' && <ChevronDown className="w-3.5 h-3.5 -rotate-180" />}
+                  {item.key === 'passcode' && <Copy className="w-3.5 h-3.5" />}
+                  {item.key === 'fingerprint' && <Lock className="w-3.5 h-3.5" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[10px] font-semibold">{item.label}</div>
+                  <div className={active ? 'mt-0.5 text-[7px] text-white/65' : 'mt-0.5 text-[7px] text-[#8b8782]'}>{item.desc}</div>
+                </div>
+                <div className={active ? 'w-5 h-5 rounded-full bg-white text-[#292724] grid place-items-center text-[10px] font-bold' : 'w-5 h-5 rounded-full border border-black/15'}>
+                  {active && '✓'}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <div className="text-[8px] leading-relaxed text-[#777069]">优先级：密码 &gt; 指纹 &gt; 上滑。指纹仅在未设置密码时可用。</div>
+      </div>
+
+      {/* 密码设置 */}
+      <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
+        <div className="text-[8px] font-mono tracking-[1.5px] text-[#8b8782]">锁屏密码</div>
+        <input
+          type="password"
+          inputMode="numeric"
+          maxLength={6}
+          value={passcodeDraft}
+          onChange={event => setPasscodeDraft(event.target.value.replace(/\D/g, '').slice(0, 6))}
+          placeholder="4-6 位数字"
+          className="w-full p-2.5 rounded-xl bg-white text-[11px] outline-none tracking-[0.4em] text-center"
+        />
+        <div className="grid grid-cols-2 gap-1.5">
+          <button onClick={savePasscode} className="py-2 rounded-xl bg-[#292724] text-white text-[9px]">保存密码</button>
+          <button onClick={clearPasscode} className="py-2 rounded-xl bg-white border border-black/5 text-[#8d4e4e] text-[9px]">清除密码</button>
+        </div>
+        <div className="text-[8px] leading-relaxed text-[#777069]">密码以明文存于浏览器本地（仅用于演示）。</div>
+      </div>
+    </>
+  );
+}
+
+// ========== 手机外形 Section ==========
+
+function PhoneShellSection({ appearance, update, notify }: {
+  appearance: ReturnType<typeof readAppearance>;
+  update: <K extends keyof ReturnType<typeof readAppearance>>(key: K, value: ReturnType<typeof readAppearance>[K]) => void;
+  notify: (text: string) => void;
+}) {
+  const shells: Array<{ key: 'modern' | 'classic-round' | 'classic-square'; label: string; desc: string; preview: React.ReactNode }> = [
+    {
+      key: 'modern',
+      label: 'iPhone X+ · 全面屏',
+      desc: '底部细横线指示，点击返回主屏幕',
+      preview: (
+        <div className="relative h-32 w-20 rounded-[14px] border border-black/10 bg-gradient-to-b from-white/80 to-white/40 grid place-items-center">
+          <div className="text-[7px] text-[#777]">MODERN</div>
+          <div className="absolute bottom-1.5 w-9 h-[3px] rounded-full bg-[#222]" />
+        </div>
+      ),
+    },
+    {
+      key: 'classic-round',
+      label: 'iPhone 8 · 圆形 Home',
+      desc: '底部圆 Home 键，圆形有边框',
+      preview: (
+        <div className="relative h-32 w-20 rounded-[14px] border border-black/10 bg-gradient-to-b from-white/80 to-white/40 grid place-items-end pb-2">
+          <div className="w-7 h-7 rounded-full border-2 border-[#666]" />
+        </div>
+      ),
+    },
+    {
+      key: 'classic-square',
+      label: 'iPhone 5/SE · 方形 Home',
+      desc: '底部方形 Home 键',
+      preview: (
+        <div className="relative h-32 w-20 rounded-[14px] border border-black/10 bg-gradient-to-b from-white/80 to-white/40 grid place-items-end pb-2">
+          <div className="w-6 h-6 rounded-md border-2 border-[#666]" />
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <div className="p-3.5 rounded-2xl bg-[#ebe6de] border border-black/5">
+        <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">PHONE SHELL</div>
+        <div className="mt-1 text-[12px] font-semibold">手机外形</div>
+        <div className="mt-1 text-[9px] text-[#777069] leading-relaxed">切换手机外观：全面屏、经典圆形 Home、经典方形 Home。Home 键点击会直接返回主屏幕。</div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        {shells.map(shell => {
+          const active = appearance.phoneShell === shell.key;
+          return (
+            <button
+              key={shell.key}
+              onClick={() => { update('phoneShell', shell.key); notify('外形已切换：' + shell.label); }}
+              className={active ? 'p-3 rounded-2xl bg-[#292724] text-white' : 'p-3 rounded-2xl bg-white/65 border border-black/5'}
+            >
+              <div className="grid place-items-center mb-2">{shell.preview}</div>
+              <div className="text-[9px] font-semibold leading-tight">{shell.label}</div>
+              <div className={active ? 'mt-1 text-[7px] text-white/65 leading-relaxed' : 'mt-1 text-[7px] text-[#777069] leading-relaxed'}>{shell.desc}</div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="p-3 rounded-2xl bg-white/65 border border-black/5">
+        <div className="text-[8px] leading-relaxed text-[#777069]">
+          外形变化只影响屏幕底部 Home 区域。其他地方（锁屏、App、外观、字体、壁纸）都跟外形解耦，可以自由搭配。
+        </div>
+      </div>
+    </>
   );
 }
