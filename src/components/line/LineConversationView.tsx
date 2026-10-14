@@ -2953,7 +2953,8 @@ export function LineConversationView({
     const amount = formatMoneyAmount(redPacketAmount);
     if (!amount) { showToast('请填写红包金额'); return; }
     const blessing = redPacketBlessing.trim() || '恭喜发财';
-    const memberLimit = isGroup ? Math.max(1, groupMembers.length) : 1;
+    const eligibleNpcCount = isGroup ? groupMembers.filter((member: any) => member && member.kind !== 'user' && member.name !== currentUserNameFallback()).length : 0;
+    const memberLimit = isGroup ? Math.max(1, eligibleNpcCount + 1) : 1;
     const count = isGroup ? Math.max(1, Math.min(memberLimit, 99, Number.parseInt(redPacketCount, 10) || 1)) : 1;
     if (isGroup && Number(amount) < 0.01 * count) { showToast('红包总金额至少要能分给每个人 0.01 元'); return; }
     const newMsg = {
@@ -5604,7 +5605,7 @@ export function LineConversationView({
                       </div>
                     </div>
                     <div className="px-3.5 py-1.5 border-t border-white/15 text-[9px] text-white/70">
-                      {isMe ? '已发出' : '点击领取'}
+                      {(() => { const packetMeta = msg.metadata && typeof msg.metadata === 'object' ? msg.metadata : {}; const packetClaims = Array.isArray(msg.redPacketClaims) ? msg.redPacketClaims : Array.isArray(packetMeta.claims) ? packetMeta.claims : []; const packetCount = Math.max(1, Number(msg.redPacketCount || packetMeta.count || 1)); const packetStatus = String(msg.redPacketStatus || packetMeta.status || 'sent'); return packetStatus === 'claimed' || packetClaims.length >= packetCount ? `已领完 · ${packetClaims.length}人领取` : packetClaims.length ? `已领取 ${packetClaims.length}/${packetCount} · 点击查看` : isMe ? '已发出 · 点击查看领取情况' : '点击领取'; })()}
                     </div>
                   </button>
                 ) : msg.type === 'location' || msg.kind === 'location' ? (
