@@ -805,6 +805,10 @@ export function LineConversationView({
   const [transferNote, setTransferNote] = useState('');
   const [redPacketAmount, setRedPacketAmount] = useState('');
   const [redPacketBlessing, setRedPacketBlessing] = useState('恭喜发财，万事如意');
+  const [redPacketCount, setRedPacketCount] = useState('3');
+  const [redPacketMode, setRedPacketMode] = useState<'random' | 'equal'>('random');
+  const [activeRedPacket, setActiveRedPacket] = useState<any | null>(null);
+  const [showRedPacketModal, setShowRedPacketModal] = useState(false);
   const [locationName, setLocationName] = useState('');
   const [locationAddress, setLocationAddress] = useState('');
   const [playingVoiceId, setPlayingVoiceId] = useState<string | number | null>(null);
@@ -2949,23 +2953,22 @@ export function LineConversationView({
     const amount = formatMoneyAmount(redPacketAmount);
     if (!amount) { showToast('请填写红包金额'); return; }
     const blessing = redPacketBlessing.trim() || '恭喜发财';
+    const count = isGroup ? Math.max(1, Math.min(99, Number.parseInt(redPacketCount, 10) || 1)) : 1;
+    if (isGroup && Number(amount) < 0.01 * count) { showToast('红包总金额至少要能分给每个人 0.01 元'); return; }
     const newMsg = {
-      id: Date.now(),
-      sender: 'me' as const,
-      type: 'red-packet',
-      kind: 'red-packet' as const,
-      text: `[红包] ¥${amount} · ${blessing}`,
-      time: '刚刚',
-      redPacketAmount: amount,
-      redPacketBlessing: blessing,
-      redPacketStatus: 'sent',
-      metadata: { amount, blessing, status: 'sent' },
+      id: Date.now(), sender: 'me' as const, type: 'red-packet', kind: 'red-packet' as const,
+      text: `[红包] ¥${amount} · ${blessing}`, time: '刚刚',
+      redPacketAmount: amount, redPacketBlessing: blessing, redPacketStatus: 'sent',
+      redPacketCount: count, redPacketMode: isGroup ? redPacketMode : 'random', redPacketClaims: [],
+      metadata: { amount, blessing, status: 'sent', count, mode: isGroup ? redPacketMode : 'random', claims: [] },
     };
     setMessages((prev) => [...prev, newMsg]);
     appendLineMessage(conversationStorageId, newMsg);
     setMoneySheetType(null);
     setRedPacketAmount('');
     setRedPacketBlessing('恭喜发财，万事如意');
+    setRedPacketCount('3');
+    setRedPacketMode('random');
     showToast('红包已发送');
   };
 
@@ -5579,9 +5582,10 @@ export function LineConversationView({
                     </div>
                   </div>
                 ) : msg.type === 'red-packet' || msg.kind === 'red-packet' ? (
-                  <div
+                  <button type="button"
+                    onClick={() => { setActiveRedPacket(msg); setShowRedPacketModal(true); }}
                     onContextMenu={(e) => { e.preventDefault(); setContextMenuMsg(msg); }}
-                    className="w-[200px] rounded-[14px] overflow-hidden bg-gradient-to-b from-[#e8a0a8] to-[#c96e7d] text-white shadow-sm"
+                    className="w-[200px] text-left rounded-[14px] overflow-hidden bg-gradient-to-b from-[#e8a0a8] to-[#c96e7d] text-white shadow-sm cursor-pointer active:scale-[0.99]"
                   >
                     <div className="px-3.5 pt-3 pb-2.5 flex items-start gap-2.5">
                       <div className="w-9 h-9 rounded-[10px] bg-white/20 flex items-center justify-center shrink-0">
@@ -5601,7 +5605,7 @@ export function LineConversationView({
                     <div className="px-3.5 py-1.5 border-t border-white/15 text-[9px] text-white/70">
                       {isMe ? '已发出' : '点击领取'}
                     </div>
-                  </div>
+                  </button>
                 ) : msg.type === 'location' || msg.kind === 'location' ? (
                   <div
                     onContextMenu={(e) => { e.preventDefault(); setContextMenuMsg(msg); }}
@@ -6492,7 +6496,7 @@ export function LineConversationView({
                     <span>AI后台</span>
                   </button>
                   {isGroup ? (
-                    <button onClick={() => { setShowPlusSheet(false); showToast('群聊红包功能待接入'); }} className="flex flex-col items-center gap-1.5 cursor-pointer">
+                    <button onClick={() => { setShowPlusSheet(false); setMoneySheetType('red-packet'); }} className="flex flex-col items-center gap-1.5 cursor-pointer">
                       <div className="w-12 h-12 rounded-[14px] bg-[#fff1f1] text-[#c96e7d] flex items-center justify-center hover:opacity-80">
                         <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-label="红包">
                           <rect x="4" y="7" width="16" height="14" rx="2.5" />
@@ -6625,6 +6629,7 @@ export function LineConversationView({
 
             {moneySheetType === 'red-packet' && (
               <>
+                {isGroup && <div className="space-y-2 rounded-[12px] border border-[#f0e3e6] bg-[#fffafb] p-3"><div className="text-[11px] font-medium text-[#555]">群聊红包类型</div><div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => setRedPacketMode('random')} className={`rounded-[9px] border px-3 py-2 text-[11px] ${redPacketMode === 'random' ? 'border-[#c96e7d] bg-[#fff0f2] text-[#b95f70]' : 'border-[#ececee] bg-white text-[#777]'}`}>拼手气红包</button><button type="button" onClick={() => setRedPacketMode('equal')} className={`rounded-[9px] border px-3 py-2 text-[11px] ${redPacketMode === 'equal' ? 'border-[#c96e7d] bg-[#fff0f2] text-[#b95f70]' : 'border-[#ececee] bg-white text-[#777]'}`}>普通红包</button></div><label className="block space-y-1"><span className="text-[10px] text-[#999]">红包个数</span><input type="number" min="1" max="99" value={redPacketCount} onChange={(e) => setRedPacketCount(e.target.value)} className="w-full rounded-[9px] border border-[#ececee] bg-white px-3 py-2 text-[12px] outline-none" /></label></div>}
                 <label className="block space-y-1.5">
                   <span className="text-[10px] text-[#999]">金额（元）</span>
                   <div className="flex items-center gap-2 rounded-[12px] border border-[#ececee] bg-[#fafafa] px-3 py-2.5 focus-within:border-[#e2c8cf] focus-within:bg-white">
@@ -6691,6 +6696,29 @@ export function LineConversationView({
           </div>
         </div>
       )}
+
+      {/* LINE 群聊红包：居中开红包弹窗与领取名单 */}
+      {showRedPacketModal && activeRedPacket && (() => {
+        const packet = activeRedPacket;
+        const meta = packet.metadata && typeof packet.metadata === 'object' ? packet.metadata : {};
+        const claims = Array.isArray(packet.redPacketClaims) ? packet.redPacketClaims : Array.isArray(meta.claims) ? meta.claims : [];
+        const amount = Number(packet.redPacketAmount || meta.amount || 0);
+        const count = Math.max(1, Number(packet.redPacketCount || meta.count || 1));
+        const alreadyClaimed = claims.some((claim: any) => claim?.userId === 'me');
+        const claimPacket = () => {
+          if (alreadyClaimed || claims.length >= count) return;
+          const remainingSlots = Math.max(1, count - claims.length);
+          const remainingCents = Math.max(0, Math.round(amount * 100) - claims.reduce((sum: number, claim: any) => sum + Math.round(Number(claim.amount || 0) * 100), 0));
+          const cents = packet.redPacketMode === 'equal' || meta.mode === 'equal' ? Math.floor(remainingCents / remainingSlots) : remainingSlots <= 1 ? remainingCents : Math.max(1, Math.min(remainingCents - (remainingSlots - 1), Math.round(remainingCents / remainingSlots * (0.35 + Math.random() * 1.3))));
+          const claim = { userId: 'me', name: '我', amount: (cents / 100).toFixed(2), time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+          const nextClaims = [...claims, claim];
+          const updated = { ...packet, redPacketClaims: nextClaims, redPacketStatus: nextClaims.length >= count ? 'claimed' : 'partial', metadata: { ...meta, claims: nextClaims, status: nextClaims.length >= count ? 'claimed' : 'partial' } };
+          setMessages((prev) => prev.map((item: any) => String(item.id) === String(packet.id) ? updated : item));
+          updateLineMessage(conversationStorageId, packet.id, { redPacketClaims: nextClaims, redPacketStatus: updated.redPacketStatus, metadata: updated.metadata } as any);
+          setActiveRedPacket(updated);
+        };
+        return <div className="absolute inset-0 z-[90] flex items-center justify-center bg-black/45 p-5" onClick={() => setShowRedPacketModal(false)}><div className="relative w-full max-w-[300px] overflow-hidden rounded-[16px] bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="bg-[#c96e7d] px-4 pb-4 pt-5 text-center text-white"><button type="button" onClick={() => setShowRedPacketModal(false)} className="absolute right-3 top-2 text-[22px] leading-none text-white/80">×</button><div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-[10px] bg-white/15 text-[20px]">🧧</div><div className="text-[12px] text-white/80">{String(packet.sender === 'me' ? '我' : packet.senderName || '群成员')} 的红包</div><div className="mt-1 text-[14px] font-medium">{String(packet.redPacketBlessing || meta.blessing || '恭喜发财')}</div>{alreadyClaimed ? <div className="mt-3 text-[28px] font-semibold">¥{String(claims.find((claim: any) => claim.userId === 'me')?.amount || '0.00')}</div> : <div className="mt-3 text-[13px] text-white/85">{packet.redPacketStatus === 'claimed' ? '红包已领完' : '恭喜发财，大吉大利'}</div>}</div><div className="p-4">{!alreadyClaimed && packet.redPacketStatus !== 'claimed' && claims.length < count && <button type="button" onClick={claimPacket} className="mb-3 w-full rounded-[10px] bg-[#f2c65c] py-2.5 text-[13px] font-semibold text-[#6d4518] active:scale-[0.99]">开红包</button>}{alreadyClaimed && <div className="mb-3 text-center text-[11px] text-[#999]">已领取红包，下面是领取详情</div>}<div className="flex items-center justify-between border-b border-[#f0f0f1] pb-2 text-[11px] text-[#777]"><span>领取详情</span><span>{claims.length}/{count} 个红包</span></div><div className="max-h-[220px] overflow-y-auto">{claims.length ? claims.map((claim: any, index: number) => <div key={`${claim.userId || claim.name}-${index}`} className="flex items-center gap-2.5 border-b border-[#f5f5f6] py-2.5 last:border-0"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f4f4f5] text-[11px] text-[#666]">{String(claim.name || '成员').slice(0, 1)}</div><div className="min-w-0 flex-1"><div className="truncate text-[12px] font-medium text-[#333]">{String(claim.name || '群成员')}</div><div className="mt-0.5 text-[10px] text-[#aaa]">{String(claim.time || '')}</div></div><div className="text-[13px] font-semibold text-[#333]">¥{Number(claim.amount || 0).toFixed(2)}</div></div>) : <div className="py-5 text-center text-[11px] text-[#aaa]">还没有人领取</div>}</div><div className="mt-2 text-[10px] text-[#aaa]">已领取 ¥{claims.reduce((sum: number, claim: any) => sum + Number(claim.amount || 0), 0).toFixed(2)} · 剩余 {Math.max(0, count - claims.length)} 个</div></div></div></div>;
+      })()}
 
       {/* 7. AI DEBUG SHEET — show the actual prompt, raw model output and parser result */}
       {showAiDebugSheet && (
