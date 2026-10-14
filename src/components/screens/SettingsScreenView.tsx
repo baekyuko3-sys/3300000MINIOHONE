@@ -58,7 +58,7 @@ function downloadJson(filename: string, data: unknown) {
   anchor.href = url;
   anchor.download = filename;
   anchor.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function prettyBytes(value: number) {
@@ -116,7 +116,7 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
       } catch {
         if (!cancelled) setBrowserUsage(null);
       }
-      if (!cancelled) setLocalStats({ keys: Object.keys(data).length, size: new Blob([JSON.stringify(data)]).size });
+      if (!cancelled) {\n        let chatArchives = 0;\n        for (const [key, value] of Object.entries(data)) {\n          if (!key.startsWith('line:conversation:')) continue;\n          if (Array.isArray(value) && value.some((message: any) => message && typeof message === 'object' && message.kind !== 'system-nudge' && message.type !== 'system-nudge')) chatArchives += 1;\n        }\n        setLocalStats({ keys: Object.keys(data).length, size: new Blob([JSON.stringify(data)]).size, chatArchives });\n      }
     };
     void refreshStorageStats();
     return () => { cancelled = true; };
@@ -124,7 +124,12 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
 
   const [localStats, setLocalStats] = useState(() => {
     const data = collectLocalData();
-    return { keys: Object.keys(data).length, size: new Blob([JSON.stringify(data)]).size };
+    let chatArchives = 0;
+    for (const [key, value] of Object.entries(data)) {
+      if (!key.startsWith('line:conversation:')) continue;
+      if (Array.isArray(value) && value.some((message: any) => message && typeof message === 'object' && message.kind !== 'system-nudge' && message.type !== 'system-nudge')) chatArchives += 1;
+    }
+    return { keys: Object.keys(data).length, size: new Blob([JSON.stringify(data)]).size, chatArchives };
   });
 
   const uploadSound = async (kind: AppSoundKind, file?: File) => {
@@ -901,7 +906,7 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
               <Database className="w-3.5 h-3.5" /> DATA / BACKUP
             </div>
             <div className="grid grid-cols-2 gap-2 mb-2">
-              <div className="p-3 rounded-xl bg-white/55"><div className="text-lg font-serif font-bold text-[#292724]">{localStats.keys}</div><div className="text-[8px] text-[#8b8782]">本机数据项</div></div>
+              <div className="p-3 rounded-xl bg-white/55"><div className="text-lg font-serif font-bold text-[#292724]">{localStats.chatArchives}</div><div className="text-[8px] text-[#8b8782]">有实际消息的聊天存档</div></div>
               <div className="p-3 rounded-xl bg-white/55"><div className="text-lg font-serif font-bold text-[#292724]">{prettyBytes(localStats.size)}</div><div className="text-[8px] text-[#8b8782]">JSON 数据估算</div></div>
             </div>
             <div className="grid grid-cols-2 gap-2 mb-3">
