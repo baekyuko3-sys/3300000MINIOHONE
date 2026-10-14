@@ -201,9 +201,9 @@ function splitLineChatText(text: string): string[] {
 function cleanGroupGeneratedText(text: string): string {
   let value = String(text || '').replace(/\r\n/g, '\n');
   // Group replies must never render private reasoning or transport-format tags as chat bubbles.
-  value = value.replace(/<cot\b[^>]*>[\s\S]*?<\/cot\s*>/gi, '');
-  value = value.replace(/<thinking\b[^>]*>[\s\S]*?<\/thinking\s*>/gi, '');
-  value = value.replace(/<analysis\b[^>]*>[\s\S]*?<\/analysis\s*>/gi, '');
+  value = value.replace(/<(?:cot|thinking|analysis|preset_flow)\b[^>]*>[\s\S]*?<\/(?:cot|thinking|analysis|preset_flow)\s*>/gi, '');
+  value = value.replace(/<action\b[^>]*>[\s\S]*?<\/action\s*>/gi, '');
+  value = value.replace(/<statusbar?\b[^>]*>[\s\S]*?<\/statusbar?\s*>/gi, '');
   // Keep the visible content inside message wrappers, removing only the wrapper tags.
   value = value.replace(/<\/?message\b[^>]*>/gi, '');
   value = value.replace(/<\/?(?:cot|thinking|analysis|final|response|output)\b[^>]*>/gi, '');
