@@ -120,7 +120,7 @@ export async function syncSnapshotToGitHub(snapshot: unknown, config = getGitHub
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       message: 'chore(sane333): sync private phone data ' + syncedAt,
-      content: encodeUtf8(JSON.stringify({ version: 1, syncedAt, data: snapshot }, null, 2)),
+      content: encodeUtf8(JSON.stringify({ version: 1, scope: 'phone-line-json-only', includesMedia: false, syncedAt, data: snapshot }, null, 2)),
       branch: config.branch,
       ...(existingSha ? { sha: existingSha } : {}),
     }),
@@ -137,5 +137,8 @@ export async function pullSnapshotFromGitHub(config = getGitHubSyncConfig(), tok
   const binary = atob(existing.content.replace(/\\s/g, ''));
   const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
   const parsed = JSON.parse(new TextDecoder().decode(bytes));
-  return { data: parsed?.data, syncedAt: parsed?.syncedAt };
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('GITHUB_BACKUP_FORMAT_INVALID');
+  if (parsed.version !== 1) throw new Error('GITHUB_BACKUP_VERSION_UNSUPPORTED');
+  if (!parsed.data || typeof parsed.data !== 'object' || Array.isArray(parsed.data)) throw new Error('GITHUB_BACKUP_DATA_INVALID');
+  return { data: parsed.data, syncedAt: parsed.syncedAt };
 }
