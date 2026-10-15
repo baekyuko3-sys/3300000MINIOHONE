@@ -77,10 +77,25 @@ function dayKey(date: Date) {
 }
 
 function appendProactiveMessage(character: ImportedCharacter, text: string) {
-  // LINE conversations are keyed by character id when available. Keeping
-  // proactive messages on the same key prevents "notification arrives but
-  // chat opens empty" when the contact was created from an imported card.
-  const conversationId = character.id || character.name;
+  // The open LINE transcript is keyed by the chat item's ID, not necessarily
+  // the imported character ID. Use that ID when there is exactly one matching
+  // ordinary-character chat; never guess when multiple persona chats exist.
+  const fallbackConversationId = character.id || character.name;
+  let conversationId = fallbackConversationId;
+  try {
+    const rawChats = window.localStorage.getItem('line:chat-items');
+    const chats = rawChats ? JSON.parse(rawChats) : [];
+    if (Array.isArray(chats)) {
+      const matches = chats.filter((chat: any) =>
+        chat && !chat.isGroup && !chat.npcId &&
+        String(chat.characterId || '') === String(character.id || '') &&
+        (!character.id || String(chat.characterId || '') === String(character.id))
+      );
+      if (matches.length === 1 && matches[0].id) conversationId = String(matches[0].id);
+    }
+  } catch {
+    // Keep the legacy key if the chat list cannot be read.
+  }
   const legacyKey = `line:conversation:${character.name}`;
   const key = `line:conversation:${conversationId}`;
   const messageId = `proactive-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -119,6 +134,8 @@ function appendProactiveMessage(character: ImportedCharacter, text: string) {
     detail: {
       id: messageId,
       character: { id: character.id, name: character.name },
+      characterName: character.name,
+      conversationId,
       text,
       kind: 'text',
       createdAt: new Date().toISOString(),
