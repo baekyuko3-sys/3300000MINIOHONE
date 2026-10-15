@@ -3,6 +3,7 @@ import { generateCreativeText, resolveChannelAiSettings } from '../ai/aiEngine';
 import { getActivePersona, getNpcRelationToMe, getNpcs, type SaneNpc } from './npcs';
 import { readPersistentState } from './usePersistentState';
 import { canViewerSeePost, characterViewerFor, npcViewerFor, type VroomPostLike } from './vroomScope';
+import { buildNpcRuntimeContext } from './npcContext';
 
 export const MOMENTS_SETTINGS_KEY = 'line:moments-settings';
 export const MOMENTS_POSTS_KEY = 'line:moments-posts';
@@ -237,6 +238,7 @@ function commenterPromptBlock(c: Commenter): string {
     '性格：' + n.personality,
     '背景：' + n.background,
     '关系：' + n.relationship,
+    buildNpcRuntimeContext(n, 'online-chat'),
     (() => { const rel = getNpcRelationToMe(n); const persona = getActivePersona(); return rel && persona ? '与用户（' + persona.name + '）的关系：' + rel : ''; })(),
   ].filter(Boolean).join('\n');
 }
