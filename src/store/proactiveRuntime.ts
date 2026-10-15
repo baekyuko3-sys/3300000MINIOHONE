@@ -110,7 +110,7 @@ function appendProactiveMessage(character: ImportedCharacter, text: string) {
 
   // The runtime store is the single source of truth. If an older name-keyed
   // conversation exists, migrate it once before appending the new normalized message.
-  if (conversationId !== character.name) {
+  if (conversationId && conversationId !== character.name) {
     const legacyMessages = readLocal<any[]>(legacyKey, []);
     const currentMessages = getLineConversationMessages(conversationId);
     if (legacyMessages.length && !currentMessages.length) {
