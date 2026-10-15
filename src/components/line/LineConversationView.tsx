@@ -2356,8 +2356,17 @@ export function LineConversationView({
 
   useEffect(() => {
     const onProactive = (event: Event) => {
-      const customEvent = event as CustomEvent<{ characterName?: string }>;
-      if (customEvent.detail?.characterName !== contactName) return;
+      const customEvent = event as CustomEvent<{
+        characterName?: string;
+        conversationId?: string;
+        ambiguousConversation?: boolean;
+      }>;
+      const detail = customEvent.detail;
+      if (detail?.characterName !== contactName) return;
+      // An explicit chat ID is authoritative: the same contact name can exist
+      // in multiple persona-bound LINE conversations.
+      if (detail?.conversationId && detail.conversationId !== conversationStorageId) return;
+      if (detail?.ambiguousConversation && !detail.conversationId) return;
 
       try {
         const raw = window.localStorage.getItem(`line:conversation:${conversationStorageId}`);
@@ -2369,7 +2378,7 @@ export function LineConversationView({
 
     window.addEventListener('sane333:proactive-message', onProactive);
     return () => window.removeEventListener('sane333:proactive-message', onProactive);
-  }, [contactName]);
+  }, [contactName, conversationStorageId]);
 
   // Keep the parent chat list synchronized with the newest message.
   useEffect(() => {
