@@ -5338,8 +5338,8 @@ export function LineConversationView({
             ? (
                 // Stable identity wins over display names/nicknames. Names are only a legacy fallback.
                 (messageSenderId
-                  ? safeGroupMembers.find(member => String(member.npcId || '').trim() === messageSenderId) ||
-                    safeGroupMembers.find(member => String(member.id || '').trim() === messageSenderId) ||
+                  ? safeGroupMembers.find(member => String(member.id || '').trim() === messageSenderId) ||
+                    safeGroupMembers.find(member => String(member.npcId || '').trim() === messageSenderId) ||
                     safeGroupMembers.find(member => String(member.characterId || '').trim() === messageSenderId) ||
                     null
                   : null) ||
