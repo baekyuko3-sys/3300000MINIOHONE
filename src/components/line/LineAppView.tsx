@@ -42,6 +42,7 @@ import {
   normalizeMomentComments,
   spawnBatchCommentsForPost,
   spawnInstantReply,
+  tryAutonomousMomentComment,
   type MomentComment,
   type MomentsCommentSettings,
 } from '../../store/momentsComments';
@@ -3691,7 +3692,11 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                                     <div className="ml-[50px] mt-3 flex items-center gap-[18px] text-[11px] text-[#999]">
                                       <button
                                         type="button"
-                                        onClick={() => setMomentsPosts((prev) => prev.map((p) => (p.id === post.id ? toggleMomentLike(p, meName) : p)))}
+                                        onClick={() => {
+                                          const isLiking = !post.liked;
+                                          setMomentsPosts((prev) => prev.map((p) => (p.id === post.id ? toggleMomentLike(p, meName) : p)));
+                                          if (isLiking) void tryAutonomousMomentComment(String(post.id));
+                                        }}
                                         className={`cursor-pointer ${post.liked ? 'text-[#ae7e89]' : ''}`}
                                       >
                                         {post.liked ? '♥' : '♡'} 赞
@@ -3848,7 +3853,11 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   <div className="flex items-center gap-[18px] text-[11px] text-[#999]">
                     <button
                       type="button"
-                      onClick={() => setMomentsPosts((prev) => prev.map((p) => (p.id === live.id ? toggleMomentLike(p, meName) : p)))}
+                      onClick={() => {
+                        const isLiking = !live.liked;
+                        setMomentsPosts((prev) => prev.map((p) => (p.id === live.id ? toggleMomentLike(p, meName) : p)));
+                        if (isLiking) void tryAutonomousMomentComment(String(live.id));
+                      }}
                       className={`cursor-pointer ${live.liked ? 'text-[#ae7e89]' : ''}`}
                     >
                       {live.liked ? '♥' : '♡'} 赞
