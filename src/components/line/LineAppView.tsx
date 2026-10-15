@@ -95,6 +95,8 @@ interface LineChatItem {
 interface LineFriend {
   name: string;
   characterId?: string;
+  /** NPC 好友关系归属的人设；不同人设不能共享好友入口 */
+  personaId?: string;
   /** NPC App 人物；characterId 存其绑定角色，用于人设过滤 */
   npcId?: string;
   kind?: 'character' | 'npc';
@@ -1041,12 +1043,15 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     if (hasBounds && c.characterId && !boundSet.has(c.characterId)) return false;
     return true;
   });
-  const visibleFriends = hasBounds
-    ? friendsList.filter((f) => {
-        if (f.npcId) return Boolean(f.characterId && boundSet.has(f.characterId));
-        return f.characterId ? boundSet.has(f.characterId) : true;
-      })
-    : friendsList;
+  const visibleFriends = friendsList.filter((f) => {
+    // NPC 好友按人设隔离；旧数据没有 personaId 时仅保留兼容显示。
+    if (f.npcId && f.personaId && effectivePersonaId && f.personaId !== effectivePersonaId) return false;
+    if (hasBounds) {
+      if (f.npcId) return Boolean(f.characterId && boundSet.has(f.characterId));
+      return f.characterId ? boundSet.has(f.characterId) : true;
+    }
+    return true;
+  });
 
   const resolveFriendAvatar = (friend: LineFriend) => {
     if (friend.npcId) {
@@ -4515,7 +4520,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                         respondToNpcFriendRequest(request.id, 'accepted');
                         setNpcFriendship(npc.id, request.personaId, true);
                         const friend: LineFriend = {
-                          name: npc.name, characterId: npc.boundCharacterId, npcId: npc.id, kind: 'npc',
+                          name: npc.name, characterId: npc.boundCharacterId, npcId: npc.id, personaId: request.personaId, kind: 'npc',
                           note: 'NPC · 绑定 ' + (npc.boundCharacterName || bound?.name || '角色'),
                           variantLabel: npc.boundCharacterName || 'NPC', online: true, pinyin: npc.name[0] || '',
                           relationship: 'new-friend',
@@ -4593,6 +4598,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                       name: npcFriend.name,
                       characterId: npcFriend.boundCharacterId,
                       npcId: npcFriend.id,
+                      personaId: effectivePersonaId || undefined,
                       kind: 'npc',
                       note: 'NPC · 绑定 ' + (npcFriend.boundCharacterName || boundForNpc?.name || '角色'),
                       variantLabel: npcFriend.boundCharacterName || 'NPC',
