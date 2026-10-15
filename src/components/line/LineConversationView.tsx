@@ -1297,10 +1297,15 @@ export function LineConversationView({
   const allNpcs = getNpcs();
   const resolveGroupMemberCharacter = (member: any): ImportedCharacter | null => {
     if (member?.npcId || member?.kind === 'npc') {
-      // Resolve NPC records by stable IDs first; only legacy members without IDs may fall back to names.
+      // Resolve NPC records by stable IDs first.
       const npcId = String(member.npcId || (member.kind === 'npc' ? member.id || '' : '')).trim();
-      const npc = (npcId ? allNpcs.find(item => String(item.id) === npcId) : undefined)
-        || (!npcId ? allNpcs.find(item => item.name === member.name) : undefined);
+      let npc = (npcId ? allNpcs.find(item => String(item.id) === npcId) : undefined) || undefined;
+      // ID 对不上时（NPC 被删除重建导致 ID 变化很常见），按名字兜底，但要求名字唯一，
+      // 避免重名时张冠李戴。之前这里直接 return null，导致成员"有名字但发不出言"。
+      if (!npc && member.name) {
+        const nameMatches = allNpcs.filter(item => item.name === member.name);
+        if (nameMatches.length === 1) npc = nameMatches[0];
+      }
       if (!npc) return null;
       const bound = importedCharacters.find(character => character.id === (member.characterId || npc.boundCharacterId))
         || importedCharacters.find(character => character.id === npc.boundCharacterId)
