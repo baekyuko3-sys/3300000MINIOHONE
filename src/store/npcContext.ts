@@ -111,7 +111,7 @@ export function buildNpcRuntimeContext(
 ): string {
   const books = readPersistentState<WorldBook[]>('phone:worldbooks', []);
   const selectedBooks = collectNpcRuntimeWorldBooks(npc, books, scope);
-  const memory = getCharacterMemory(npc.id, npc.name);
+  const memory = getCharacterMemory(npc.id, npc.name, personaId);
   const enabledEntries = selectedBooks.flatMap(book =>
     book.enabled
       ? book.entries
