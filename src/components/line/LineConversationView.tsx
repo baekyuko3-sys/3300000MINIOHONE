@@ -24,6 +24,8 @@ import { getLineGroupByName, getLineGroupById, upsertLineGroup } from '../../sto
 import { getGroupPreset, getGroupPresets } from '../../store/groupPresets';
 import { getLineGroups, updateLineGroupMember, addLineGroupMemory, setLineGroupRelationships } from '../../store/lineGroups';
 import { getNpcs } from '../../store/npcs';
+import { buildNpcRuntimeContext } from '../../store/npcContext';
+import { considerNpcFriendRequest } from '../../store/npcSocial';
 import {
   activateLineTogetherIsland,
   clearLineTogetherIsland,
@@ -584,6 +586,7 @@ interface LineConversationViewProps {
   contactName: string;
   characterId?: string;
   npcId?: string;
+  /** NPC 独立身份 ID；不可只靠绑定角色 ID 识别 NPC 私聊 */
   conversationId?: string;
   personaId?: string;
   onSwitchPersona?: () => void;
@@ -1195,9 +1198,23 @@ export function LineConversationView({
   const importedCharacters = Array.isArray(storedImportedCharacters)
     ? storedImportedCharacters.filter((character): character is ImportedCharacter => !!character && typeof character === 'object')
     : [];
-  const importedCharacter = characterId
+  const boundImportedCharacter = characterId
     ? importedCharacters.find(character => character && character.id === characterId) || null
     : importedCharacters.find(character => character && character.name === contactName) || null;
+  const npcForChat = !isGroup && npcId ? getNpcs().find(npc => npc.id === npcId) || null : null;
+  const importedCharacter: ImportedCharacter | null = npcForChat
+    ? ({
+        ...(boundImportedCharacter || ({} as ImportedCharacter)),
+        id: npcForChat.id,
+        name: npcForChat.name,
+        avatar: npcForChat.avatar || boundImportedCharacter?.avatar || '',
+        description: [npcForChat.identity, npcForChat.personality, npcForChat.background, npcForChat.relationship].filter(Boolean).join('\n'),
+        personality: npcForChat.personality || '',
+        scenario: npcForChat.background || '',
+        systemPrompt: buildNpcRuntimeContext(npcForChat, 'online-chat'),
+        creatorNotes: npcForChat.relationship || '',
+      } as ImportedCharacter)
+    : boundImportedCharacter;
   const characterMemoryForPersona = importedCharacter ? getCharacterMemory(importedCharacter.id, importedCharacter.name) : null;
 
   const [personaLiveWeather, setPersonaLiveWeather] = useState<LineWeatherSnapshot | null>(null);
@@ -1227,6 +1244,11 @@ export function LineConversationView({
         name: npc.name,
         avatar: resAvatar,
         description: resDesc,
+        // NPC identity takes precedence over the linked character's persona.
+        personality: npc.personality || '',
+        scenario: npc.background || '',
+        systemPrompt: buildNpcRuntimeContext(npc, 'online-chat'),
+        creatorNotes: [bound?.creatorNotes || '', npc.relationship || ''].filter(Boolean).join('\n'),
       } as ImportedCharacter;
     }
     const characterId = String(member?.characterId || '').trim();
@@ -2675,6 +2697,7 @@ export function LineConversationView({
         });
         setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isRead: true } : m));
 
+        const friendRequestCheckedNpcIds = new Set<string>();
         for (let i = 0; i < parts.length; i += 1) {
           const part = parts[i];
           const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
@@ -2690,6 +2713,26 @@ export function LineConversationView({
               memory: [...(foundMember.memory || []), part.text.slice(0, 160)].slice(-20),
             });
             addLineGroupMemory(activeGroup?.id || '', (foundMember.name || part.rawSpeaker) + ' 在群聊中说：' + part.text.slice(0, 180));
+            const speakerCharacter = groupAiMembers[finalIdx]?.character;
+            if (speakerCharacter?.id) {
+              addRecentMemorySummary(
+                speakerCharacter.id,
+                speakerCharacter.name || foundMember.name || part.rawSpeaker,
+                '群聊「' + (activeGroup?.name || contactName) + '」中，' + (foundMember.name || part.rawSpeaker) + '说：' + part.text.slice(0, 240),
+                { source: 'line', importance: 55 },
+            if (foundMember.npcId || foundMember.kind === 'npc') {
+              const speakerNpc = allNpcs.find(item => item.id === foundMember.npcId || item.name === foundMember.name);
+              if (speakerNpc && activePersona?.id && !friendRequestCheckedNpcIds.has(speakerNpc.id)) {
+                friendRequestCheckedNpcIds.add(speakerNpc.id);
+                void considerNpcFriendRequest({
+                  npc: speakerNpc,
+                  personaId: activePersona.id,
+                  personaName: activePersona.name || '我',
+                  source: 'group-chat',
+                  sourceLabel: '群聊「' + (activeGroup?.name || contactName) + '」',
+                  eventContext: '群聊「' + (activeGroup?.name || contactName) + '」的对话：' + parts.map(item => item.rawSpeaker + '：' + item.text).join('\n').slice(-2200),
+                }).then(request => {
+                  if (request) window.dispatchEvent(new CustomEvent('sane333:npc-friend-requests-updated'));
           }
         }
         window.dispatchEvent(new CustomEvent('sane333:play-sound', { detail: { kind: 'message' } }));
