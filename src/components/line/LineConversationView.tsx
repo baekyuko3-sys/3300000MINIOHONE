@@ -2499,6 +2499,8 @@ export function LineConversationView({
           : [...prev, {
               id: placeholderId,
               sender: 'other',
+              senderType: primary.member.kind === 'npc' ? 'npc' : 'character',
+              senderId: primary.member.id || primary.member.npcId || primary.character!.id,
               senderName: primary.member.name,
               characterId: primary.character!.id,
               text: '',
@@ -2566,7 +2568,9 @@ export function LineConversationView({
               return {
                 id: placeholderId + idx,
                 sender: 'other' as const,
-                senderName: part.rawSpeaker,
+                senderType: foundMember?.member.kind === 'npc' ? 'npc' as const : 'character' as const,
+                senderId: foundMember?.member.id || foundMember?.member.npcId || foundChar?.id || primary.character!.id,
+                senderName: foundMember?.member.name || part.rawSpeaker,
                 characterId: foundChar?.id || primary.character!.id,
                 text: part.text,
                 time: '刚刚',
@@ -2617,7 +2621,7 @@ export function LineConversationView({
             showThinking: false,
             status: 'delivered' as const,
             createdAt: new Date().toISOString(),
-            metadata: { characterId: foundChar?.id || primary.character!.id },
+            metadata: { characterId: foundChar?.id || primary.character!.id, senderId: foundMember?.member.id || foundMember?.member.npcId || foundChar?.id || primary.character!.id },
           };
         });
         setMessages(prev => {
@@ -3904,6 +3908,8 @@ export function LineConversationView({
           return {
             id: replyId + idx,
             sender: 'other' as const,
+            senderType: found.member.kind === 'npc' ? 'npc' as const : 'character' as const,
+            senderId: found.member.id || found.member.npcId || character.id,
             senderName: found.member.name || part.rawSpeaker,
             characterId: character.id,
             text: part.text,
@@ -3915,7 +3921,7 @@ export function LineConversationView({
             aiModel: result.model,
             thinkingSummary: result.thinkingSummary,
             actionDescription: result.actionDescription,
-            metadata: { characterId: character.id, ...(result.thinkingSummary ? { thinkingSummary: result.thinkingSummary } : {}), ...(result.actionDescription ? { actionDescription: result.actionDescription } : {}) },
+            metadata: { characterId: character.id, senderId: found.member.id || found.member.npcId || character.id, ...(result.thinkingSummary ? { thinkingSummary: result.thinkingSummary } : {}), ...(result.actionDescription ? { actionDescription: result.actionDescription } : {}) },
           };
         });
         setMessages(prev => [...prev, ...finalMessages]);
@@ -5227,16 +5233,24 @@ export function LineConversationView({
           const previousCharacterKey = String(previousMessage?.characterId || previousMessage?.metadata?.characterId || previousMessage?.senderName || '').trim();
           const currentCharacterKey = String(msg.characterId || msg.metadata?.characterId || msg.senderName || '').trim();
           const sameGroupSpeakerAsPrevious = Boolean(isGroup && !isMe && previousMessage && previousMessage.sender !== 'me' && previousMessage.type !== 'system-nudge' && msg.type !== 'system-nudge' && previousCharacterKey && previousCharacterKey === currentCharacterKey);
+          const messageSenderId = String(msg.senderId || msg.metadata?.senderId || '').trim();
           const groupMessageMember = isGroup && !isMe
             ? (
-                (messageSenderName
-                  ? safeGroupMembers.find(member => [member.nickname, member.name].filter(Boolean).some(name => String(name).trim() === messageSenderName))
+                // Stable identity wins over display names/nicknames. Names are only a legacy fallback.
+                (messageSenderId
+                  ? safeGroupMembers.find(member => String(member.npcId || '').trim() === messageSenderId) ||
+                    safeGroupMembers.find(member => String(member.id || '').trim() === messageSenderId) ||
+                    safeGroupMembers.find(member => String(member.characterId || '').trim() === messageSenderId) ||
+                    null
                   : null) ||
                 (messageCharacterId
                   ? safeGroupMembers.find(member => String(member.npcId || '').trim() === messageCharacterId) ||
                     safeGroupMembers.find(member => String(member.id || '').trim() === messageCharacterId) ||
                     safeGroupMembers.find(member => String(member.characterId || '').trim() === messageCharacterId) ||
                     null
+                  : null) ||
+                (messageSenderName
+                  ? safeGroupMembers.find(member => [member.nickname, member.name].filter(Boolean).some(name => String(name).trim() === messageSenderName))
                   : null)
               )
             : null;
