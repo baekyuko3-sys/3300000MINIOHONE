@@ -76,31 +76,44 @@ function dayKey(date: Date) {
   return year + '-' + month + '-' + day;
 }
 
-function appendProactiveMessage(character: ImportedCharacter, text: string) {
-  // The open LINE transcript is keyed by the chat item's ID, not necessarily
-  // the imported character ID. Use that ID when there is exactly one matching
-  // ordinary-character chat; never guess when multiple persona chats exist.
-  let conversationId = '';
-  let ambiguousConversation = true;
+function getProactivePersona() {
+  const personas = readLocal<any[]>('line:user-personas', []);
+  const activeId = readLocal<string | null>('line:active-persona', null);
+  return personas.find(item => item.id === activeId)
+    || personas.find(item => item.isDefault)
+    || personas[0]
+    || null;
+}
+
+function resolveProactiveConversation(character: ImportedCharacter, personaId?: string | null) {
   try {
     const rawChats = window.localStorage.getItem('line:chat-items');
     const chats = rawChats ? JSON.parse(rawChats) : [];
-    if (Array.isArray(chats)) {
-      const matches = chats.filter((chat: any) =>
-        Boolean(character.id) &&
-        chat && !chat.isGroup && !chat.npcId &&
-        String(chat.characterId || '') === String(character.id)
-      );
-      if (matches.length === 1 && matches[0].id) {
-        conversationId = String(matches[0].id);
-        ambiguousConversation = false;
-      }
-      // Zero/multiple matches remain unresolved. Never create an orphan/shared
-      // transcript when the target chat cannot be identified uniquely.
-    }
+    if (!Array.isArray(chats)) return { conversationId: '', ambiguous: true };
+    const matches = chats.filter((chat: any) =>
+      Boolean(character.id) &&
+      chat && !chat.isGroup && !chat.npcId &&
+      String(chat.characterId || '') === String(character.id) &&
+      (personaId
+        ? String(chat.personaId || '') === String(personaId)
+        : !chat.personaId)
+    );
+    return matches.length === 1 && matches[0].id
+      ? { conversationId: String(matches[0].id), ambiguous: false }
+      : { conversationId: '', ambiguous: matches.length > 1 };
   } catch {
-    // If the chat list cannot be read, do not guess a transcript key.
+    return { conversationId: '', ambiguous: true };
   }
+}
+
+function appendProactiveMessage(character: ImportedCharacter, text: string) {
+  // Use the active persona's own LINE chat. If it cannot be uniquely resolved,
+  // keep the proactive event as a notification instead of creating shared history.
+  const persona = getProactivePersona();
+  const personaId = persona?.id ? String(persona.id) : undefined;
+  const target = resolveProactiveConversation(character, personaId);
+  const conversationId = target.conversationId;
+  const ambiguousConversation = target.ambiguous;
   const messageId = `proactive-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
   // Never copy a legacy shared transcript into this persona-scoped conversation.
@@ -133,6 +146,7 @@ function appendProactiveMessage(character: ImportedCharacter, text: string) {
       character: { id: character.id, name: character.name },
       characterName: character.name,
       ...(conversationId ? { conversationId } : {}),
+      ...(personaId ? { personaId } : {}),
       text,
       persisted: Boolean(conversationId),
       ...(ambiguousConversation ? { ambiguousConversation: true } : {}),
@@ -217,16 +231,19 @@ async function generateProactiveMessage(
   if (!proactiveSettings.apiKey.trim()) throw new Error('AI_NOT_CONFIGURED');
 
   const profile = getCharacterProfile(character.name, character.id);
-  const memory = getCharacterMemory(character.id, character.name);
+  const persona = getProactivePersona();
+  const personaId = persona?.id ? String(persona.id) : undefined;
+  const memory = getCharacterMemory(character.id, character.name, personaId);
+  const target = resolveProactiveConversation(character, personaId);
   const project = getProjectManifest();
   const worldbooks = collectScopedWorldBooks({
     books: readLocal<WorldBook[]>('phone:worldbooks', []),
     scope: 'online-chat',
     character,
   });
-  const personas = readLocal<any[]>('line:user-personas', []);
-  const persona = personas.find(item => item.isDefault) || personas[0] || null;
-  const recentMessages = getLineConversationMessages(character.id || character.name).slice(-12);
+  const recentMessages = target.conversationId
+    ? getLineConversationMessages(target.conversationId).slice(-12)
+    : [];
   const lastInteraction = recentMessages.at(-1)?.createdAt ? Date.parse(recentMessages.at(-1)!.createdAt!) : 0;
   const offlineMinutes = lastInteraction ? Math.max(0, Math.floor((Date.now() - lastInteraction) / 60000)) : null;
   const offlineContext = offlineMinutes === null
