@@ -461,6 +461,10 @@ export async function runProactiveCatchup() {
 
   running = true;
   try {
+    // Run the NPC pipeline independently before legacy character schedules,
+    // so one broken imported-character schedule cannot suppress NPC messages.
+    try { await runNpcPrivateProactive(today, state); } catch { /* best-effort background work */ }
+
     for (const character of characters) {
       const rawSchedule = window.localStorage.getItem(`line:schedule:${character.name}`);
       if (!rawSchedule) continue;
@@ -627,9 +631,6 @@ export async function runProactiveCatchup() {
     } catch {
       // NPC proactive moments are best-effort
     }
-
-    // NPC private messages only target NPCs who are already LINE friends of the active persona.
-    try { await runNpcPrivateProactive(today, state); } catch { /* best-effort background work */ }
 
     // Autonomous moment comments (independent of schedule / auto-post)
     try {
