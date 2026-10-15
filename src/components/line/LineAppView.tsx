@@ -1039,7 +1039,12 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   // 好友 / 朋友圈同样只显示绑定角色。
   const allLineNpcs = getNpcs();
   const personaChats = chatItems.filter((c) => {
-    if (c.isGroup) return !effectivePersonaId || c.personaId === effectivePersonaId || !c.personaId;
+    // A group chat without a persona binding is legacy data: do not silently
+    // expose it inside every persona's LINE inbox.
+    if (c.isGroup) {
+      if (!effectivePersonaId) return true;
+      return c.personaId === effectivePersonaId;
+    }
     if (effectivePersonaId && c.personaId && c.personaId !== effectivePersonaId) return false;
     if (effectivePersonaId && !c.personaId && hasBounds && c.characterId && !boundSet.has(c.characterId)) return false;
     if (hasBounds && c.characterId && !boundSet.has(c.characterId)) return false;
