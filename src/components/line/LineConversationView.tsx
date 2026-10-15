@@ -2597,7 +2597,11 @@ export function LineConversationView({
             groupMemorySummary.trim() ? '【当前群聊独立记忆总结】\n' + groupMemorySummary.trim() : '',
             groupMemorySettings.trim() ? '【当前群聊记忆规则】\n' + groupMemorySettings.trim() : '',
             allowGroupProactiveDM ? '【群聊内容延伸到单聊的许可】可以根据本群实际发生且该角色确实知道的内容，自然判断是否主动向用户发起单聊；必须符合角色性格、关系与情境，不要频繁打扰，也不代表每次都必须发起。此许可仅来源于当前群聊设置。' : '【群聊主动单聊】关闭；不得仅因为群聊内容而主动发起单聊。',
-            '【成员状态】\n' + (activeGroup?.members || []).map(member => member.name + '：' + [member.muted ? '禁言，不可发言' : '', member.online === false ? '离线，不可主动发言' : '在线', member.mood || '', member.relationship || ''].filter(Boolean).join(' / ')).join('\n'),
+            '【成员状态】\n' + (activeGroup?.members || []).map(member => {
+              const npcId = String(member.npcId || (member.kind === 'npc' ? member.id || '' : '')).trim();
+              const npcInactive = member.kind === 'npc' && allNpcs.find(npc => String(npc.id) === npcId)?.active === false;
+              return member.name + '：' + [member.muted ? '禁言，不可发言' : '', member.online === false || npcInactive ? '离线或停用，不可主动发言' : '在线', member.mood || '', member.relationship || ''].filter(Boolean).join(' / ');
+            }).join('\n'),
             '【群成员资料】（用于识别成员身份、性格与关系；不是发言名单或轮流发言顺序）\n' + allMemberSummaries,
             speakerFormatRule,
           ].filter(Boolean).join('\n'),
