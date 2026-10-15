@@ -210,8 +210,9 @@ export function applyMemoryMergeResult(
       importance?: number;
     }>;
   },
+  personaId?: string | null,
 ): CharacterMemory {
-  const current = getCharacterMemory(characterId, characterName);
+  const current = getCharacterMemory(characterId, characterName, personaId);
   const now = new Date().toISOString();
   let items = [...current.items];
   const deleteIds = new Set<string>();
