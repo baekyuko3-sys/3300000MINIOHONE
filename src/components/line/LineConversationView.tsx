@@ -2618,6 +2618,8 @@ export function LineConversationView({
           return {
             id: placeholderId + idx,
             sender: 'other' as const,
+            senderType: foundMember?.member.kind === 'npc' ? 'npc' as const : 'character' as const,
+            senderId: foundMember?.member.id || foundMember?.member.npcId || foundChar?.id || primary.character!.id,
             senderName: foundMember?.member.name || part.rawSpeaker,
             characterId: foundChar?.id || primary.character!.id,
             text: part.text,
