@@ -82,6 +82,7 @@ function appendProactiveMessage(character: ImportedCharacter, text: string) {
   // ordinary-character chat; never guess when multiple persona chats exist.
   const fallbackConversationId = character.id || character.name;
   let conversationId = fallbackConversationId;
+  let ambiguousConversation = false;
   try {
     const rawChats = window.localStorage.getItem('line:chat-items');
     const chats = rawChats ? JSON.parse(rawChats) : [];
@@ -91,7 +92,14 @@ function appendProactiveMessage(character: ImportedCharacter, text: string) {
         String(chat.characterId || '') === String(character.id || '') &&
         (!character.id || String(chat.characterId || '') === String(character.id))
       );
-      if (matches.length === 1 && matches[0].id) conversationId = String(matches[0].id);
+      if (matches.length === 1 && matches[0].id) {
+        conversationId = String(matches[0].id);
+      } else if (matches.length > 1) {
+        // The same character may have multiple persona chats. Never write to
+        // the shared character key when no unique chat can be identified.
+        ambiguousConversation = true;
+        conversationId = '';
+      }
     }
   } catch {
     // Keep the legacy key if the chat list cannot be read.
@@ -110,15 +118,17 @@ function appendProactiveMessage(character: ImportedCharacter, text: string) {
     }
   }
 
-  appendLineMessage(conversationId, {
-    id: messageId,
-    sender: 'other',
-    text,
-    kind: 'text',
-    createdAt: new Date().toISOString(),
-    status: 'delivered',
-    metadata: { proactive: true },
-  });
+  if (conversationId) {
+    appendLineMessage(conversationId, {
+      id: messageId,
+      sender: 'other',
+      text,
+      kind: 'text',
+      createdAt: new Date().toISOString(),
+      status: 'delivered',
+      metadata: { proactive: true },
+    });
+  }
   emitWorldEvent('character.message', {
     characterId: character.id,
     characterName: character.name,
@@ -135,9 +145,10 @@ function appendProactiveMessage(character: ImportedCharacter, text: string) {
       id: messageId,
       character: { id: character.id, name: character.name },
       characterName: character.name,
-      conversationId,
+      ...(conversationId ? { conversationId } : {}),
       text,
-      persisted: true,
+      persisted: Boolean(conversationId),
+      ...(ambiguousConversation ? { ambiguousConversation: true } : {}),
       kind: 'text',
       createdAt: new Date().toISOString(),
       reason: 'scheduled-proactive',
