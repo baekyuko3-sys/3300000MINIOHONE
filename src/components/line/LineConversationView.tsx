@@ -2511,9 +2511,21 @@ export function LineConversationView({
         }
         const availableMembers = groupAiMembers.filter(({ member }) => !member.muted && member.online !== false);
         const mentionTokens = Array.from(userText.matchAll(/@([^\s@，。！？、,.!?;；:：]+)/g), match => String(match[1] || '').trim()).filter(Boolean);
-        const mentioned = availableMembers.filter(({ member }) => [member.name, member.nickname]
-          .map(alias => String(alias || '').trim())
-          .some(alias => Boolean(alias) && mentionTokens.includes(alias)));
+        const mentionMatches = mentionTokens.map(token => ({
+          token,
+          members: availableMembers.filter(({ member }) => [member.name, member.nickname]
+            .map(alias => String(alias || '').trim())
+            .some(alias => Boolean(alias) && alias === token)),
+        })).filter(match => match.members.length > 0);
+        const ambiguousMention = mentionMatches.find(match => match.members.length > 1);
+        if (ambiguousMention) {
+          showToast('@' + ambiguousMention.token + ' 对应多个群成员，请改用唯一昵称');
+          setIsTyping(false);
+          return;
+        }
+        const mentionedById = new Map<string, typeof availableMembers[number]>();
+        mentionMatches.forEach(match => match.members.forEach(item => mentionedById.set(item.member.id, item)));
+        const mentioned = [...mentionedById.values()];
         const pool = mentioned.length ? mentioned : availableMembers;
 
         // 主发言者：@ 模式只选被 @ 的；否则选"最后发言 NPC 的下一位"
