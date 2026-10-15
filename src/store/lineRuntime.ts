@@ -427,7 +427,7 @@ export function bindLineRuntimeEvents() {
     const personaId = String(detail.personaId || '').trim();
     const isNpc = Boolean(npcId || detail.kind === 'npc' || detail.npc);
     const ambiguousConversation = detail.ambiguousConversation === true;
-    if (!conversationId && typeof window !== 'undefined') {
+    if (!conversationId && !ambiguousConversation && typeof window !== 'undefined') {
       try {
         const raw = window.localStorage.getItem('line:chat-items');
         const chats = raw ? JSON.parse(raw) : [];
