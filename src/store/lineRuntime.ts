@@ -446,7 +446,9 @@ export function bindLineRuntimeEvents() {
     // For ordinary imported characters keep legacy compatibility. For NPCs, an
     // ambiguous/missing match means we notify only rather than leak into another chat.
     if (!conversationId && !isNpc) conversationId = String(character.id || character.name || '');
-    if (conversationId) {
+    if (conversationId && detail.persisted !== true) {
+      // Some producers (including the scheduled proactive runtime) persist the
+      // message before emitting this event. Do not append it a second time.
       appendLineMessage(conversationId, {
         id: detail.id || `proactive-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         sender: 'other',
