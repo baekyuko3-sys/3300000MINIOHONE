@@ -417,24 +417,55 @@ export function bindLineRuntimeEvents() {
     const detail = (event as CustomEvent<any>).detail || {};
     const character = detail.character;
     if (!character?.id && !character?.name) return;
-    const id = character.id || character.name;
     const text = detail.text || detail.message || '收到一条新消息';
-    appendLineMessage(id, {
-      id: detail.id || `proactive-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      sender: 'other',
-      text: String(text),
-      kind: detail.kind || 'text',
-      createdAt: detail.createdAt || new Date().toISOString(),
-      status: 'delivered',
-      metadata: {
-        proactive: true,
-        reason: detail.reason,
-        eventId: detail.eventId,
-      },
-    });
+
+    // Prefer an explicitly supplied conversation ID. NPCs can have separate chats
+    // for different LINE personas, so never write their proactive message to the
+    // legacy characterId key (that would create a shared transcript across personas).
+    let conversationId = String(detail.conversationId || detail.chatId || '').trim();
+    const npcId = String(detail.npcId || detail.npc?.id || '').trim();
+    const personaId = String(detail.personaId || '').trim();
+    const isNpc = Boolean(npcId || detail.kind === 'npc' || detail.npc);
+    if (!conversationId && typeof window !== 'undefined') {
+      try {
+        const raw = window.localStorage.getItem('line:chat-items');
+        const chats = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(chats)) {
+          const matches = chats.filter((chat: any) => {
+            if (!chat || chat.isGroup) return false;
+            if (npcId ? String(chat.npcId || '') !== npcId : String(chat.characterId || '') !== String(character.id || '')) return false;
+            if (personaId && String(chat.personaId || '') !== personaId) return false;
+            return true;
+          });
+          if (matches.length === 1) conversationId = String(matches[0].id || '');
+        }
+      } catch {
+        // Malformed chat list: do not guess an NPC's persona-bound transcript.
+      }
+    }
+    // For ordinary imported characters keep legacy compatibility. For NPCs, an
+    // ambiguous/missing match means we notify only rather than leak into another chat.
+    if (!conversationId && !isNpc) conversationId = String(character.id || character.name || '');
+    if (conversationId) {
+      appendLineMessage(conversationId, {
+        id: detail.id || `proactive-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        sender: 'other',
+        text: String(text),
+        kind: detail.kind || 'text',
+        createdAt: detail.createdAt || new Date().toISOString(),
+        status: 'delivered',
+        metadata: {
+          proactive: true,
+          reason: detail.reason,
+          eventId: detail.eventId,
+          ...(npcId ? { npcId } : {}),
+          ...(personaId ? { personaId } : {}),
+        },
+      });
+    }
     addLineNotification({
       type: 'message',
-      conversationId: id,
+      ...(conversationId ? { conversationId } : {}),
       characterId: character.id,
       title: character.name || '新消息',
       body: String(text).slice(0, 120),
