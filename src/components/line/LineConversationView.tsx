@@ -2737,7 +2737,7 @@ export function LineConversationView({
                   personaName: activePersona.name || '我',
                   source: 'group-chat',
                   sourceLabel: '群聊「' + (activeGroup?.name || contactName) + '」',
-                  eventContext: '群聊「' + (activeGroup?.name || contactName) + '」的对话：' + parts.map(item => item.rawSpeaker + '：' + item.text).join('\\n').slice(-2200),
+                  eventContext: '群聊「' + (activeGroup?.name || contactName) + '」的对话：' + parts.map(item => item.rawSpeaker + '：' + item.text).join('\n').slice(-2200),
                 }).then(request => {
                   if (request) window.dispatchEvent(new CustomEvent('sane333:npc-friend-requests-updated'));
                 });
@@ -4077,7 +4077,7 @@ export function LineConversationView({
                 personaName: activePersona.name || '我',
                 source: 'group-chat',
                 sourceLabel: '群聊「' + (activeGroup?.name || contactName) + '」',
-                eventContext: '群聊继续生成：' + parts.map(item => item.rawSpeaker + '：' + item.text).join('\\n').slice(-2200),
+                eventContext: '群聊继续生成：' + parts.map(item => item.rawSpeaker + '：' + item.text).join('\n').slice(-2200),
               }).then(request => {
                 if (request) window.dispatchEvent(new CustomEvent('sane333:npc-friend-requests-updated'));
               });
