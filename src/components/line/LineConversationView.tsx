@@ -248,11 +248,11 @@ function splitGroupMultiSpeaker(
   // 把所有候选名字按长度倒序排（防短名优先匹配长名）
   const nameSorted = candidateNames
     .map((n, i) => ({ name: n, idx: i }))
-    .filter(x => x.name)
+    .filter(x => x.name && candidateNames.filter(value => value === x.name).length === 1)
     .sort((a, b) => b.name.length - a.name.length);
   const nickSorted = candidateNicknames
     .map((n, i) => ({ name: n, idx: i }))
-    .filter(x => x.name)
+    .filter(x => x.name && candidateNicknames.filter(value => value === x.name).length === 1)
     .sort((a, b) => b.name.length - a.name.length);
 
   // The AI engine unwraps the single <message> payload before returning text.
@@ -344,7 +344,7 @@ function splitGroupMultiSpeaker(
 
 /**
  * 把 splitGroupMultiSpeaker 返回的 rawSpeaker 归一化，匹配回 groupAiMembers 的下标。
- * 返回 groupAiMembers 的索引；-1 表示未匹配上（调用方用 primary 兜底）。
+ * 返回 groupAiMembers 的索引；-1 表示未匹配上。
  */
 function resolveSpeakerIndex(
   rawSpeaker: string,
