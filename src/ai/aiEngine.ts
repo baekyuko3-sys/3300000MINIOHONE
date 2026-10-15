@@ -230,8 +230,13 @@ export function parseAiReplyPayload(
     .replace(/<\s*status(?:bar)?\s*>[\s\S]*?(?:<\s*\/\s*status(?:bar)?\s*>|$)/gi, '')
     .replace(/【\s*状态栏\s*】[\s\S]*$/gi, '');
 
-  const messageMatch = /<\s*message\s*>([\s\S]*?)<\s*\/\s*message\s*>/i.exec(withoutMetadata);
-  const text = (messageMatch?.[1] || withoutMetadata
+  const messageMatches = [...withoutMetadata.matchAll(/<\s*message\s*>([\s\S]*?)<\s*\/\s*message\s*>/gi)];
+  // 模型可能把每位说话人各包一个 <message> 块（系统提示词明确要求内容放在 <message> 中，
+  // 逐条包裹是合理解读）。必须取全部块再拼接，只取第一块会导致其他人消息静默丢失。
+  const messageContents = messageMatches.map(m => m[1]).filter(s => s && s.trim());
+  const text = (messageContents.length
+    ? messageContents.join('\n')
+    : withoutMetadata
     .replace(/<\s*action\s*>[\s\S]*?(?:<\s*\/\s*action\s*>|$)/gi, '')
     .replace(/\[\s*动作\s*\][\s\S]*?(?:\[\s*\/\s*动作\s*\]|$)/gi, '')
     .replace(/【\s*动作\s*】[\s\S]*$/gi, '')

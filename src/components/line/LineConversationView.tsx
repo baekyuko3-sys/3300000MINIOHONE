@@ -373,10 +373,31 @@ function splitGroupMultiSpeaker(
       const colonSpeaker = !bracketSpeaker
         ? blockTrim.match(/^([^：:\n]{1,24})[：:]\s*([\s\S]*)$/)
         : null;
+      // 标签是否命中了任一真实成员（名字或昵称）。命中零个时，很可能是中文常用句式
+      // （如"补充一下：…"、"[捂脸]太好笑了"）被误判为说话者标签——此时整句回退给主发言人，
+      // 避免整条回复凭空消失。命中多个（重名）时仍走严格拒绝，由调用方丢弃。
+      const tagHitsMember = (tag: string): boolean => {
+        const t = String(tag || '').trim();
+        if (!t) return false;
+        return candidateNames.some(n => n && String(n).trim() === t) ||
+          candidateNicknames.some(n => n && String(n).trim() === t);
+      };
       if (bracketSpeaker) {
-        out.push({ rawSpeaker: String(bracketSpeaker[1] || bracketSpeaker[2] || '').trim(), text: String(bracketSpeaker[3] || '').trim(), primary: false });
+        const tag = String(bracketSpeaker[1] || bracketSpeaker[2] || '').trim();
+        const body = String(bracketSpeaker[3] || '').trim();
+        if (tag && !tagHitsMember(tag)) {
+          out.push({ rawSpeaker: primarySpeakerName, text: blockTrim, primary: true });
+        } else {
+          out.push({ rawSpeaker: tag, text: body, primary: false });
+        }
       } else if (colonSpeaker && !/\s/.test(colonSpeaker[1])) {
-        out.push({ rawSpeaker: String(colonSpeaker[1] || '').trim(), text: String(colonSpeaker[2] || '').trim(), primary: false });
+        const tag = String(colonSpeaker[1] || '').trim();
+        const body = String(colonSpeaker[2] || '').trim();
+        if (tag && !tagHitsMember(tag)) {
+          out.push({ rawSpeaker: primarySpeakerName, text: blockTrim, primary: true });
+        } else {
+          out.push({ rawSpeaker: tag, text: body, primary: false });
+        }
       } else {
         out.push({ rawSpeaker: primarySpeakerName, text: blockTrim, primary: true });
       }
@@ -2515,7 +2536,12 @@ export function LineConversationView({
   const handleSend = async (shouldReply = true) => {
     const userText = inputText.trim();
     if (!userText) return;
-    if (shouldReply && isTyping) return;
+    // 上一轮还在生成时直接 return 会让用户觉得"点了发送没反应"——给个提示，
+    // 且输入框内容保留，等这轮结束再发。
+    if (shouldReply && isTyping) {
+      showToast('上一轮回复还在生成中，稍等一下再发');
+      return;
+    }
     if (characterProfile.isBlockedByCharacter) { showToast('你已被对方拉黑，暂时无法发送消息'); return; }
 
     const msgId = Date.now();
@@ -2778,8 +2804,12 @@ export function LineConversationView({
           },
         });
 
-        const finalText = cleanGroupGeneratedText(String(result?.text || streamedText || ''));
-        if (/^\[PASS\]$/i.test(finalText)) {
+        const rawReplyText = String(result?.text || streamedText || '');
+        // 注意：cleanGroupGeneratedText 会先把 [PASS]/【PASS】整行剥掉，所以必须在清洗前判断；
+        // 否则 [PASS] 检查永远匹配不上（死代码），模型合规的"不接话"会被渲染成红色报错气泡。
+        const isPassReply = /^\s*\[PASS\]\s*$/i.test(rawReplyText) || /^\s*【PASS】\s*$/i.test(rawReplyText);
+        const finalText = cleanGroupGeneratedText(rawReplyText);
+        if (isPassReply) {
           // [PASS] 不是"出 bug 了"，是 AI 判定没人想接话。留一条轻提示，免得用户对着"已读"干等、
           // 误以为是没收到回复的故障。
           setMessages(prev => [
@@ -4164,7 +4194,7 @@ export function LineConversationView({
           onDelta: delta => { streamed += delta; },
         });
         const rawText = String(result?.text || streamed || '').trim();
-        if (!rawText || /^\[PASS\]$/i.test(rawText)) {
+        if (!rawText || /^\[PASS\]$/i.test(rawText) || /^【PASS】$/i.test(rawText)) {
           showToast('群聊角色根据当前情境选择了暂不接话');
           return;
         }
