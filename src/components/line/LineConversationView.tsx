@@ -7568,9 +7568,12 @@ export function LineConversationView({
               </summary>
               <div className="border-t border-[#f2f2f3]">
                 <div className="px-3.5 pt-3 flex items-center gap-2 overflow-x-auto no-scrollbar">
-                  {(activeGroup?.members || []).filter((mm: any) => mm && mm.kind !== 'user' && mm.name !== currentUserNameFallback()).map((m: any) => {
+                  {(activeGroup?.members || []).filter((mm: any) => mm && mm.kind !== 'user' && mm.id !== activeGroup?.ownerId).map((m: any) => {
                     const c = resolveGroupMemberCharacter(m);
-                    const npc = m.npcId ? allNpcs.find(n => n.id === m.npcId) : null;
+                    const memberNpcId = String(m.npcId || (m.kind === 'npc' ? m.id || '' : '')).trim();
+                     const npc = (memberNpcId ? allNpcs.find(n => String(n.id) === memberNpcId) : undefined)
+                       || (!memberNpcId ? allNpcs.find(n => n.name === m.name) : undefined)
+                       || null;
                     const av = c?.avatar || npc?.avatar || m.avatar;
                     return (
                       <button key={m.id || m.characterId || m.npcId || m.name} type="button" title={m.nickname || m.name} onClick={() => setExpandedGroupMemberEditId(m.id)} className="shrink-0 flex flex-col items-center gap-1 w-12">
@@ -7600,9 +7603,12 @@ export function LineConversationView({
                   <div className="rounded-[12px] border border-[#ebe6e8] bg-[#faf9fa] max-h-56 overflow-y-auto overscroll-contain space-y-2 p-2">
                     {(activeGroup?.members || []).filter((mm: any) => mm && mm.kind !== 'user' && mm.name !== currentUserNameFallback()).map((m: any) => {
                       const c = resolveGroupMemberCharacter(m);
-                      const npc = m.npcId ? allNpcs.find(n => n.id === m.npcId) : null;
+                      const memberNpcId = String(m.npcId || (m.kind === 'npc' ? m.id || '' : '')).trim();
+                     const npc = (memberNpcId ? allNpcs.find(n => String(n.id) === memberNpcId) : undefined)
+                       || (!memberNpcId ? allNpcs.find(n => n.name === m.name) : undefined)
+                       || null;
                       const av = c?.avatar || npc?.avatar || m.avatar;
-                      const isMe = m.name === currentUserNameFallback() || m.kind === 'user';
+                      const isMe = m.kind === 'user' || m.id === activeGroup?.ownerId;
                       const expanded = expandedGroupMemberEditId === m.id;
                       const roleLabel = m.role === 'owner' ? '群主' : m.role === 'admin' ? '管理员' : '成员';
                       const kindLabel = m.npcId || m.kind === 'npc' ? 'NPC' : isMe ? '我' : '角色';
@@ -10003,7 +10009,7 @@ export function LineConversationView({
                       className="shrink-0 px-3 rounded-[12px] bg-[#06C755] text-white text-[11px] font-medium"
                     >保存</button>
                   </div>
-                  <div className="text-[11px] text-[#999] text-center">{(activeGroup?.members || groupMembers).filter((m: any) => m && m.kind !== 'user' && m.name !== currentUserNameFallback()).length} 位成员</div>
+                  <div className="text-[11px] text-[#999] text-center">{(activeGroup?.members || groupMembers).filter((m: any) => m && m.kind !== 'user' && m.id !== activeGroup?.ownerId).length} 位成员</div>
                 </div>
               </div>
             </div>
@@ -10011,9 +10017,12 @@ export function LineConversationView({
             <div className="bg-white mt-2 border-y border-[#f0f0f1] px-3 py-3">
               <div className="text-[11px] font-semibold text-[#888] px-1 mb-2">成员</div>
               <div className="grid grid-cols-4 gap-x-2 gap-y-3">
-                {(activeGroup?.members || groupMembers).filter((m: any) => m && m.kind !== 'user' && m.name !== currentUserNameFallback()).slice(0, 11).map((m: any) => {
+                {(activeGroup?.members || groupMembers).filter((m: any) => m && m.kind !== 'user' && m.id !== activeGroup?.ownerId).slice(0, 11).map((m: any) => {
                   const c = resolveGroupMemberCharacter(m);
-                  const npc = m.npcId ? allNpcs.find(n => n.id === m.npcId) : null;
+                  const memberNpcId = String(m.npcId || (m.kind === 'npc' ? m.id || '' : '')).trim();
+                     const npc = (memberNpcId ? allNpcs.find(n => String(n.id) === memberNpcId) : undefined)
+                       || (!memberNpcId ? allNpcs.find(n => n.name === m.name) : undefined)
+                       || null;
                   const av = c?.avatar || npc?.avatar || m.avatar;
                   return (
                     <div key={m.id || m.characterId || m.npcId || m.name} className="flex flex-col items-center gap-1 min-w-0">
@@ -10054,8 +10063,11 @@ export function LineConversationView({
                 <div className="rounded-[12px] border border-[#ebe6e8] bg-[#faf9fa] max-h-72 overflow-y-auto overscroll-contain space-y-2 p-2">
                   {(activeGroup?.members || groupMembers).filter((mm: any) => mm && mm.kind !== 'user' && mm.name !== currentUserNameFallback()).map((member: any) => {
                     const character = resolveGroupMemberCharacter(member);
-                    const npc = member.npcId ? allNpcs.find(n => n.id === member.npcId) : null;
-                    const isMeMember = member.name === currentUserNameFallback() || member.kind === 'user';
+                    const memberNpcId = String(member.npcId || (member.kind === 'npc' ? member.id || '' : '')).trim();
+                     const npc = (memberNpcId ? allNpcs.find(n => String(n.id) === memberNpcId) : undefined)
+                       || (!memberNpcId ? allNpcs.find(n => n.name === member.name) : undefined)
+                       || null;
+                    const isMeMember = member.kind === 'user' || member.id === activeGroup?.ownerId;
                     const avatar = character?.avatar || npc?.avatar || member.avatar;
                     const kindLabel = member.npcId || member.kind === 'npc' ? 'NPC' : isMeMember ? '我' : '角色';
                     return (
