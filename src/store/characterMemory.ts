@@ -158,8 +158,14 @@ export function addRecentMemorySummary(
   return saveCharacterMemory({ ...current, ...(options?.personaId ? { personaId: options.personaId } : {}), recentSummaries: [summary, ...(current.recentSummaries || [])] });
 }
 
-export function mergeRecentMemorySummaries(characterId: string, characterName: string): CharacterMemory {
-  const current = getCharacterMemory(characterId, characterName);
+export function mergeRecentMemorySummaries(
+  characterId: string,
+  characterName: string,
+  personaId?: string | null,
+): CharacterMemory {
+  // NPC memory is partitioned by user persona. Keep merges on the same key
+  // as the source summaries instead of silently reading/writing shared memory.
+  const current = getCharacterMemory(characterId, characterName, personaId);
   const recent = current.recentSummaries || [];
   if (!recent.length) return current;
   // Automatic maintenance is batch-based: every 100 pending summaries is one cycle.
