@@ -2740,8 +2740,14 @@ export function LineConversationView({
             });
             addLineGroupMemory(activeGroup?.id || '', (foundMember.name || part.rawSpeaker) + ' 在群聊中说：' + part.text.slice(0, 180));
             const speakerCharacter = groupAiMembers[finalIdx]?.character;
+            const memberNpcId = String(foundMember.npcId || (foundMember.kind === 'npc' ? foundMember.id || '' : '')).trim();
+            // Stable NPC IDs are authoritative. Only legacy group members without an ID
+            // may fall back to a name; otherwise a duplicate name can write memory to
+            // the wrong NPC's persona-scoped record.
             const speakerNpc = (foundMember.npcId || foundMember.kind === 'npc')
-              ? allNpcs.find(item => item.id === foundMember.npcId || item.id === foundMember.id || item.name === foundMember.name)
+              ? (memberNpcId
+                  ? allNpcs.find(item => String(item.id) === memberNpcId)
+                  : allNpcs.find(item => item.name === foundMember.name))
               : undefined;
             // NPC 的个人经历必须写入 NPC 自己的记忆键，不能只写入绑定角色的记忆。
             const memoryOwnerId = speakerNpc?.id || speakerCharacter?.id;
