@@ -371,35 +371,33 @@ function resolveSpeakerIndex(
   const target = String(rawSpeaker || '').trim();
   if (!target) return -1;
   const cleaned = target.replace(/^[\[【\s]+|[:：\]\】\s]+$/g, '').trim();
-  const uniqueIndex = (values: string[], value: string): number => {
-    const matches = values.reduce<number[]>((found, item, index) => {
-      if (item && item.trim() === value) found.push(index);
-      return found;
-    }, []);
-    return matches.length === 1 ? matches[0] : -1;
+  const exactMatches = (value: string): number[] => {
+    const found = new Set<number>();
+    candidateNames.forEach((name, index) => {
+      if (name && name.trim() === value) found.add(index);
+    });
+    candidateNicknames.forEach((nickname, index) => {
+      if (nickname && nickname.trim() === value) found.add(index);
+    });
+    return [...found];
   };
 
-  // 只接受唯一匹配。重名/重复昵称时不猜测，避免把消息记到错误 NPC 身上。
-  let idx = uniqueIndex(candidateNames, target);
-  if (idx >= 0) return idx;
-  if (cleaned && cleaned !== target) {
-    idx = uniqueIndex(candidateNames, cleaned);
-    if (idx >= 0) return idx;
+  // 名字与昵称放在同一命名空间内检查；不能因为某人的名字唯一，就忽略另一人的同名昵称。
+  for (const value of [target, cleaned].filter((item, index, list) => item && list.indexOf(item) === index)) {
+    const matches = exactMatches(value);
+    if (matches.length) return matches.length === 1 ? matches[0] : -1;
   }
-  idx = uniqueIndex(candidateNicknames, cleaned || target);
-  if (idx >= 0) return idx;
 
-  // 兼容 AI 省略部分名字，但只有唯一候选时才允许模糊匹配。
-  const fuzzyMatches = candidateNames.reduce<number[]>((found, name, index) => {
-    if (name && cleaned && (cleaned.includes(name) || name.includes(cleaned))) found.push(index);
-    return found;
-  }, []);
-  if (fuzzyMatches.length === 1) return fuzzyMatches[0];
-  const nicknameMatches = candidateNicknames.reduce<number[]>((found, name, index) => {
-    if (name && cleaned && (cleaned.includes(name) || name.includes(cleaned))) found.push(index);
-    return found;
-  }, []);
-  return nicknameMatches.length === 1 ? nicknameMatches[0] : -1;
+  // 模糊匹配也按“成员身份”去重，只有唯一成员命中时才接受。
+  const fuzzyMatches = new Set<number>();
+  candidateNames.forEach((name, index) => {
+    const nickname = candidateNicknames[index] || '';
+    const aliases = [name, nickname].map(alias => String(alias || '').trim()).filter(Boolean);
+    if (aliases.some(alias => cleaned && (cleaned.includes(alias) || alias.includes(cleaned)))) {
+      fuzzyMatches.add(index);
+    }
+  });
+  return fuzzyMatches.size === 1 ? [...fuzzyMatches][0] : -1;
 }
 
 function spliceExpandedLineReply(prev: any[], replyMsgId: any, expanded: any[]) {
