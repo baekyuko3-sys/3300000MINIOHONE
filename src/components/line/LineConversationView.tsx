@@ -2483,7 +2483,7 @@ export function LineConversationView({
           return;
         }
         const availableMembers = groupAiMembers.filter(({ member }) => !member.muted && member.online !== false);
-        const mentioned = availableMembers.filter(({ member }) => userText.includes('@' + member.name) || userText.includes('@' + (member.nickname || '')));
+        const mentioned = availableMembers.filter(({ member }) => [member.name, member.nickname].some(alias => Boolean(String(alias || '').trim()) && userText.includes('@' + String(alias).trim())));
         const pool = mentioned.length ? mentioned : availableMembers;
 
         // 主发言者：@ 模式只选被 @ 的；否则选"最后发言 NPC 的下一位"
