@@ -184,6 +184,36 @@ async function readImageFileAsAvatar(file: File): Promise<string> {
   } catch {}
   return raw;
 }
+function LineAvatarImage({ src, name }: { src: string; name: string }) {
+  const [resolvedSrc, setResolvedSrc] = useState('');
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setResolvedSrc('');
+    setFailed(false);
+    const value = String(src || '').trim();
+    if (!value) return;
+    if (value.startsWith('media:')) {
+      void getMedia(value.slice(6))
+        .then(url => {
+          if (cancelled) return;
+          if (url) setResolvedSrc(url);
+          else setFailed(true);
+        })
+        .catch(() => { if (!cancelled) setFailed(true); });
+    } else {
+      setResolvedSrc(value);
+    }
+    return () => { cancelled = true; };
+  }, [src]);
+
+  if (!resolvedSrc || failed) {
+    return <span className="w-full h-full flex items-center justify-center text-[11px] font-semibold text-[#777]">{String(name || '?').trim().slice(0, 1) || '?'}</span>;
+  }
+  return <img src={resolvedSrc} alt={name} className="w-full h-full object-cover" referrerPolicy="no-referrer" onError={() => setFailed(true)} />;
+}
+
 function readImageFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -5631,12 +5661,9 @@ export function LineConversationView({
                       ? (groupMessageMember?.nickname || groupMessageMember?.name || _npcFallback?.name || groupMessageCharacter?.name || msg.senderName || characterProfile.nickname)
                       : (msg.senderName || characterProfile.nickname);
                     return avatarSrc ? (
-                      <img src={avatarSrc} alt={senderLabel} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <LineAvatarImage src={avatarSrc} name={senderLabel} />
                     ) : (
-                      <svg className="w-5 h-5 text-[#999]" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <circle cx="12" cy="8" r="4" />
-                        <path d="M4 21c.8-4 3.5-6 8-6s7.2 2 8 6" />
-                      </svg>
+                      <span className="w-full h-full flex items-center justify-center text-[11px] font-semibold text-[#777]">{String(senderLabel || '?').trim().slice(0, 1) || '?'}</span>
                     );
                   })()}
                 </div>
