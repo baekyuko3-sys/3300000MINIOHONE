@@ -103,6 +103,7 @@ export function serializeNpcAllContentContext(context: NpcAllContentContext, max
 export function buildNpcRuntimeContext(
   npc: import('./npcs').SaneNpc,
   scope: 'online-chat' | 'offline-story' = 'online-chat',
+  personaId?: string | null,
 ): string {
   const books = readPersistentState<WorldBook[]>('phone:worldbooks', []);
   const selectedBooks = collectNpcRuntimeWorldBooks(npc, books, scope);
@@ -114,7 +115,7 @@ export function buildNpcRuntimeContext(
           .map(entry => '【' + book.name + ' / ' + entry.name + '】\n' + entry.content)
       : [],
   );
-  const relationToMe = getNpcRuntimeRelation(npc);
+  const relationToMe = getNpcRuntimeRelation(npc, personaId);
   return [
     '【NPC 独立身份】' + npc.name,
     'NPC ID：' + npc.id,
@@ -155,13 +156,14 @@ function collectNpcRuntimeWorldBooks(
   });
 }
 
-function getNpcRuntimeRelation(npc: import('./npcs').SaneNpc): string {
+function getNpcRuntimeRelation(npc: import('./npcs').SaneNpc, personaId?: string | null): string {
   const text = String(npc.relationToMe || '').trim();
   if (!text) return '';
   if (!npc.relationToMeName) return text;
-  const persona = readPersistentState<Array<{ id: string; name?: string; isDefault?: boolean }>>('line:user-personas', []);
-  const activeId = readPersistentState<string | null>('line:active-persona', null);
-  const active = persona.find(item => item.id === activeId) || persona.find(item => item.isDefault) || persona[0];
+  const personas = readPersistentState<Array<{ id: string; name?: string; isDefault?: boolean }>>('line:user-personas', []);
+  // A conversation's explicit persona wins over the globally active persona.
+  const activeId = personaId !== undefined ? personaId : readPersistentState<string | null>('line:active-persona', null);
+  const active = personas.find(item => item.id === activeId) || personas.find(item => item.isDefault) || personas[0];
   return !active || active.name === npc.relationToMeName ? text : '';
 }
 
