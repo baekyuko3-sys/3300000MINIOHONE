@@ -11,6 +11,9 @@ export type LineMessageKind =
 export interface LineRuntimeMessage {
   id: number | string;
   sender?: 'me' | 'other' | 'system' | string;
+  /** Stable group-chat identity; display names are legacy fallbacks only. */
+  senderType?: 'npc' | 'character' | 'user' | 'system' | string;
+  senderId?: string;
   text?: string;
   kind?: LineMessageKind;
   createdAt?: string;
