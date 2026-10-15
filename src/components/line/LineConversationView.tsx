@@ -1192,9 +1192,14 @@ export function LineConversationView({
   const allNpcs = getNpcs();
   const resolveGroupMemberCharacter = (member: any): ImportedCharacter | null => {
     if (member?.npcId || member?.kind === 'npc') {
-      const npc = allNpcs.find(item => item.id === member.npcId) || allNpcs.find(item => item.name === member.name);
+      // Resolve NPC records by stable IDs first; only legacy members without IDs may fall back to names.
+      const npcId = String(member.npcId || (member.kind === 'npc' ? member.id || '' : '')).trim();
+      const npc = (npcId ? allNpcs.find(item => String(item.id) === npcId) : undefined)
+        || (!npcId ? allNpcs.find(item => item.name === member.name) : undefined);
       if (!npc) return null;
-      const bound = importedCharacters.find(character => character.id === npc.boundCharacterId || character.id === member.characterId) || null;
+      const bound = importedCharacters.find(character => character.id === (member.characterId || npc.boundCharacterId))
+        || importedCharacters.find(character => character.id === npc.boundCharacterId)
+        || null;
       const resAvatar = npc.avatar || (bound ? bound.avatar : '') || '';
       const resDesc = [npc.identity, npc.personality, npc.background, npc.relationship].filter(Boolean).join('\n') || (bound ? bound.description : '');
       return {
@@ -5282,7 +5287,9 @@ export function LineConversationView({
           // Fallback: if groupMessageCharacter is still null but senderName matches an NPC name, resolve it
           let _npcFallback: ImportedCharacter | null = null;
           if (isGroup && !isMe && messageSenderName && !groupMessageCharacter) {
-            const _npc = allNpcs.find(n => n.name === messageSenderName);
+            const fallbackNpcId = String(msg.senderId || msg.metadata?.senderId || groupMessageMember?.npcId || (groupMessageMember?.kind === 'npc' ? groupMessageMember?.id || '' : '')).trim();
+            const _npc = (fallbackNpcId ? allNpcs.find(n => String(n.id) === fallbackNpcId) : null)
+              || (!fallbackNpcId ? allNpcs.find(n => n.name === messageSenderName) : null);
             if (_npc) {
               const _bound = importedCharacters.find(c => c.id === _npc.boundCharacterId);
               const fbAvatar = _npc.avatar || (_bound ? _bound.avatar : '') || '';
@@ -5297,8 +5304,9 @@ export function LineConversationView({
           }
           const groupMessageAvatar = isGroup
             ? (() => {
-                const memberNpc = groupMessageMember?.npcId
-                  ? allNpcs.find(n => String(n.id) === String(groupMessageMember.npcId))
+                const memberNpcId = String(groupMessageMember?.npcId || (groupMessageMember?.kind === 'npc' ? groupMessageMember?.id || '' : '')).trim();
+                const memberNpc = memberNpcId
+                  ? allNpcs.find(n => String(n.id) === memberNpcId)
                   : null;
                 const boundCharacter = importedCharacters.find(character =>
                   String(character.id || '') === String(memberNpc?.boundCharacterId || groupMessageMember?.characterId || '')
