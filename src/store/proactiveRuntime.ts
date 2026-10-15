@@ -418,7 +418,7 @@ async function runNpcPrivateProactive(today: string, state: ProactiveState) {
       emitWorldEvent('character.message', {
         characterId: npc.id,
         characterName: npc.name,
-        data: { preview: text.replace(/\\s+/g, ' ').slice(0, 120), source: 'npc-proactive' },
+        data: { preview: text.replace(/\s+/g, ' ').slice(0, 120), source: 'npc-proactive' },
         activity: '刚刚主动联系了你',
         lastInteractionAt: createdAt,
       });
