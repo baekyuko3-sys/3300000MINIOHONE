@@ -94,9 +94,9 @@ function appendProactiveMessage(character: ImportedCharacter, text: string) {
       );
       if (matches.length === 1 && matches[0].id) {
         conversationId = String(matches[0].id);
-      } else if (matches.length > 1) {
-        // The same character may have multiple persona chats. Never write to
-        // the shared character key when no unique chat can be identified.
+      } else {
+        // No match is also unresolved: never create an orphan/shared transcript
+        // that could later be attached to a different persona's chat.
         ambiguousConversation = true;
         conversationId = '';
       }
@@ -110,13 +110,9 @@ function appendProactiveMessage(character: ImportedCharacter, text: string) {
 
   // The runtime store is the single source of truth. If an older name-keyed
   // conversation exists, migrate it once before appending the new normalized message.
-  if (conversationId && conversationId !== character.name) {
-    const legacyMessages = readLocal<any[]>(legacyKey, []);
-    const currentMessages = getLineConversationMessages(conversationId);
-    if (legacyMessages.length && !currentMessages.length) {
-      saveLocal(key, legacyMessages);
-    }
-  }
+  // Do not migrate the legacy name-keyed transcript here. It may contain
+  // messages from another persona's chat, and copying it into a newly scoped
+  // transcript would reintroduce the very history leak this router prevents.
 
   if (conversationId) {
     appendLineMessage(conversationId, {
