@@ -469,7 +469,10 @@ export function bindLineRuntimeEvents() {
     addLineNotification({
       type: 'message',
       ...(conversationId ? { conversationId } : {}),
-      characterId: character.id,
+      // If an NPC message could not be assigned to one unique chat, keep it as
+      // a notification only. A characterId fallback can route the tap into a
+      // shared/legacy transcript and defeat the isolation guard above.
+      ...((conversationId || !isNpc) ? { characterId: character.id } : {}),
       title: character.name || '新消息',
       body: String(text).slice(0, 120),
       payload: detail,
