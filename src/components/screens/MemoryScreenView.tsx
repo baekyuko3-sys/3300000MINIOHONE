@@ -78,6 +78,7 @@ export function MemoryScreenView({ onNavigate }: { onNavigate: (screen: ScreenTy
     try { return window.localStorage.getItem(ACTIVE_MEMORY_KEY); } catch { return null; }
   });
   const selected = characters.find(c => c.id === activeId) || characters[0] || null;
+  const [activePersonaId, setActivePersonaId] = useState('');
   const [memory, setMemory] = useState<CharacterMemory>(() =>
     selected
       ? getCharacterMemory(selected.id, selected.name)
@@ -105,27 +106,25 @@ export function MemoryScreenView({ onNavigate }: { onNavigate: (screen: ScreenTy
       return raw ? JSON.parse(raw) : [];
     } catch { return []; }
   });
-  const selectedPersona = personas.find(p => p.id === memory.personaId) || null;
+  const selectedPersona = personas.find(p => p.id === activePersonaId) || null;
 
   const choosePersona = (personaId: string) => {
     if (!selected) return;
-    const persona = personas.find(p => p.id === personaId);
-    notifyMemory(saveCharacterMemory({
-      ...memory,
-      personaId: persona?.id || undefined,
-      personaName: persona?.name || undefined,
-    }));
+    // Switching persona must load that persona's own record, not copy the
+    // currently visible record into another persona's storage key.
+    setActivePersonaId(personaId);
+    setMemory(getCharacterMemory(selected.id, selected.name, personaId || undefined));
   };
 
   useEffect(() => {
     if (!selected) return;
-    setMemory(getCharacterMemory(selected.id, selected.name));
+    setMemory(getCharacterMemory(selected.id, selected.name, activePersonaId || undefined));
     try { window.localStorage.setItem(ACTIVE_MEMORY_KEY, selected.id); } catch {}
-  }, [selected?.id, selected?.name]);
+  }, [selected?.id, selected?.name, activePersonaId]);
 
   useEffect(() => {
     const refresh = () => {
-      if (selected) setMemory(getCharacterMemory(selected.id, selected.name));
+      if (selected) setMemory(getCharacterMemory(selected.id, selected.name, activePersonaId || undefined));
     };
     window.addEventListener('sane333:memory-changed', refresh);
     window.addEventListener('sane333:memory-updated', refresh);
@@ -135,7 +134,7 @@ export function MemoryScreenView({ onNavigate }: { onNavigate: (screen: ScreenTy
       window.removeEventListener('sane333:memory-updated', refresh);
       window.removeEventListener('sane333:world-event', refresh);
     };
-  }, [selected?.id, selected?.name]);
+  }, [selected?.id, selected?.name, activePersonaId]);
 
   const notifyMemory = (next: CharacterMemory) => {
     setMemory(next);
@@ -164,6 +163,7 @@ export function MemoryScreenView({ onNavigate }: { onNavigate: (screen: ScreenTy
       importance:70,
       kind:sectionKind(activeSection),
       section:activeSection,
+      personaId: activePersonaId || undefined,
     });
     notifyMemory(next);
   };
@@ -173,16 +173,16 @@ export function MemoryScreenView({ onNavigate }: { onNavigate: (screen: ScreenTy
     if (!selected) return;
     const content = window.prompt('添加一条最近聊天总结：');
     if (!content?.trim()) return;
-    notifyMemory(addRecentMemorySummary(selected.id, selected.name, content, { source:'manual', importance:60 }));
+    notifyMemory(addRecentMemorySummary(selected.id, selected.name, content, { source:'manual', importance:60, personaId: activePersonaId || undefined }));
   };
   const mergeRecent = () => {
     if (!selected || !recentSummaries.length) return;
-    notifyMemory(mergeRecentMemorySummaries(selected.id, selected.name));
+    notifyMemory(mergeRecentMemorySummaries(selected.id, selected.name, activePersonaId || undefined));
   };
 
   const removeMemory = (id: string) => {
     if (!selected) return;
-    const next = deleteCharacterMemoryItem(selected.id, id);
+    const next = deleteCharacterMemoryItem(selected.id, id, activePersonaId || undefined);
     if (next) notifyMemory(next);
   };
 
@@ -214,7 +214,7 @@ export function MemoryScreenView({ onNavigate }: { onNavigate: (screen: ScreenTy
                 <div className="mt-1 text-[11px] font-semibold truncate">{selectedPersona?.name || '尚未选择'}</div>
                 <div className="mt-0.5 text-[8px] text-[#9a938b]">这不是 Memory，而是这名角色对应的固定“我是谁”。</div>
               </div>
-              <select value={memory.personaId || ''} onChange={e => choosePersona(e.target.value)} className="max-w-[130px] rounded-full border border-[#ddd7cf] bg-white px-2.5 py-1.5 text-[9px] outline-none">
+              <select value={activePersonaId} onChange={e => choosePersona(e.target.value)} className="max-w-[130px] rounded-full border border-[#ddd7cf] bg-white px-2.5 py-1.5 text-[9px] outline-none">
                 <option value="">不指定</option>
                 {personas.map(p => <option key={p.id} value={p.id}>{p.name || '未命名人设'}</option>)}
               </select>
