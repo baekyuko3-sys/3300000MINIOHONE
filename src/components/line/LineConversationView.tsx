@@ -1233,6 +1233,22 @@ export function LineConversationView({
         name: npc.name,
         avatar: resAvatar,
         description: resDesc,
+        identity: npc.identity || bound?.identity || '',
+        personality: npc.personality || bound?.personality || '普通',
+        scenario: npc.background || bound?.scenario || '',
+        worldBookIds: Array.isArray(npc.worldBookIds) && npc.worldBookIds.length ? npc.worldBookIds : bound?.worldBookIds || [],
+        tags: [...new Set([...(Array.isArray(bound?.tags) ? bound.tags : []), ...(Array.isArray(npc.tags) ? npc.tags : [])])],
+        variantLabel: bound?.variantLabel || '',
+        firstMessage: bound?.firstMessage || '',
+        exampleDialogue: bound?.exampleDialogue || '',
+        creatorNotes: bound?.creatorNotes || '',
+        systemPrompt: bound?.systemPrompt || '',
+        postHistoryInstructions: bound?.postHistoryInstructions || '',
+        alternateGreetings: Array.isArray(bound?.alternateGreetings) ? bound.alternateGreetings : [],
+        creator: bound?.creator || '',
+        characterVersion: bound?.characterVersion || '',
+        sourceFormat: bound?.sourceFormat || 'manual',
+        importedAt: bound?.importedAt || npc.updatedAt || npc.createdAt || new Date().toISOString(),
       } as ImportedCharacter;
     }
     const characterId = String(member?.characterId || '').trim();
