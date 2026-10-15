@@ -80,9 +80,8 @@ function appendProactiveMessage(character: ImportedCharacter, text: string) {
   // The open LINE transcript is keyed by the chat item's ID, not necessarily
   // the imported character ID. Use that ID when there is exactly one matching
   // ordinary-character chat; never guess when multiple persona chats exist.
-  const fallbackConversationId = character.id || character.name;
-  let conversationId = fallbackConversationId;
-  let ambiguousConversation = false;
+  let conversationId = '';
+  let ambiguousConversation = true;
   try {
     const rawChats = window.localStorage.getItem('line:chat-items');
     const chats = rawChats ? JSON.parse(rawChats) : [];
@@ -94,24 +93,18 @@ function appendProactiveMessage(character: ImportedCharacter, text: string) {
       );
       if (matches.length === 1 && matches[0].id) {
         conversationId = String(matches[0].id);
-      } else {
-        // No match is also unresolved: never create an orphan/shared transcript
-        // that could later be attached to a different persona's chat.
-        ambiguousConversation = true;
-        conversationId = '';
+        ambiguousConversation = false;
       }
+      // Zero/multiple matches remain unresolved. Never create an orphan/shared
+      // transcript when the target chat cannot be identified uniquely.
     }
   } catch {
-    // Keep the legacy key if the chat list cannot be read.
+    // If the chat list cannot be read, do not guess a transcript key.
   }
   const key = `line:conversation:${conversationId}`;
   const messageId = `proactive-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-  // The runtime store is the single source of truth. If an older name-keyed
-  // conversation exists, migrate it once before appending the new normalized message.
-  // Do not migrate the legacy name-keyed transcript here. It may contain
-  // messages from another persona's chat, and copying it into a newly scoped
-  // transcript would reintroduce the very history leak this router prevents.
+  // Never copy a legacy shared transcript into this persona-scoped conversation.
 
   if (conversationId) {
     appendLineMessage(conversationId, {
