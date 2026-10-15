@@ -2807,7 +2807,9 @@ export function LineConversationView({
                 sender: 'other' as const,
                 senderType: foundMember?.member.kind === 'npc' ? 'npc' as const : 'character' as const,
                 senderId: (foundMember?.member.kind === 'npc' ? foundMember.member.npcId || foundMember.member.id : foundMember?.member.id) || foundChar?.id || primary.character!.id,
-                senderName: foundMember?.member.name || part.rawSpeaker,
+                // 名字优先级：群内昵称 > 解析出的当前名（NPC/角色改名后能跟上）> 成员快照 > 模型输出的标签。
+                // 直接用 member.name 会导致 NPC 改名后消息仍显示旧名（甚至显示绑定的角色名）。
+                senderName: foundMember?.member.nickname || foundChar?.name || foundMember?.member.name || part.rawSpeaker,
                 characterId: foundChar?.id || primary.character!.id,
                 text: part.text,
                 time: '刚刚',
@@ -2873,7 +2875,8 @@ export function LineConversationView({
             sender: 'other' as const,
             senderType: foundMember?.member.kind === 'npc' ? 'npc' as const : 'character' as const,
             senderId: (foundMember?.member.kind === 'npc' ? foundMember.member.npcId || foundMember.member.id : foundMember?.member.id) || foundChar?.id || primary.character!.id,
-            senderName: foundMember?.member.name || part.rawSpeaker,
+            // 名字优先级：群内昵称 > 解析出的当前名（NPC/角色改名后能跟上）> 成员快照 > 模型输出的标签。
+            senderName: foundMember?.member.nickname || foundChar?.name || foundMember?.member.name || part.rawSpeaker,
             characterId: foundChar?.id || primary.character!.id,
             text: part.text,
             time: '刚刚',
@@ -4233,7 +4236,8 @@ export function LineConversationView({
             sender: 'other' as const,
             senderType: found.member.kind === 'npc' ? 'npc' as const : 'character' as const,
             senderId: (found.member.kind === 'npc' ? found.member.npcId || found.member.id : found.member.id) || character.id,
-            senderName: found.member.name || part.rawSpeaker,
+            // 名字优先级：群内昵称 > 解析出的当前名 > 成员快照 > 模型输出的标签。
+            senderName: found.member.nickname || character?.name || found.member.name || part.rawSpeaker,
             characterId: character.id,
             text: part.text,
             time: '刚刚',
