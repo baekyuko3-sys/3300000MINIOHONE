@@ -94,10 +94,12 @@ export function MemoryScreenView({ onNavigate }: { onNavigate: (screen: ScreenTy
     try { return window.localStorage.getItem(ACTIVE_MEMORY_KEY); } catch { return null; }
   });
   const selected = characters.find(c => c.id === activeId) || characters[0] || null;
-  const [activePersonaId, setActivePersonaId] = useState('');
+  const [activePersonaId, setActivePersonaId] = useState(() =>
+    selected ? (getCharacterMemory(selected.id, selected.name).personaId || '') : ''
+  );
   const [memory, setMemory] = useState<CharacterMemory>(() =>
     selected
-      ? getCharacterMemory(selected.id, selected.name)
+      ? getCharacterMemory(selected.id, selected.name, activePersonaId || undefined)
       : { characterId:'', characterName:'', summary:'', items:[], updatedAt:new Date().toISOString() }
   );
   const [activeSection, setActiveSection] = useState<MemorySection>('stage');
@@ -129,14 +131,22 @@ export function MemoryScreenView({ onNavigate }: { onNavigate: (screen: ScreenTy
     // Switching persona must load that persona's own record, not copy the
     // currently visible record into another persona's storage key.
     setActivePersonaId(personaId);
-    setMemory(getCharacterMemory(selected.id, selected.name, personaId || undefined));
+    const targetMemory = getCharacterMemory(selected.id, selected.name, personaId || undefined);
+    setMemory(saveCharacterMemory({
+      ...targetMemory,
+      personaId: persona?.id || undefined,
+      personaName: persona?.name || undefined,
+    }));
   };
 
   useEffect(() => {
     if (!selected) return;
-    setMemory(getCharacterMemory(selected.id, selected.name, activePersonaId || undefined));
+    // Each owner remembers which persona's memory was last selected in Memory.
+    const savedPersonaId = getCharacterMemory(selected.id, selected.name).personaId || '';
+    setActivePersonaId(savedPersonaId);
+    setMemory(getCharacterMemory(selected.id, selected.name, savedPersonaId || undefined));
     try { window.localStorage.setItem(ACTIVE_MEMORY_KEY, selected.id); } catch {}
-  }, [selected?.id, selected?.name, activePersonaId]);
+  }, [selected?.id, selected?.name]);
 
   useEffect(() => {
     const refresh = () => {
