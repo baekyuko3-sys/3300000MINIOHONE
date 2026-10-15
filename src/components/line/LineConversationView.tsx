@@ -1218,7 +1218,12 @@ export function LineConversationView({
         description: resDesc,
       } as ImportedCharacter;
     }
-    return importedCharacters.find(character => character.id === member.characterId || character.name === member.name) || null;
+    const characterId = String(member?.characterId || '').trim();
+    return (characterId
+      ? importedCharacters.find(character => character.id === characterId)
+      : undefined)
+      || (!characterId ? importedCharacters.find(character => character.name === member.name) : undefined)
+      || null;
   };
   const groupAiMembers = safeGroupMembers
     .map(member => ({ member, character: resolveGroupMemberCharacter(member) }))
