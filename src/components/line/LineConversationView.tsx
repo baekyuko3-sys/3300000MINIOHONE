@@ -2865,6 +2865,20 @@ export function LineConversationView({
         spliceExpandedLineReply(prev, replyMsgId, replyExpanded).map((m) => m.id === msgId ? { ...m, isRead: true } : m)
       );
 
+      // NPC 私聊也可以根据真实对话判断是否自然地产生好友申请；冷却与关系检查由 npcSocial 统一处理。
+      if (npcForChat && activePersona?.id) {
+        void considerNpcFriendRequest({
+          npc: npcForChat,
+          personaId: activePersona.id,
+          personaName: activePersona.name || '我',
+          source: 'npc-initiative',
+          sourceLabel: 'LINE 私聊「' + (npcForChat.name || contactName) + '」',
+          eventContext: '用户：' + userText.slice(-900) + '\\nNPC：' + finalReplyText.slice(-1300),
+        }).then(request => {
+          if (request) window.dispatchEvent(new CustomEvent('sane333:npc-friend-requests-updated'));
+        });
+      }
+
       window.dispatchEvent(new CustomEvent('sane333:play-sound', { detail: { kind: 'message' } }));
 
       // Status snapshots are created by the delivered-message observer so normal,
