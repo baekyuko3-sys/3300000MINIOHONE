@@ -859,7 +859,17 @@ export function LineConversationView({
     // Mirror the whole visible conversation so older messages remain searchable,
     // recoverable after reload, and available to the AI context layer.
     saveLineConversationMessages(conversationStorageId, runtimeMessages);
-    markLineConversationRead(conversationStorageId, messages.at(-1)?.id);
+    // 只在最后一条消息 ID 真正变化时才标记已读：markLineConversationRead 会 dispatch
+    // sane333:line-runtime-changed 事件，父组件监听后 setChatItems；若每次 messages
+    // 引用变化都 dispatch，极易与父组件形成"子 effect → 事件 → 父 setState → 子重渲染"
+    // 的更新循环（Maximum update depth exceeded）。
+    const lastMsgId = messages.at(-1)?.id;
+    const lastMsgIdStr = lastMsgId != null ? String(lastMsgId) : null;
+    if (lastMsgIdStr !== lastMarkedReadIdRef.current || conversationStorageId !== lastMarkedReadConvRef.current) {
+      lastMarkedReadIdRef.current = lastMsgIdStr;
+      lastMarkedReadConvRef.current = conversationStorageId;
+      markLineConversationRead(conversationStorageId, lastMsgId);
+    }
   }, [messages, conversationStorageId]);
 
   // Sheets & Overlays
@@ -2414,6 +2424,9 @@ export function LineConversationView({
   };
 
   const hasMountedConversationRef = useRef(false);
+  // L795 effect 里 markLineConversationRead 的去重守卫（防事件循环）。
+  const lastMarkedReadIdRef = useRef<string | null>(null);
+  const lastMarkedReadConvRef = useRef<string | null>(null);
 
   useEffect(() => {
     const refs = Array.from(new Set(
