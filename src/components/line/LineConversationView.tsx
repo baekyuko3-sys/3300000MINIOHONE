@@ -1241,7 +1241,7 @@ export function LineConversationView({
   };
   const groupAiMembers = safeGroupMembers
     .map(member => ({ member, character: resolveGroupMemberCharacter(member) }))
-    .filter(item => item.character && item.member.kind !== 'user' && item.member.id !== activeGroup?.ownerId);
+    .filter(item => item.character && item.member.kind !== 'user' && item.member.role !== 'owner' && item.member.id !== activeGroup?.ownerId);
   const simulatedGroupSpeaker = isGroup && simulatedGroupSpeakerId ? groupAiMembers.find(({ character }) => character?.id === simulatedGroupSpeakerId)?.character : null;
   const groupMembers = safeGroupMembers;
   const groupUnreadCount = messages.filter((message) => message.sender !== 'me' && message.isRead === false).length;
@@ -1257,7 +1257,7 @@ export function LineConversationView({
 
   const filteredMentionMembers = isGroup
     ? groupAiMembers
-        .filter(({ member }) => member.kind !== 'user' && member.id !== activeGroup?.ownerId)
+        .filter(({ member }) => member.kind !== 'user' && member.role !== 'owner' && member.id !== activeGroup?.ownerId)
         .filter(({ member, character }) => {
           const query = mentionQuery.trim().toLowerCase();
           if (!query) return true;
@@ -3006,7 +3006,7 @@ export function LineConversationView({
     const amount = formatMoneyAmount(redPacketAmount);
     if (!amount) { showToast('请填写红包金额'); return; }
     const blessing = redPacketBlessing.trim() || '恭喜发财';
-    const eligibleNpcCount = isGroup ? groupMembers.filter((member: any) => member && member.kind !== 'user' && member.id !== activeGroup?.ownerId).length : 0;
+    const eligibleNpcCount = isGroup ? groupMembers.filter((member: any) => member && member.kind !== 'user' && member.role !== 'owner' && member.id !== activeGroup?.ownerId).length : 0;
     const memberLimit = isGroup ? Math.max(1, eligibleNpcCount + 1) : 1;
     const count = isGroup ? Math.max(1, Math.min(memberLimit, 99, Number.parseInt(redPacketCount, 10) || 1)) : 1;
     if (isGroup && Number(amount) < 0.01 * count) { showToast('红包总金额至少要能分给每个人 0.01 元'); return; }
@@ -6799,7 +6799,7 @@ export function LineConversationView({
           const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           const userClaim = { userId: 'me', name: '我', amount: ((shares[0] || 0) / 100).toFixed(2), time: now() };
           const nextClaims = [userClaim];
-          const npcMembers = groupMembers.filter((member: any) => member && member.kind !== 'user' && member.id !== activeGroup?.ownerId);
+          const npcMembers = groupMembers.filter((member: any) => member && member.kind !== 'user' && member.role !== 'owner' && member.id !== activeGroup?.ownerId);
           for (let index = 1; index < count && index <= npcMembers.length; index += 1) {
             const member = npcMembers[index - 1];
             nextClaims.push({ userId: String(member.id || member.characterId || member.npcId || member.name), name: String(member.nickname || member.name || '群成员'), amount: ((shares[index] || 0) / 100).toFixed(2), time: now() });
@@ -7579,7 +7579,7 @@ export function LineConversationView({
               </summary>
               <div className="border-t border-[#f2f2f3]">
                 <div className="px-3.5 pt-3 flex items-center gap-2 overflow-x-auto no-scrollbar">
-                  {(activeGroup?.members || []).filter((mm: any) => mm && mm.kind !== 'user' && mm.id !== activeGroup?.ownerId).map((m: any) => {
+                  {(activeGroup?.members || []).filter((mm: any) => mm && mm.kind !== 'user' && mm.role !== 'owner' && mm.id !== activeGroup?.ownerId).map((m: any) => {
                     const c = resolveGroupMemberCharacter(m);
                     const memberNpcId = String(m.npcId || (m.kind === 'npc' ? m.id || '' : '')).trim();
                      const npc = (memberNpcId ? allNpcs.find(n => String(n.id) === memberNpcId) : undefined)
@@ -7612,14 +7612,14 @@ export function LineConversationView({
 
                 <div className="p-3.5">
                   <div className="rounded-[12px] border border-[#ebe6e8] bg-[#faf9fa] max-h-56 overflow-y-auto overscroll-contain space-y-2 p-2">
-                    {(activeGroup?.members || []).filter((mm: any) => mm && mm.kind !== 'user' && mm.id !== activeGroup?.ownerId).map((m: any) => {
+                    {(activeGroup?.members || []).filter((mm: any) => mm && mm.kind !== 'user' && mm.role !== 'owner' && mm.id !== activeGroup?.ownerId).map((m: any) => {
                       const c = resolveGroupMemberCharacter(m);
                       const memberNpcId = String(m.npcId || (m.kind === 'npc' ? m.id || '' : '')).trim();
                      const npc = (memberNpcId ? allNpcs.find(n => String(n.id) === memberNpcId) : undefined)
                        || (!memberNpcId ? allNpcs.find(n => n.name === m.name) : undefined)
                        || null;
                       const av = c?.avatar || npc?.avatar || m.avatar;
-                      const isMe = m.kind === 'user' || m.id === activeGroup?.ownerId;
+                      const isMe = m.kind === 'user' || m.role === 'owner' || m.id === activeGroup?.ownerId;
                       const expanded = expandedGroupMemberEditId === m.id;
                       const roleLabel = m.role === 'owner' ? '群主' : m.role === 'admin' ? '管理员' : '成员';
                       const kindLabel = m.npcId || m.kind === 'npc' ? 'NPC' : isMe ? '我' : '角色';
@@ -10020,7 +10020,7 @@ export function LineConversationView({
                       className="shrink-0 px-3 rounded-[12px] bg-[#06C755] text-white text-[11px] font-medium"
                     >保存</button>
                   </div>
-                  <div className="text-[11px] text-[#999] text-center">{(activeGroup?.members || groupMembers).filter((m: any) => m && m.kind !== 'user' && m.id !== activeGroup?.ownerId).length} 位成员</div>
+                  <div className="text-[11px] text-[#999] text-center">{(activeGroup?.members || groupMembers).filter((m: any) => m && m.kind !== 'user' && m.role !== 'owner' && m.id !== activeGroup?.ownerId).length} 位成员</div>
                 </div>
               </div>
             </div>
@@ -10028,7 +10028,7 @@ export function LineConversationView({
             <div className="bg-white mt-2 border-y border-[#f0f0f1] px-3 py-3">
               <div className="text-[11px] font-semibold text-[#888] px-1 mb-2">成员</div>
               <div className="grid grid-cols-4 gap-x-2 gap-y-3">
-                {(activeGroup?.members || groupMembers).filter((m: any) => m && m.kind !== 'user' && m.id !== activeGroup?.ownerId).slice(0, 11).map((m: any) => {
+                {(activeGroup?.members || groupMembers).filter((m: any) => m && m.kind !== 'user' && m.role !== 'owner' && m.id !== activeGroup?.ownerId).slice(0, 11).map((m: any) => {
                   const c = resolveGroupMemberCharacter(m);
                   const memberNpcId = String(m.npcId || (m.kind === 'npc' ? m.id || '' : '')).trim();
                      const npc = (memberNpcId ? allNpcs.find(n => String(n.id) === memberNpcId) : undefined)
@@ -10072,13 +10072,13 @@ export function LineConversationView({
               </summary>
               <div className="px-3 pb-3">
                 <div className="rounded-[12px] border border-[#ebe6e8] bg-[#faf9fa] max-h-72 overflow-y-auto overscroll-contain space-y-2 p-2">
-                  {(activeGroup?.members || groupMembers).filter((mm: any) => mm && mm.kind !== 'user' && mm.id !== activeGroup?.ownerId).map((member: any) => {
+                  {(activeGroup?.members || groupMembers).filter((mm: any) => mm && mm.kind !== 'user' && mm.role !== 'owner' && mm.id !== activeGroup?.ownerId).map((member: any) => {
                     const character = resolveGroupMemberCharacter(member);
                     const memberNpcId = String(member.npcId || (member.kind === 'npc' ? member.id || '' : '')).trim();
                      const npc = (memberNpcId ? allNpcs.find(n => String(n.id) === memberNpcId) : undefined)
                        || (!memberNpcId ? allNpcs.find(n => n.name === member.name) : undefined)
                        || null;
-                    const isMeMember = member.kind === 'user' || member.id === activeGroup?.ownerId;
+                    const isMeMember = member.kind === 'user' || member.role === 'owner' || member.id === activeGroup?.ownerId;
                     const avatar = character?.avatar || npc?.avatar || member.avatar;
                     const kindLabel = member.npcId || member.kind === 'npc' ? 'NPC' : isMeMember ? '我' : '角色';
                     return (
