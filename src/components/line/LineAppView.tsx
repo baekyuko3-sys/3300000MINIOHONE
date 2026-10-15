@@ -1352,10 +1352,10 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
           characterId={activeCharacterId}
           npcId={activeItem.npcId}
           conversationId={conversationId}
-          personaId={effectivePersonaId || undefined}
+          personaId={activeItem.personaId || effectivePersonaId || undefined}
           personaOptions={userPersonas.map((p: any) => ({ id: p.id, name: p.name, avatar: p.avatar }))}
           onSelectPersona={(nextPersonaId) => {
-            if (!nextPersonaId || nextPersonaId === effectivePersonaId) return;
+            if (!nextPersonaId || nextPersonaId === (activeItem.personaId || effectivePersonaId)) return;
             const target = chatItems.find((chat) =>
               !chat.isGroup &&
               (activeItem.npcId
