@@ -2592,7 +2592,7 @@ export function LineConversationView({
     );
 
     if (isGroup) {
-      let activeGroupPlaceholderId: number | null = null;
+      let activeGroupPlaceholderId: string | null = null;
       // 群聊：一次 API 调用生成所有 NPC 的回复（单角色 system prompt + 多角色摘要 + 强制 [名字] 前缀格式）。
       // 任一成员失败不影响整轮；解析失败时回退到主发言者单条消息。
       try {
@@ -2672,11 +2672,17 @@ export function LineConversationView({
           // 鼓励至少两位不同成员发言，打破"永远只有一个人回复"的沉闷感。安静群聊预设下保持原样。
           ((availableMembers.length >= 2 && !mentioned.length && typingHabitPreset !== 'quiet')
             ? '\n【群聊活跃度】本轮有多位可发言的成员：优先安排至少两位不同成员各说一句（可以互相接话、插话、斗嘴，各说各的也行），不要长期只让同一个人包办回复；只有确实没人想接话时，才只保留一位发言人。'
-            : '');
+            : '') +
+          // 用户刚刚主动发了消息，[PASS] 会让用户觉得"发出去没人理"。只允许在消息明显
+          // 不是说给群里任何人听的极少数情况下输出 [PASS]。
+          '\n【不要冷场】用户刚刚主动发了消息，几乎总是有人愿意接话；不要轻易输出 [PASS]，只有当这条消息明显不是说给群里任何人听时才可以。';
 
         const replyMsgId = Date.now() + 1;
         let streamedText = '';
-        const placeholderId = replyMsgId;
+        // 占位 ID 必须用带分隔符的字符串形式：清理逻辑用 startsWith 做前缀匹配，
+        // 数字 ID（如 1760534212001、1760534212002）的前缀匹配对 idx>=1 永远失败，
+        // 会导致多人回复时第 2 条及之后的占位气泡删不掉、出现重复气泡。
+        const placeholderId = 'grp-' + replyMsgId;
         activeGroupPlaceholderId = placeholderId;
         // 先插入一个"AI 正在输入"的占位气泡（用主发言者名字）
         setMessages(prev => prev.some(m => m.id === placeholderId)
@@ -2753,7 +2759,7 @@ export function LineConversationView({
               const foundMember = groupAiMembers[finalIdx];
               const foundChar = foundMember?.character;
               return {
-                id: placeholderId + idx,
+                id: placeholderId + '-' + idx,
                 sender: 'other' as const,
                 senderType: foundMember?.member.kind === 'npc' ? 'npc' as const : 'character' as const,
                 senderId: (foundMember?.member.kind === 'npc' ? foundMember.member.npcId || foundMember.member.id : foundMember?.member.id) || foundChar?.id || primary.character!.id,
@@ -2774,7 +2780,22 @@ export function LineConversationView({
 
         const finalText = cleanGroupGeneratedText(String(result?.text || streamedText || ''));
         if (/^\[PASS\]$/i.test(finalText)) {
-          setMessages(prev => prev.filter(m => !String(m.id).startsWith(String(placeholderId))));
+          // [PASS] 不是"出 bug 了"，是 AI 判定没人想接话。留一条轻提示，免得用户对着"已读"干等、
+          // 误以为是没收到回复的故障。
+          setMessages(prev => [
+            ...prev.filter(m => !String(m.id).startsWith(String(placeholderId))),
+            {
+              id: 'group-pass-' + Date.now(),
+              sender: 'other',
+              senderName: '系统提示',
+              text: '群成员们看了看，暂时没接话（AI 判定本轮没有自然回应者）',
+              time: '刚刚',
+              type: 'system-nudge',
+              status: 'sent',
+              isRead: true,
+              dismissible: true,
+            } as any,
+          ]);
           setIsTyping(false);
           return;
         }
@@ -2800,7 +2821,7 @@ export function LineConversationView({
           const foundMember = groupAiMembers[finalIdx];
           const foundChar = foundMember?.character;
           return {
-            id: placeholderId + idx,
+            id: placeholderId + '-' + idx,
             sender: 'other' as const,
             senderType: foundMember?.member.kind === 'npc' ? 'npc' as const : 'character' as const,
             senderId: (foundMember?.member.kind === 'npc' ? foundMember.member.npcId || foundMember.member.id : foundMember?.member.id) || foundChar?.id || primary.character!.id,
