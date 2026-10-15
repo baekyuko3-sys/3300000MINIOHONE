@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Brain, Clock3, Heart, Plus, Trash2, BookOpen, Sparkles, UserRound, HelpCircle, CheckCircle2, ListTodo, Settings2, ChevronRight, X } from 'lucide-react';
 import type { ScreenType } from '../../types';
 import type { ImportedCharacter } from '../../data/characterImport';
+import { getNpcs } from '../../store/npcs';
 import {
   addCharacterMemoryItem,
   deleteCharacterMemoryItem,
@@ -69,10 +70,25 @@ function sectionKind(section: MemorySection): CharacterMemory['items'][number]['
 
 export function MemoryScreenView({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) {
   const [characters] = useState<ImportedCharacter[]>(() => {
+    let imported: ImportedCharacter[] = [];
     try {
       const raw = window.localStorage.getItem('phone:characters');
-      return raw ? JSON.parse(raw) : [];
-    } catch { return []; }
+      imported = raw ? JSON.parse(raw) : [];
+    } catch { imported = []; }
+    // NPCs own their memory under the NPC's stable ID, matching LINE writes.
+    // Adapt them for the shared Memory list without substituting their bound card.
+    const npcOwners = getNpcs().map(npc => ({
+      id: npc.id,
+      name: npc.name,
+      avatar: npc.avatar,
+      description: npc.background || npc.bio || '',
+      personality: npc.personality || '',
+      scenario: npc.background || '',
+      systemPrompt: '',
+      __memoryOwnerKind: 'npc',
+    } as unknown as ImportedCharacter));
+    const existingIds = new Set(imported.map(item => item.id));
+    return [...imported, ...npcOwners.filter(npc => !existingIds.has(npc.id))];
   });
   const [activeId, setActiveId] = useState<string | null>(() => {
     try { return window.localStorage.getItem(ACTIVE_MEMORY_KEY); } catch { return null; }
@@ -245,7 +261,7 @@ export function MemoryScreenView({ onNavigate }: { onNavigate: (screen: ScreenTy
           <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
             {characters.map(c => {
               const active = selected?.id === c.id;
-              const count = getCharacterMemory(c.id, c.name).items.length;
+              const count = getCharacterMemory(c.id, c.name, activePersonaId || undefined).items.length;
               return (
                 <button key={c.id} onClick={() => setActiveId(c.id)} className={`shrink-0 flex items-center gap-2 px-3 py-2 rounded-full border text-[9px] transition ${active ? 'bg-[#292724] text-white border-[#292724]' : 'bg-white/65 text-[#655f59] border-[rgba(40,36,31,.10)]'}`}>
                   <span className="w-5 h-5 rounded-full overflow-hidden bg-[#d8d0c6] grid place-items-center font-serif">
