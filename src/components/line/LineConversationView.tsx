@@ -2544,7 +2544,7 @@ export function LineConversationView({
               : '';
             return `· ${member.name}${member.nickname ? '（唯一昵称=' + member.nickname + '）' : ''}（${character?.name || member.name}）：${identity ? '身份=' + identity + '；' : ''}性格=${personality || '普通'}${longMemory ? '；自己的长期记忆=' + longMemory : ''}${recentMemory ? '；自己的近期经历=' + recentMemory : ''}`;
           })
-          .join('\\n');
+          .join('\n');
 
         const primaryProfile = getCharacterProfile(primary.character!.name, primary.character!.id);
         const primaryMemory = getCharacterMemory(primary.character!.id, primary.character!.name);
