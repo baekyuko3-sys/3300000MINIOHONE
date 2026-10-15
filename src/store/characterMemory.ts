@@ -354,8 +354,9 @@ export function updateCharacterMemoryItem(
   characterName: string,
   itemId: string,
   patch: Partial<Pick<CharacterMemoryItem, 'content' | 'importance' | 'kind' | 'section'>>,
+  personaId?: string | null,
 ): CharacterMemory {
-  const current = getCharacterMemory(characterId, characterName);
+  const current = getCharacterMemory(characterId, characterName, personaId);
   const now = new Date().toISOString();
   return saveCharacterMemory({
     ...current,
@@ -373,8 +374,9 @@ export function mergeCharacterMemoryItems(
   characterId: string,
   characterName: string,
   itemIds: string[],
+  personaId?: string | null,
 ): CharacterMemory {
-  const current = getCharacterMemory(characterId, characterName);
+  const current = getCharacterMemory(characterId, characterName, personaId);
   const selected = current.items.filter(item => itemIds.includes(item.id));
   if (selected.length < 2) return current;
 
@@ -391,9 +393,9 @@ export function mergeCharacterMemoryItems(
   return saveCharacterMemory({ ...current, items: nextItems.slice(0, 120) });
 }
 
-export function deleteCharacterMemoryItem(characterId: string, itemId: string): CharacterMemory | null {
+export function deleteCharacterMemoryItem(characterId: string, itemId: string, personaId?: string | null): CharacterMemory | null {
   if (typeof window === 'undefined') return null;
-  const current = getCharacterMemory(characterId, '');
+  const current = getCharacterMemory(characterId, '', personaId);
   const next = { ...current, items: current.items.filter(item => item.id !== itemId) };
   return saveCharacterMemory(next);
 }
