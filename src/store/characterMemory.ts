@@ -296,13 +296,15 @@ export function addCharacterMemoryItem(
     importance?: number;
     kind?: CharacterMemoryItem['kind'];
     section?: CharacterMemoryItem['section'];
+    personaId?: string | null;
   },
 ): CharacterMemory {
   const trimmed = content.trim();
-  if (!trimmed) return getCharacterMemory(characterId, characterName);
+  if (!trimmed) return getCharacterMemory(characterId, characterName, options?.personaId);
 
   const now = new Date().toISOString();
-  const current = getCharacterMemory(characterId, characterName);
+  // Duplicate detection and edits must stay inside the selected persona's memory.
+  const current = getCharacterMemory(characterId, characterName, options?.personaId);
   const importance = Math.max(0, Math.min(100, Number(options?.importance ?? 50) || 50));
   const normalized = normalizeMemoryText(trimmed);
 
