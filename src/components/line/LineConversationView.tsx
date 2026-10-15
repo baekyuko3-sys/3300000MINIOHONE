@@ -4090,10 +4090,16 @@ export function LineConversationView({
             memory: [...(found.member.memory || []), part.text.slice(0, 160)].slice(-20),
           });
           addLineGroupMemory(activeGroup?.id || '', found.member.name + ' 在群聊中说：' + part.text.slice(0, 180));
-          const npc = (found.member.npcId || found.member.kind === 'npc')
-            ? allNpcs.find(item => item.id === found.member.npcId || item.id === found.member.id || item.name === found.member.name)
+          const isNpcMember = Boolean(found.member.npcId || found.member.kind === 'npc');
+          const memberNpcId = String(found.member.npcId || (found.member.kind === 'npc' ? found.member.id || '' : '')).trim();
+          // Stable NPC IDs are authoritative. Only legacy members without an ID
+          // may fall back to names; never let a duplicate name redirect memory.
+          const npc = isNpcMember
+            ? (memberNpcId
+                ? allNpcs.find(item => String(item.id) === memberNpcId)
+                : allNpcs.find(item => item.name === found.member.name))
             : undefined;
-          const memoryOwnerId = npc?.id || found.character?.id;
+          const memoryOwnerId = isNpcMember ? npc?.id : found.character?.id;
           const memoryOwnerName = npc?.name || found.character?.name || found.member.name;
           if (memoryOwnerId) {
             addRecentMemorySummary(
