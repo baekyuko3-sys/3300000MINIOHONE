@@ -1039,8 +1039,9 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   // 好友 / 朋友圈同样只显示绑定角色。
   const allLineNpcs = getNpcs();
   const personaChats = chatItems.filter((c) => {
-    // A group chat without a persona binding is legacy data: do not silently
-    // expose it inside every persona's LINE inbox.
+    // A group or NPC chat without a persona binding is legacy data: do not
+    // silently expose it inside every persona's LINE inbox.
+    if (effectivePersonaId && c.npcId && c.personaId !== effectivePersonaId) return false;
     if (c.isGroup) {
       if (!effectivePersonaId) return true;
       return c.personaId === effectivePersonaId;
@@ -1051,8 +1052,8 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     return true;
   });
   const visibleFriends = friendsList.filter((f) => {
-    // NPC 好友按人设隔离；旧数据没有 personaId 时仅保留兼容显示。
-    if (f.npcId && f.personaId && effectivePersonaId && f.personaId !== effectivePersonaId) return false;
+    // NPC 好友必须具有明确的人设绑定；缺失绑定的旧记录不跨人设显示。
+    if (effectivePersonaId && f.npcId && f.personaId !== effectivePersonaId) return false;
     if (hasBounds) {
       if (f.npcId) return Boolean(f.characterId && boundSet.has(f.characterId));
       return f.characterId ? boundSet.has(f.characterId) : true;
@@ -4495,7 +4496,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       )}
 
       {showNpcRequests && (() => {
-        const pendingRequests = getNpcFriendRequests().filter(request => request.status === 'pending' && (!effectivePersonaId || request.personaId === effectivePersonaId));
+        const pendingRequests = getNpcFriendRequests().filter(request => request.status === 'pending' && Boolean(effectivePersonaId) && request.personaId === effectivePersonaId);
         return (
           <div onClick={() => setShowNpcRequests(false)} className="absolute inset-0 bg-black/25 z-[90] flex items-end">
             <div onClick={event => event.stopPropagation()} className="w-full max-h-[78%] overflow-y-auto rounded-t-[26px] bg-white p-5 pb-8 space-y-4">
