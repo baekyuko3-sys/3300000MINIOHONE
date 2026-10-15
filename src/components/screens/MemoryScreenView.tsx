@@ -131,12 +131,14 @@ export function MemoryScreenView({ onNavigate }: { onNavigate: (screen: ScreenTy
     // Switching persona must load that persona's own record, not copy the
     // currently visible record into another persona's storage key.
     setActivePersonaId(personaId);
-    const targetMemory = getCharacterMemory(selected.id, selected.name, personaId || undefined);
-    setMemory(saveCharacterMemory({
-      ...targetMemory,
+    // Store the UI's last-selected persona on the base record; the actual
+    // memory contents remain in the persona-specific key.
+    saveCharacterMemory({
+      ...getCharacterMemory(selected.id, selected.name),
       personaId: persona?.id || undefined,
       personaName: persona?.name || undefined,
-    }));
+    });
+    setMemory(getCharacterMemory(selected.id, selected.name, personaId || undefined));
   };
 
   useEffect(() => {
