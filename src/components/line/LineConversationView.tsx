@@ -1388,6 +1388,34 @@ export function LineConversationView({
     });
     showToast(`已清理 ${removeIds.size} 条重名成员`);
   };
+  // 一键同步成员名：把群成员记录的名字/头像同步为 NPC 或角色的当前值。
+  // 成员进群时存的是快照，NPC/角色改名后群成员还显示旧名（甚至显示绑定的角色名），点一下全修正。
+  // 有自定义群昵称的不动（那是用户在群里的有意设置）。
+  const syncGroupMemberNames = () => {
+    if (!activeGroup) return;
+    let updated = 0;
+    const nextMembers = (activeGroup.members || []).map((member: any) => {
+      if (!member || typeof member !== 'object') return member;
+      if (member.kind === 'user' || member.id === activeGroup?.ownerId) return member;
+      if (member.nickname && String(member.nickname).trim()) return member;
+      const resolved = resolveGroupMemberCharacter(member);
+      if (!resolved) return member;
+      const currentName = String(resolved.name || '').trim();
+      const currentAvatar = String(resolved.avatar || '').trim();
+      const needName = currentName && currentName !== String(member.name || '').trim();
+      const needAvatar = currentAvatar && currentAvatar !== String(member.avatar || '').trim();
+      if (!needName && !needAvatar) return member;
+      updated += 1;
+      return {
+        ...member,
+        ...(needName ? { name: currentName } : {}),
+        ...(needAvatar ? { avatar: currentAvatar } : {}),
+      };
+    });
+    if (!updated) { showToast('成员名字都已是最新，无需同步'); return; }
+    saveGroupUpdate({ ...activeGroup, members: nextMembers, updatedAt: new Date().toISOString() });
+    showToast(`已同步 ${updated} 位成员的名字/头像`);
+  };
   const simulatedGroupSpeaker = isGroup && simulatedGroupSpeakerId ? groupAiMembers.find(({ character }) => character?.id === simulatedGroupSpeakerId)?.character : null;
   const groupMembers = safeGroupMembers;
   const groupUnreadCount = messages.filter((message) => message.sender !== 'me' && message.isRead === false).length;
@@ -7941,6 +7969,14 @@ export function LineConversationView({
                           一键清理重名成员
                         </button>
                       )}
+                      <button
+                        type="button"
+                        onClick={syncGroupMemberNames}
+                        className="mt-2 ml-2 px-2.5 py-1.5 rounded-full text-[9px] bg-[#eef3f9] text-[#6b829f]"
+                        title="把群成员的名字/头像同步为 NPC 或角色的当前值（改名后点一下）"
+                      >
+                        一键同步成员名
+                      </button>
                     </div>
                   )}
                   <div className="rounded-[12px] border border-[#ebe6e8] bg-[#faf9fa] max-h-56 overflow-y-auto overscroll-contain space-y-2 p-2">
