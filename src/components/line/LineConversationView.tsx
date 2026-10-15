@@ -1211,7 +1211,7 @@ export function LineConversationView({
         description: [npcForChat.identity, npcForChat.personality, npcForChat.background, npcForChat.relationship].filter(Boolean).join('\n'),
         personality: npcForChat.personality || '',
         scenario: npcForChat.background || '',
-        systemPrompt: buildNpcRuntimeContext(npcForChat, 'online-chat'),
+        systemPrompt: buildNpcRuntimeContext(npcForChat, 'online-chat', resolvedPersonaId),
         creatorNotes: npcForChat.relationship || '',
       } as ImportedCharacter)
     : boundImportedCharacter;
@@ -1247,7 +1247,7 @@ export function LineConversationView({
         // NPC identity takes precedence over the linked character's persona.
         personality: npc.personality || '',
         scenario: npc.background || '',
-        systemPrompt: buildNpcRuntimeContext(npc, 'online-chat'),
+        systemPrompt: buildNpcRuntimeContext(npc, 'online-chat', resolvedPersonaId),
         creatorNotes: [bound?.creatorNotes || '', npc.relationship || ''].filter(Boolean).join('\n'),
       } as ImportedCharacter;
     }
