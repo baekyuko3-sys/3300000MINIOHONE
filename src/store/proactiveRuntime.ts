@@ -101,7 +101,6 @@ function appendProactiveMessage(character: ImportedCharacter, text: string) {
   } catch {
     // If the chat list cannot be read, do not guess a transcript key.
   }
-  const key = `line:conversation:${conversationId}`;
   const messageId = `proactive-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
   // Never copy a legacy shared transcript into this persona-scoped conversation.
