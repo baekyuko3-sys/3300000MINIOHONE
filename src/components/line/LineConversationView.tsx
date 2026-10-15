@@ -2535,10 +2535,16 @@ export function LineConversationView({
             const personality = String(character?.personality || '').slice(0, 120);
             const identity = String(character?.identity || '').slice(0, 80);
             const npcId = String(member.npcId || (member.kind === 'npc' ? member.id || '' : '')).trim();
-            const npcMemory = npcId ? String(allNpcs.find(npc => String(npc.id) === npcId)?.memory || '').trim() : '';
+            const npcRecord = npcId ? allNpcs.find(npc => String(npc.id) === npcId) : undefined;
+            const npcMemory = String(npcRecord?.memory || '').trim();
             const groupMemory = Array.isArray(member.memory) ? member.memory.slice(-8).map(item => String(item || '').trim()).filter(Boolean).join('；') : '';
             const memoryText = [npcMemory, groupMemory ? '本群记忆：' + groupMemory : ''].filter(Boolean).join('；').slice(0, 500);
-            return `· ${member.name}${member.nickname ? '（唯一昵称=' + member.nickname + '）' : ''}（${character?.name || member.name}）：${identity ? '身份=' + identity + '；' : ''}性格=${personality || '普通'}${memoryText ? '；该成员自己的记忆（仅供该成员发言使用，不代表其他成员知情）=' + memoryText : ''}`;
+            const linkedBookIds = new Set(Array.isArray(npcRecord?.worldBookIds) ? npcRecord.worldBookIds : []);
+            const linkedBookNames = new Set(Array.isArray(npcRecord?.worldBookNames) ? npcRecord.worldBookNames : []);
+            const npcWorldbookText = npcRecord ? worldbooks.filter(book => book.enabled && (linkedBookIds.has(book.id) || linkedBookNames.has(book.name))).map(book =>
+              book.name + '：' + (Array.isArray(book.entries) ? book.entries.filter(entry => entry.enabled !== false).map(entry => entry.name + '：' + entry.content).join('；') : '')
+            ).filter(Boolean).join(' | ').slice(0, 700) : '';
+            return `· ${member.name}${member.nickname ? '（唯一昵称=' + member.nickname + '）' : ''}（${character?.name || member.name}）：${identity ? '身份=' + identity + '；' : ''}性格=${personality || '普通'}${memoryText ? '；该成员自己的记忆（仅供该成员发言使用，不代表其他成员知情）=' + memoryText : ''}${npcWorldbookText ? '；该 NPC 专属世界书（仅适用于该 NPC，不代表其他成员知情）=' + npcWorldbookText : ''}`;
           })
           .join('\n');
 
@@ -3917,12 +3923,19 @@ export function LineConversationView({
           const personality = String(character?.personality || '').slice(0, 120);
           const identity = String(character?.identity || '').slice(0, 80);
           const npcId = String(member.npcId || (member.kind === 'npc' ? member.id || '' : '')).trim();
-          const npcMemory = npcId ? String(allNpcs.find(npc => String(npc.id) === npcId)?.memory || '').trim() : '';
+          const npcRecord = npcId ? allNpcs.find(npc => String(npc.id) === npcId) : undefined;
+          const npcMemory = String(npcRecord?.memory || '').trim();
           const groupMemory = Array.isArray(member.memory) ? member.memory.slice(-8).map(item => String(item || '').trim()).filter(Boolean).join('；') : '';
           const memoryText = [npcMemory, groupMemory ? '本群记忆：' + groupMemory : ''].filter(Boolean).join('；').slice(0, 500);
+          const linkedBookIds = new Set(Array.isArray(npcRecord?.worldBookIds) ? npcRecord.worldBookIds : []);
+          const linkedBookNames = new Set(Array.isArray(npcRecord?.worldBookNames) ? npcRecord.worldBookNames : []);
+          const npcWorldbookText = npcRecord ? worldbooks.filter(book => book.enabled && (linkedBookIds.has(book.id) || linkedBookNames.has(book.name))).map(book =>
+            book.name + '：' + (Array.isArray(book.entries) ? book.entries.filter(entry => entry.enabled !== false).map(entry => entry.name + '：' + entry.content).join('；') : '')
+          ).filter(Boolean).join(' | ').slice(0, 700) : '';
           return '· ' + member.name + (member.nickname ? '（唯一昵称=' + member.nickname + '）' : '') + '（' + (character?.name || member.name) + '）：' +
             (identity ? '身份=' + identity + '；' : '') + '性格=' + (personality || '普通') +
             (memoryText ? '；该成员自己的记忆（仅供该成员发言使用，不代表其他成员知情）=' + memoryText : '') +
+            (npcWorldbookText ? '；该 NPC 专属世界书（仅适用于该 NPC，不代表其他成员知情）=' + npcWorldbookText : '') +
             (member.muted ? '；当前禁言，不应发言' : member.online === false ? '；当前离线，通常不主动发言' : '');
         }).join('\n');
         const profile = getCharacterProfile(contextMember.character.name, contextMember.character.id);
