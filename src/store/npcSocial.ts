@@ -104,7 +104,7 @@ export async function considerNpcFriendRequest(input: {
       settings: { ...settings, maxOutputTokens: 80 },
       systemPrompt: [
         '你在判断一个独立 NPC 是否会自然地想添加某人为 LINE 好友。',
-        buildNpcRuntimeContext(input.npc, 'online-chat'),
+        buildNpcRuntimeContext(input.npc, 'online-chat', input.personaId),
         '只输出 JSON：{"wantsToAdd":true或false,"message":"申请附言"}。',
         '判断必须符合 NPC 自己的性格、关系、记忆与事件。不要为了推动剧情而强行想加好友。',
         '刚见过一面、普通寒暄、没有兴趣或信任基础时通常为 false。已经是好友或最近申请过则不要申请。',
