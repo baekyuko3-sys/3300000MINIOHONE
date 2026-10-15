@@ -7969,16 +7969,18 @@ export function LineConversationView({
                           一键清理重名成员
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={syncGroupMemberNames}
-                        className="mt-2 ml-2 px-2.5 py-1.5 rounded-full text-[9px] bg-[#eef3f9] text-[#6b829f]"
-                        title="把群成员的名字/头像同步为 NPC 或角色的当前值（改名后点一下）"
-                      >
-                        一键同步成员名
-                      </button>
                     </div>
                   )}
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={syncGroupMemberNames}
+                      className="px-2.5 py-1.5 rounded-full text-[9px] bg-[#eef3f9] text-[#6b829f]"
+                      title="把群成员的名字/头像同步为 NPC 或角色的当前值（改名后点一下）"
+                    >
+                      一键同步成员名
+                    </button>
+                  </div>
                   <div className="rounded-[12px] border border-[#ebe6e8] bg-[#faf9fa] max-h-56 overflow-y-auto overscroll-contain space-y-2 p-2">
                     {(activeGroup?.members || []).filter((mm: any) => mm && mm.kind !== 'user' && mm.id !== activeGroup?.ownerId).map((m: any) => {
                       const c = resolveGroupMemberCharacter(m);
