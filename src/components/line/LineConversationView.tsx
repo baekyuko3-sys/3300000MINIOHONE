@@ -4056,9 +4056,21 @@ export function LineConversationView({
             memory: [...(found.member.memory || []), part.text.slice(0, 160)].slice(-20),
           });
           addLineGroupMemory(activeGroup?.id || '', found.member.name + ' 在群聊中说：' + part.text.slice(0, 180));
-          if (found.member.npcId || found.member.kind === 'npc') {
-            const npc = allNpcs.find(item => item.id === found.member.npcId || item.id === found.member.id || item.name === found.member.name);
-            if (npc && activePersona?.id) {
+          const npc = (found.member.npcId || found.member.kind === 'npc')
+            ? allNpcs.find(item => item.id === found.member.npcId || item.id === found.member.id || item.name === found.member.name)
+            : undefined;
+          const memoryOwnerId = npc?.id || found.character?.id;
+          const memoryOwnerName = npc?.name || found.character?.name || found.member.name;
+          if (memoryOwnerId) {
+            addRecentMemorySummary(
+              memoryOwnerId,
+              memoryOwnerName,
+              '群聊「' + (activeGroup?.name || contactName) + '」中，' + memoryOwnerName + '说：' + part.text.slice(0, 240),
+              { source: 'line', importance: 55 },
+            );
+          }
+          if (npc) {
+            if (activePersona?.id) {
               void considerNpcFriendRequest({
                 npc,
                 personaId: activePersona.id,
