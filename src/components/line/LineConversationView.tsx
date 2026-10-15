@@ -1148,9 +1148,13 @@ export function LineConversationView({
     ? storedUserPersonas.filter((persona): persona is Record<string, any> => !!persona && typeof persona === 'object')
     : [];
   const [activePersonaId, setActivePersonaId] = usePersistentState<string | null>('line:active-persona', null);
-  // Prefer parent prop personaId, fall back to locally stored activePersonaId.
-  // Use nullish coalescing so that a valid empty-string prop doesn't override the stored value.
-  const resolvedPersonaId = personaId == null ? activePersonaId : personaId;
+  // Prefer the conversation's explicit persona. When older chats lack a binding,
+  // use the persisted active persona, then the first available persona so NPC memory
+  // never silently falls back to an unscoped shared record while a persona is visible.
+  // An explicit empty-string prop remains authoritative for callers that intentionally clear it.
+  const resolvedPersonaId = personaId == null
+    ? (activePersonaId || userPersonas[0]?.id || null)
+    : personaId;
   const activePersona = userPersonas.find(p => p.id === resolvedPersonaId) || userPersonas[0] || {
       id: '',
       name: '',
