@@ -1246,7 +1246,7 @@ export function LineConversationView({
 
   const filteredMentionMembers = isGroup
     ? groupAiMembers
-        .filter(({ member }) => member.name !== currentUserNameFallback())
+        .filter(({ member }) => member.kind !== 'user' && member.id !== activeGroup?.ownerId)
         .filter(({ member, character }) => {
           const query = mentionQuery.trim().toLowerCase();
           if (!query) return true;
@@ -2995,7 +2995,7 @@ export function LineConversationView({
     const amount = formatMoneyAmount(redPacketAmount);
     if (!amount) { showToast('请填写红包金额'); return; }
     const blessing = redPacketBlessing.trim() || '恭喜发财';
-    const eligibleNpcCount = isGroup ? groupMembers.filter((member: any) => member && member.kind !== 'user' && member.name !== currentUserNameFallback()).length : 0;
+    const eligibleNpcCount = isGroup ? groupMembers.filter((member: any) => member && member.kind !== 'user' && member.id !== activeGroup?.ownerId).length : 0;
     const memberLimit = isGroup ? Math.max(1, eligibleNpcCount + 1) : 1;
     const count = isGroup ? Math.max(1, Math.min(memberLimit, 99, Number.parseInt(redPacketCount, 10) || 1)) : 1;
     if (isGroup && Number(amount) < 0.01 * count) { showToast('红包总金额至少要能分给每个人 0.01 元'); return; }
@@ -6788,7 +6788,7 @@ export function LineConversationView({
           const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           const userClaim = { userId: 'me', name: '我', amount: ((shares[0] || 0) / 100).toFixed(2), time: now() };
           const nextClaims = [userClaim];
-          const npcMembers = groupMembers.filter((member: any) => member && member.kind !== 'user' && member.name !== currentUserNameFallback());
+          const npcMembers = groupMembers.filter((member: any) => member && member.kind !== 'user' && member.id !== activeGroup?.ownerId);
           for (let index = 1; index < count && index <= npcMembers.length; index += 1) {
             const member = npcMembers[index - 1];
             nextClaims.push({ userId: String(member.id || member.characterId || member.npcId || member.name), name: String(member.nickname || member.name || '群成员'), amount: ((shares[index] || 0) / 100).toFixed(2), time: now() });
@@ -7601,7 +7601,7 @@ export function LineConversationView({
 
                 <div className="p-3.5">
                   <div className="rounded-[12px] border border-[#ebe6e8] bg-[#faf9fa] max-h-56 overflow-y-auto overscroll-contain space-y-2 p-2">
-                    {(activeGroup?.members || []).filter((mm: any) => mm && mm.kind !== 'user' && mm.name !== currentUserNameFallback()).map((m: any) => {
+                    {(activeGroup?.members || []).filter((mm: any) => mm && mm.kind !== 'user' && mm.id !== activeGroup?.ownerId).map((m: any) => {
                       const c = resolveGroupMemberCharacter(m);
                       const memberNpcId = String(m.npcId || (m.kind === 'npc' ? m.id || '' : '')).trim();
                      const npc = (memberNpcId ? allNpcs.find(n => String(n.id) === memberNpcId) : undefined)
@@ -10061,7 +10061,7 @@ export function LineConversationView({
               </summary>
               <div className="px-3 pb-3">
                 <div className="rounded-[12px] border border-[#ebe6e8] bg-[#faf9fa] max-h-72 overflow-y-auto overscroll-contain space-y-2 p-2">
-                  {(activeGroup?.members || groupMembers).filter((mm: any) => mm && mm.kind !== 'user' && mm.name !== currentUserNameFallback()).map((member: any) => {
+                  {(activeGroup?.members || groupMembers).filter((mm: any) => mm && mm.kind !== 'user' && mm.id !== activeGroup?.ownerId).map((member: any) => {
                     const character = resolveGroupMemberCharacter(member);
                     const memberNpcId = String(member.npcId || (member.kind === 'npc' ? member.id || '' : '')).trim();
                      const npc = (memberNpcId ? allNpcs.find(n => String(n.id) === memberNpcId) : undefined)
