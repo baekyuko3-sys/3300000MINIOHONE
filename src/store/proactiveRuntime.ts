@@ -362,11 +362,20 @@ async function runNpcPrivateProactive(today: string, state: ProactiveState) {
         unread: 0,
         isGroup: false,
       };
+    }
+    const chatId = String(chat.id);
+    // Respect the existing LINE proactive-message permission at both the
+    // conversation and NPC identity keys; neither can be bypassed by fallback.
+    if (
+      readLocal<boolean>('line:allow-role-message:' + chatId, true) === false ||
+      readLocal<boolean>('line:allow-role-message:' + npc.id, true) === false
+    ) continue;
+    if (!matches.length) {
       chats.unshift(chat);
       saveLocal('line:chat-items', chats);
     }
 
-    const history = getLineConversationMessages(String(chat.id)).slice(-12);
+    const history = getLineConversationMessages(chatId).slice(-12);
     const runtimeContext = buildNpcRuntimeContext(npc, 'online-chat', personaId);
     const userPrompt = [
       '你是 LINE 中的 NPC「' + npc.name + '」，现在可以主动给已经成为好友的用户发一条私聊。',
@@ -388,7 +397,7 @@ async function runNpcPrivateProactive(today: string, state: ProactiveState) {
 
       const createdAt = new Date().toISOString();
       const messageId = 'npc-proactive-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
-      appendLineMessage(String(chat.id), {
+      appendLineMessage(chatId, {
         id: messageId,
         sender: 'other',
         text,
@@ -408,7 +417,7 @@ async function runNpcPrivateProactive(today: string, state: ProactiveState) {
           npcId: npc.id,
           kind: 'npc',
           personaId,
-          conversationId: String(chat.id),
+          conversationId: chatId,
           text,
           persisted: true,
           reason: 'npc-autonomous-private-message',
