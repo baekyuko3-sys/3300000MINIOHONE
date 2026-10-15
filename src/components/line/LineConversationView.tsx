@@ -1221,7 +1221,7 @@ export function LineConversationView({
       const npcId = String(member.npcId || (member.kind === 'npc' ? member.id || '' : '')).trim();
       const npc = (npcId ? allNpcs.find(item => String(item.id) === npcId) : undefined)
         || (!npcId ? allNpcs.find(item => item.name === member.name) : undefined);
-      if (!npc) return null;
+      if (!npc || npc.active === false) return null;
       const bound = importedCharacters.find(character => character.id === (member.characterId || npc.boundCharacterId))
         || importedCharacters.find(character => character.id === npc.boundCharacterId)
         || null;
