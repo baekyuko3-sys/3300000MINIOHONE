@@ -24,6 +24,9 @@ import {
   tryAutonomousMomentComment,
 } from './momentsComments';
 import { generateNpcMomentNow } from './momentsAfterChat';
+import { getNpcs } from './npcs';
+import { hasNpcFriendship } from './npcSocial';
+import { buildNpcRuntimeContext } from './npcContext';
 import { collectScopedWorldBooks } from './worldbookRuntime';
 
 interface ScheduleItem {
@@ -311,6 +314,116 @@ async function generateProactiveMessage(
   });
 }
 
+async function runNpcPrivateProactive(today: string, state: ProactiveState) {
+  const persona = getProactivePersona();
+  const personaId = persona?.id ? String(persona.id) : '';
+  if (!personaId || typeof window === 'undefined') return;
+
+  const settings = readStoredAiSettings();
+  if (!settings.apiKey.trim()) return;
+  const chatsRaw = readLocal<any[]>('line:chat-items', []);
+  const chats = Array.isArray(chatsRaw) ? chatsRaw : [];
+  const npcs = getNpcs().filter(npc => npc.active && hasNpcFriendship(npc.id, personaId));
+
+  for (const npc of npcs) {
+    const checkKey = 'npc-private-check:' + personaId + ':' + npc.id;
+    if (state.delivered[checkKey] === today) continue;
+
+    // Keep autonomous private messages occasional and deterministic per day.
+    // The check is recorded even when the daily roll does not select this NPC.
+    const seedText = today + ':' + personaId + ':' + npc.id;
+    const seed = Array.from(seedText).reduce((value, char) => (value * 31 + char.charCodeAt(0)) >>> 0, 7);
+    state.delivered[checkKey] = today;
+    if (seed % 100 >= 18) continue;
+
+    const matches = chats.filter(chat =>
+      chat && !chat.isGroup &&
+      String(chat.npcId || '') === String(npc.id) &&
+      String(chat.personaId || '') === personaId
+    );
+    // A confirmed friendship can exist without a chat row in older data. Create
+    // a persona-scoped row rather than falling back to the NPC's bound character.
+    let chat = matches.length === 1 ? matches[0] : null;
+    if (matches.length > 1) continue;
+    if (!chat) {
+      chat = {
+        id: 'npc-chat-' + npc.id + '-' + personaId,
+        name: npc.name,
+        characterId: npc.boundCharacterId || undefined,
+        npcId: npc.id,
+        personaId,
+        kind: 'npc',
+        time: '刚刚',
+        preview: '',
+        unread: 0,
+        isGroup: false,
+      };
+      chats.unshift(chat);
+      saveLocal('line:chat-items', chats);
+    }
+
+    const history = getLineConversationMessages(String(chat.id)).slice(-12);
+    const runtimeContext = buildNpcRuntimeContext(npc, 'online-chat', personaId);
+    const userPrompt = [
+      '你是 LINE 中的 NPC「' + npc.name + '」，现在可以主动给已经成为好友的用户发一条私聊。',
+      '当前用户人设：' + String(persona.name || '用户'),
+      '最近聊天：',
+      history.map(message => (message.sender === 'other' ? npc.name : '用户') + ': ' + (message.text || '[媒体]')).join('\n') || '暂无聊天记录',
+      '结合你自己的性格、背景、当前关系、个人记忆和最近聊天，自然决定是否真的有值得发送的内容。',
+      '如果没有合适的动机，只输出精确文本：NO_MESSAGE。',
+      '如果要发消息，只输出消息正文；不要写角色名、旁白、系统解释或用户的行为。',
+    ].join('\n\n');
+    try {
+      const text = (await generateCreativeText({
+        settings,
+        systemPrompt: runtimeContext + '\n\n你正在进行自然的、低频的 LINE 主动私聊。不得替用户说话，不得把绑定角色当成自己。',
+        userPrompt,
+        temperature: settings.temperature ?? 0.8,
+      })).trim();
+      if (!text || text === 'NO_MESSAGE' || text.length > 1200) continue;
+
+      const createdAt = new Date().toISOString();
+      const messageId = 'npc-proactive-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+      appendLineMessage(String(chat.id), {
+        id: messageId,
+        sender: 'other',
+        text,
+        kind: 'text',
+        createdAt,
+        status: 'delivered',
+        metadata: { proactive: true, npcId: npc.id, personaId, reason: 'npc-autonomous-private-message' },
+      });
+      const updatedChats = readLocal<any[]>('line:chat-items', []);
+      saveLocal('line:chat-items', updatedChats.map(item => item.id === chat.id
+        ? { ...item, time: '刚刚', preview: text.slice(0, 100), unread: Number(item.unread || 0) + 1 }
+        : item));
+      window.dispatchEvent(new CustomEvent('sane333:proactive-message', {
+        detail: {
+          id: messageId,
+          character: { id: npc.id, name: npc.name },
+          npcId: npc.id,
+          kind: 'npc',
+          personaId,
+          conversationId: String(chat.id),
+          text,
+          persisted: true,
+          reason: 'npc-autonomous-private-message',
+          createdAt,
+        },
+      }));
+      emitWorldEvent('character.message', {
+        characterId: npc.id,
+        characterName: npc.name,
+        data: { preview: text.replace(/\\s+/g, ' ').slice(0, 120), source: 'npc-proactive' },
+        activity: '刚刚主动联系了你',
+        lastInteractionAt: createdAt,
+      });
+    } catch {
+      // An NPC background failure must not interrupt LINE or other scheduled jobs.
+    }
+  }
+}
+
 let running = false;
 
 export async function runProactiveCatchup() {
@@ -501,6 +614,9 @@ export async function runProactiveCatchup() {
     } catch {
       // NPC proactive moments are best-effort
     }
+
+    // NPC private messages only target NPCs who are already LINE friends of the active persona.
+    try { await runNpcPrivateProactive(today, state); } catch { /* best-effort background work */ }
 
     // Autonomous moment comments (independent of schedule / auto-post)
     try {
