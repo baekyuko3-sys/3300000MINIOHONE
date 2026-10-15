@@ -426,6 +426,7 @@ export function bindLineRuntimeEvents() {
     const npcId = String(detail.npcId || detail.npc?.id || '').trim();
     const personaId = String(detail.personaId || '').trim();
     const isNpc = Boolean(npcId || detail.kind === 'npc' || detail.npc);
+    const ambiguousConversation = detail.ambiguousConversation === true;
     if (!conversationId && typeof window !== 'undefined') {
       try {
         const raw = window.localStorage.getItem('line:chat-items');
@@ -445,7 +446,7 @@ export function bindLineRuntimeEvents() {
     }
     // For ordinary imported characters keep legacy compatibility. For NPCs, an
     // ambiguous/missing match means we notify only rather than leak into another chat.
-    if (!conversationId && !isNpc) conversationId = String(character.id || character.name || '');
+    if (!conversationId && !isNpc && !ambiguousConversation) conversationId = String(character.id || character.name || '');
     if (conversationId && detail.persisted !== true) {
       // Some producers (including the scheduled proactive runtime) persist the
       // message before emitting this event. Do not append it a second time.
