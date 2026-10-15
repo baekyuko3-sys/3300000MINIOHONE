@@ -88,9 +88,9 @@ function appendProactiveMessage(character: ImportedCharacter, text: string) {
     const chats = rawChats ? JSON.parse(rawChats) : [];
     if (Array.isArray(chats)) {
       const matches = chats.filter((chat: any) =>
+        Boolean(character.id) &&
         chat && !chat.isGroup && !chat.npcId &&
-        String(chat.characterId || '') === String(character.id || '') &&
-        (!character.id || String(chat.characterId || '') === String(character.id))
+        String(chat.characterId || '') === String(character.id)
       );
       if (matches.length === 1 && matches[0].id) {
         conversationId = String(matches[0].id);
