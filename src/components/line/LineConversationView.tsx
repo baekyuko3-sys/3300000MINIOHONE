@@ -1219,10 +1219,13 @@ export function LineConversationView({
       } as ImportedCharacter;
     }
     const characterId = String(member?.characterId || '').trim();
+    const legacyNameMatches = !characterId
+      ? importedCharacters.filter(character => character.name === member.name)
+      : [];
     return (characterId
       ? importedCharacters.find(character => character.id === characterId)
       : undefined)
-      || (!characterId ? importedCharacters.find(character => character.name === member.name) : undefined)
+      || (legacyNameMatches.length === 1 ? legacyNameMatches[0] : undefined)
       || null;
   };
   const groupAiMembers = safeGroupMembers
