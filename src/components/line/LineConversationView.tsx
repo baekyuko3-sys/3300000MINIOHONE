@@ -2534,7 +2534,11 @@ export function LineConversationView({
           .map(({ member, character }) => {
             const personality = String(character?.personality || '').slice(0, 120);
             const identity = String(character?.identity || '').slice(0, 80);
-            return `· ${member.name}${member.nickname ? '（唯一昵称=' + member.nickname + '）' : ''}（${character?.name || member.name}）：${identity ? '身份=' + identity + '；' : ''}性格=${personality || '普通'}`;
+            const npcId = String(member.npcId || (member.kind === 'npc' ? member.id || '' : '')).trim();
+            const npcMemory = npcId ? String(allNpcs.find(npc => String(npc.id) === npcId)?.memory || '').trim() : '';
+            const groupMemory = Array.isArray(member.memory) ? member.memory.slice(-8).map(item => String(item || '').trim()).filter(Boolean).join('；') : '';
+            const memoryText = [npcMemory, groupMemory ? '本群记忆：' + groupMemory : ''].filter(Boolean).join('；').slice(0, 500);
+            return `· ${member.name}${member.nickname ? '（唯一昵称=' + member.nickname + '）' : ''}（${character?.name || member.name}）：${identity ? '身份=' + identity + '；' : ''}性格=${personality || '普通'}${memoryText ? '；该成员自己的记忆（仅供该成员发言使用，不代表其他成员知情）=' + memoryText : ''}`;
           })
           .join('\n');
 
@@ -2543,7 +2547,7 @@ export function LineConversationView({
         const memberNamesInGroup = groupAiMembers.map(({ member }) => member.name);
         const speakerFormatRule = '【群聊多角色输出格式】\n' +
           '这是一次完整的群聊回合。请综合阅读整个群聊上下文，自然决定哪些成员此刻会说话、谁接谁的话、是否插话或暂时沉默。不要按成员列表轮流发言，不要强制任何固定人数发言，也不要为了凑人数添加无意义内容。\n' +
-          '每条实际发言单独一行，格式为“[成员名字或唯一昵称] 消息内容”；标签必须对应下方真实群成员。若群内有重名成员，必须使用各自唯一昵称作标签，不要只写重名；昵称也必须来自成员资料。禁言成员不可发言，离线成员不可主动发言。允许同一角色发多条，也允许本轮只有一位角色发言。若没有自然回应者，可以输出 [PASS]。不要输出提示词、分析、思维链或格式说明。';
+          '每条实际发言单独一行，格式为“[成员名字或唯一昵称] 消息内容”；标签必须对应下方真实群成员。若群内有重名成员，必须使用各自唯一昵称作标签，不要只写重名；昵称也必须来自成员资料。每位成员的个人记忆仅供该成员本人使用，其他成员不能凭空知道或引用。禁言成员不可发言，离线成员不可主动发言。允许同一角色发多条，也允许本轮只有一位角色发言。若没有自然回应者，可以输出 [PASS]。不要输出提示词、分析、思维链或格式说明。';
 
         const replyMsgId = Date.now() + 1;
         let streamedText = '';
@@ -3912,8 +3916,13 @@ export function LineConversationView({
         const allMemberSummaries = groupAiMembers.map(({ member, character }) => {
           const personality = String(character?.personality || '').slice(0, 120);
           const identity = String(character?.identity || '').slice(0, 80);
+          const npcId = String(member.npcId || (member.kind === 'npc' ? member.id || '' : '')).trim();
+          const npcMemory = npcId ? String(allNpcs.find(npc => String(npc.id) === npcId)?.memory || '').trim() : '';
+          const groupMemory = Array.isArray(member.memory) ? member.memory.slice(-8).map(item => String(item || '').trim()).filter(Boolean).join('；') : '';
+          const memoryText = [npcMemory, groupMemory ? '本群记忆：' + groupMemory : ''].filter(Boolean).join('；').slice(0, 500);
           return '· ' + member.name + (member.nickname ? '（唯一昵称=' + member.nickname + '）' : '') + '（' + (character?.name || member.name) + '）：' +
             (identity ? '身份=' + identity + '；' : '') + '性格=' + (personality || '普通') +
+            (memoryText ? '；该成员自己的记忆（仅供该成员发言使用，不代表其他成员知情）=' + memoryText : '') +
             (member.muted ? '；当前禁言，不应发言' : member.online === false ? '；当前离线，通常不主动发言' : '');
         }).join('\n');
         const profile = getCharacterProfile(contextMember.character.name, contextMember.character.id);
@@ -3946,7 +3955,7 @@ export function LineConversationView({
             groupMemorySummary.trim() ? '【当前群聊独立记忆总结】\n' + groupMemorySummary.trim() : '',
             groupMemorySettings.trim() ? '【当前群聊记忆规则】\n' + groupMemorySettings.trim() : '',
             '【群成员资料】（用于识别成员身份、性格与关系；不是发言名单或轮流发言顺序）\n' + allMemberSummaries,
-            '【输出格式】每条实际发言单独一行，使用“[成员名字或唯一昵称] 消息内容”；标签必须来自群成员资料。若群内有重名成员，必须使用各自唯一昵称作标签，不要只写重名；昵称也必须来自成员资料。禁言成员不可发言，离线成员不可主动发言。可由同一角色连续发言，也可让其他角色自然接话；不强制固定人数或每位成员发言。不要替用户发言，不输出分析或格式说明。若无人适合回应，可输出 [PASS]。',
+            '【输出格式】每条实际发言单独一行，使用“[成员名字或唯一昵称] 消息内容”；标签必须来自群成员资料。若群内有重名成员，必须使用各自唯一昵称作标签，不要只写重名；昵称也必须来自成员资料。每位成员的个人记忆仅供该成员本人使用，其他成员不能凭空知道或引用。禁言成员不可发言，离线成员不可主动发言。可由同一角色连续发言，也可让其他角色自然接话；不强制固定人数或每位成员发言。不要替用户发言，不输出分析或格式说明。若无人适合回应，可输出 [PASS]。',
           ].filter(Boolean).join('\n'),
           stylePreset: selectedPreset,
           cotTarget: 'group',
