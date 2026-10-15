@@ -94,9 +94,11 @@ export function MemoryScreenView({ onNavigate }: { onNavigate: (screen: ScreenTy
     try { return window.localStorage.getItem(ACTIVE_MEMORY_KEY); } catch { return null; }
   });
   const selected = characters.find(c => c.id === activeId) || characters[0] || null;
-  const [activePersonaId, setActivePersonaId] = useState(() =>
-    selected ? (getCharacterMemory(selected.id, selected.name).personaId || '') : ''
-  );
+  const [activePersonaId, setActivePersonaId] = useState(() => {
+    if (!selected || typeof window === 'undefined') return '';
+    try { return window.localStorage.getItem('phone:memory-active-persona:' + selected.id) || ''; }
+    catch { return ''; }
+  });
   const [memory, setMemory] = useState<CharacterMemory>(() =>
     selected
       ? getCharacterMemory(selected.id, selected.name, activePersonaId || undefined)
@@ -131,20 +133,16 @@ export function MemoryScreenView({ onNavigate }: { onNavigate: (screen: ScreenTy
     // Switching persona must load that persona's own record, not copy the
     // currently visible record into another persona's storage key.
     setActivePersonaId(personaId);
-    // Store the UI's last-selected persona on the base record; the actual
-    // memory contents remain in the persona-specific key.
-    saveCharacterMemory({
-      ...getCharacterMemory(selected.id, selected.name),
-      personaId: persona?.id || undefined,
-      personaName: persona?.name || undefined,
-    });
+    // UI selection is separate from memory contents: saving it into a memory
+    // record would overwrite the selected persona's isolated record.
+    try { window.localStorage.setItem('phone:memory-active-persona:' + selected.id, personaId); } catch {}
     setMemory(getCharacterMemory(selected.id, selected.name, personaId || undefined));
   };
 
   useEffect(() => {
     if (!selected) return;
-    // Each owner remembers which persona's memory was last selected in Memory.
-    const savedPersonaId = getCharacterMemory(selected.id, selected.name).personaId || '';
+    let savedPersonaId = '';
+    try { savedPersonaId = window.localStorage.getItem('phone:memory-active-persona:' + selected.id) || ''; } catch {}
     setActivePersonaId(savedPersonaId);
     setMemory(getCharacterMemory(selected.id, selected.name, savedPersonaId || undefined));
     try { window.localStorage.setItem(ACTIVE_MEMORY_KEY, selected.id); } catch {}
