@@ -1047,15 +1047,17 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       return c.personaId === effectivePersonaId;
     }
     if (effectivePersonaId && c.personaId && c.personaId !== effectivePersonaId) return false;
-    if (effectivePersonaId && !c.personaId && hasBounds && c.characterId && !boundSet.has(c.characterId)) return false;
-    if (hasBounds && c.characterId && !boundSet.has(c.characterId)) return false;
+    if (effectivePersonaId && !c.personaId && !c.npcId && hasBounds && c.characterId && !boundSet.has(c.characterId)) return false;
+    // NPC is its own LINE identity; a bound character is optional metadata only.
+    if (!c.npcId && hasBounds && c.characterId && !boundSet.has(c.characterId)) return false;
     return true;
   });
   const visibleFriends = friendsList.filter((f) => {
     // NPC 好友必须具有明确的人设绑定；缺失绑定的旧记录不跨人设显示。
     if (effectivePersonaId && f.npcId && f.personaId !== effectivePersonaId) return false;
     if (hasBounds) {
-      if (f.npcId) return Boolean(f.characterId && boundSet.has(f.characterId));
+      // NPC friendship belongs to this persona and NPC ID, not to a bound card.
+      if (f.npcId) return true;
       return f.characterId ? boundSet.has(f.characterId) : true;
     }
     return true;
@@ -1094,8 +1096,6 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     const q = friendSearchQuery.trim().toLowerCase();
     return allLineNpcs
       .filter(npc => npc.active !== false)
-      .filter(npc => Boolean(npc.boundCharacterId))
-      .filter(npc => !hasBounds || boundSet.has(npc.boundCharacterId))
       .filter(npc => !friendsList.some(f => f.npcId === npc.id && (!f.personaId || f.personaId === effectivePersonaId)))
       .filter(npc => {
         if (!q) return true;
@@ -1124,9 +1124,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
 
   /** 建群：人设已连接角色下的 NPC（含已是好友的，避免漏选；好友区勾选过的会去重） */
   const creatableNpcsForPersona = allLineNpcs
-    .filter(npc => npc.active !== false)
-    .filter(npc => Boolean(npc.boundCharacterId))
-    .filter(npc => !hasBounds || boundSet.has(npc.boundCharacterId));
+    .filter(npc => npc.active !== false);
 
   const creatableNpcGroups = (() => {
     const map = new Map<string, { characterId: string; characterName: string; avatar: string; npcs: SaneNpc[] }>();
