@@ -3939,10 +3939,15 @@ export function LineConversationView({
             actionDescription: result.actionDescription,
             metadata: { characterId: character.id, senderId: found.member.id || found.member.npcId || character.id, ...(result.thinkingSummary ? { thinkingSummary: result.thinkingSummary } : {}), ...(result.actionDescription ? { actionDescription: result.actionDescription } : {}) },
           };
-        });
+        }).filter(Boolean) as any[];
+        if (!finalMessages.length) {
+          showToast('群聊输出中的说话者无法匹配到真实群成员，请检查角色名字/昵称');
+          return;
+        }
         setMessages(prev => [...prev, ...finalMessages]);
         for (const part of parts) {
           const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
+          if (memberIdx < 0 && !part.primary) continue;
           const found = groupAiMembers[memberIdx >= 0 ? memberIdx : fallbackIndex];
           if (!found) continue;
           updateLineGroupMember(activeGroup?.id || '', found.member.id, {
