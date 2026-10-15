@@ -5651,6 +5651,20 @@ export function LineConversationView({
           const groupMessageCharacter = isGroup && !isMe
             ? (messageCharacterId
                 ? importedCharacters.find(character => String(character.id || '').trim() === messageCharacterId) ||
+                  // NPC 成员：优先按 NPC 解析，不要用 member.characterId（那是绑定的角色卡，会直接解析成程凛）。
+                  (() => {
+                    const memberNpcIdForChar = String(groupMessageMember?.npcId || (groupMessageMember?.kind === 'npc' ? groupMessageMember?.id || '' : '')).trim();
+                    if (!memberNpcIdForChar) return null;
+                    const npcForChar = allNpcs.find(n => String(n.id || '').trim() === memberNpcIdForChar);
+                    if (!npcForChar) return null;
+                    const boundForChar = importedCharacters.find(c => c.id === npcForChar.boundCharacterId);
+                    return {
+                      id: npcForChar.id,
+                      name: npcForChar.name,
+                      avatar: npcForChar.avatar || (boundForChar ? boundForChar.avatar : '') || '',
+                      description: [npcForChar.identity, npcForChar.personality, npcForChar.background].filter(Boolean).join('\n') || (boundForChar ? boundForChar.description : '') || '',
+                    } as ImportedCharacter;
+                  })() ||
                   importedCharacters.find(character => String(character.id || '').trim() === String(groupMessageMember?.characterId || '').trim()) ||
                   (() => {
                     // NPC: resolve by npcId match so we can use the NPC's avatar/name even without a bound character
@@ -5667,11 +5681,27 @@ export function LineConversationView({
                       description: npcDesc,
                     } as ImportedCharacter;
                   })()
-                : importedCharacters.find(character =>
-                    String(character.id || '').trim() === String(groupMessageMember?.characterId || '').trim()
-                  ) || importedCharacters.find(character =>
-                    [character.name, groupMessageMember?.name, groupMessageMember?.nickname].filter(Boolean).some(name => String(name).trim() === messageSenderName)
-                  ) || null)
+                : (() => {
+                    // 非 messageCharacterId 路径：NPC 成员同样优先按 NPC 解析。
+                    const memberNpcIdForChar2 = String(groupMessageMember?.npcId || (groupMessageMember?.kind === 'npc' ? groupMessageMember?.id || '' : '')).trim();
+                    if (memberNpcIdForChar2) {
+                      const npcForChar2 = allNpcs.find(n => String(n.id || '').trim() === memberNpcIdForChar2);
+                      if (npcForChar2) {
+                        const boundForChar2 = importedCharacters.find(c => c.id === npcForChar2.boundCharacterId);
+                        return {
+                          id: npcForChar2.id,
+                          name: npcForChar2.name,
+                          avatar: npcForChar2.avatar || (boundForChar2 ? boundForChar2.avatar : '') || '',
+                          description: [npcForChar2.identity, npcForChar2.personality, npcForChar2.background].filter(Boolean).join('\n') || (boundForChar2 ? boundForChar2.description : '') || '',
+                        } as ImportedCharacter;
+                      }
+                    }
+                    return importedCharacters.find(character =>
+                      String(character.id || '').trim() === String(groupMessageMember?.characterId || '').trim()
+                    ) || importedCharacters.find(character =>
+                      [character.name, groupMessageMember?.name, groupMessageMember?.nickname].filter(Boolean).some(name => String(name).trim() === messageSenderName)
+                    ) || null;
+                  })())
             : null;
           // Fallback: if groupMessageCharacter is still null but senderName matches an NPC name, resolve it
           let _npcFallback: ImportedCharacter | null = null;
