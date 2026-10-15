@@ -765,7 +765,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         const realMessages = stored.filter((message: any) => message && typeof message === 'object' && message.type !== 'system-nudge');
         if (!realMessages.length) continue;
         const latest = realMessages[realMessages.length - 1];
-        const existing = chatItems.find(item => item.id === id || item.characterId === id);
+        const existing = chatItems.find(item => item.id === id);
         const runtimeMeta = getLineConversationMeta(id);
         const group = getLineGroupById(existing?.groupId || (runtimeMeta?.isGroup || id.startsWith('group-') ? id : ''));
         const character = importedCharacters.find(item => item.id === existing?.characterId || item.id === runtimeMeta?.characterId || item.id === id);
@@ -810,7 +810,9 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
           relationshipContext: existing?.relationshipContext || '',
           openingMode: existing?.openingMode || 'none',
           openingGreeting: existing?.openingGreeting || '',
-          personaId: existing?.personaId || effectivePersonaId || undefined,
+           // Do not attach an orphaned legacy transcript to whichever persona happens to be active during recovery.
+          // Only preserve the persona explicitly stored on the exact matching chat item.
+          personaId: existing?.personaId || undefined,
           groupId: existing?.groupId || group?.id,
           time: latest?.time || '刚刚',
           preview,
