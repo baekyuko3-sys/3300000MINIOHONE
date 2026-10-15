@@ -2575,6 +2575,7 @@ export function LineConversationView({
             if (!parts.length) return;
             const placeholders = parts.map((part, idx) => {
               const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
+              if (memberIdx < 0 && !part.primary) return null;
               const finalIdx = memberIdx >= 0 ? memberIdx : primaryMemberIndex;
               const foundMember = groupAiMembers[finalIdx];
               const foundChar = foundMember?.character;
@@ -2590,7 +2591,7 @@ export function LineConversationView({
                 type: 'ai-reply' as const,
                 showThinking: false,
               };
-            });
+            }).filter(Boolean) as any[];
             setMessages(prev => {
               const cleaned = prev.filter(m => !String(m.id).startsWith(String(placeholderId)));
               return [...cleaned, ...placeholders];
@@ -2620,6 +2621,7 @@ export function LineConversationView({
 
         const finalMessages = parts.map((part, idx) => {
           const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
+          if (memberIdx < 0 && !part.primary) return null;
           const finalIdx = memberIdx >= 0 ? memberIdx : primaryMemberIndex;
           const foundMember = groupAiMembers[finalIdx];
           const foundChar = foundMember?.character;
@@ -2638,7 +2640,13 @@ export function LineConversationView({
             createdAt: new Date().toISOString(),
             metadata: { characterId: foundChar?.id || primary.character!.id, senderId: foundMember?.member.id || foundMember?.member.npcId || foundChar?.id || primary.character!.id },
           };
-        });
+        }).filter(Boolean) as any[];
+        if (!finalMessages.length) {
+          setMessages(prev => prev.filter(m => !String(m.id).startsWith(String(placeholderId))));
+          showToast('群聊输出中的说话者无法匹配到真实群成员，请检查角色名字/昵称');
+          setIsTyping(false);
+          return;
+        }
         setMessages(prev => {
           const cleaned = prev.filter(m => !String(m.id).startsWith(String(placeholderId)));
           return [...cleaned, ...finalMessages];
@@ -2648,6 +2656,7 @@ export function LineConversationView({
         for (let i = 0; i < parts.length; i += 1) {
           const part = parts[i];
           const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
+          if (memberIdx < 0 && !part.primary) continue;
           const finalIdx = memberIdx >= 0 ? memberIdx : primaryMemberIndex;
           const foundMember = groupAiMembers[finalIdx]?.member;
           if (foundMember) {
