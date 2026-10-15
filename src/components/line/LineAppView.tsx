@@ -1088,7 +1088,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       .filter(npc => npc.active !== false)
       .filter(npc => Boolean(npc.boundCharacterId))
       .filter(npc => !hasBounds || boundSet.has(npc.boundCharacterId))
-      .filter(npc => !friendsList.some(f => f.npcId === npc.id))
+      .filter(npc => !friendsList.some(f => f.npcId === npc.id && (!f.personaId || f.personaId === effectivePersonaId)))
       .filter(npc => {
         if (!q) return true;
         return [npc.name, npc.boundCharacterName, npc.identity, npc.relationship]
@@ -3075,7 +3075,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                     const personaId = vroomFriendPersonaId || effectivePersonaId || 'default';
                     const pkey = 'persona:' + personaId;
                     const nkey = 'npc:' + npc.id;
-                    const defaultFriend = friendsList.some(f => f.npcId === npc.id);
+                    const defaultFriend = friendsList.some(f => f.npcId === npc.id && (!f.personaId || f.personaId === personaId));
                     const blocked = isVroomBlockedEdge(pkey, nkey);
                     const allowed = isVroomAllowedEdge(pkey, nkey);
                     const checked = blocked ? false : (allowed ? true : defaultFriend);
@@ -4525,7 +4525,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                           variantLabel: npc.boundCharacterName || 'NPC', online: true, pinyin: npc.name[0] || '',
                           relationship: 'new-friend',
                         };
-                        setFriendsList(previous => previous.some(item => item.npcId === npc.id) ? previous : [friend, ...previous]);
+                        setFriendsList(previous => previous.some(item => item.npcId === npc.id && item.personaId === request.personaId) ? previous : [friend, ...previous]);
                         setChatItems(previous => previous.some(chat => chat.npcId === npc.id && chat.personaId === request.personaId) ? previous : [{
                           id: 'c_' + Date.now(), name: npc.name, characterId: npc.boundCharacterId, npcId: npc.id,
                           personaId: request.personaId, time: '刚刚', preview: '你们已经成为好友，打个招呼吧',
@@ -4608,7 +4608,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                     };
                     const context = relationshipContext.trim();
                     if (effectivePersonaId) setNpcFriendship(npcFriend.id, effectivePersonaId, true);
-                    setFriendsList(prev => prev.some(item => item.npcId === npcFriend.id) ? prev : [friend, ...prev]);
+                    setFriendsList(prev => prev.some(item => item.npcId === npcFriend.id && item.personaId === effectivePersonaId) ? prev : [friend, ...prev]);
                     setChatItems(prev => {
                       if (prev.some(chat => chat.npcId === npcFriend.id && chat.personaId === effectivePersonaId)) return prev;
                       return [{
