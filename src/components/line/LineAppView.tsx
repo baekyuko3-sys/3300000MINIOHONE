@@ -841,7 +841,14 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     const refreshFromRuntime = () => {
       try {
         const raw = window.localStorage.getItem('line:chat-items');
-        if (raw) setChatItems(JSON.parse(raw));
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) return;
+          // Runtime events can fire while a conversation is marking itself read.
+          // Preserve the existing array reference when persisted chat data is unchanged,
+          // preventing a parent rerender loop from repeatedly refreshing the same list.
+          setChatItems(prev => JSON.stringify(prev) === JSON.stringify(parsed) ? prev : parsed);
+        }
       } catch {
         // Keep current in-memory list.
       }
