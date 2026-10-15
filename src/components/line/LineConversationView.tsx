@@ -2720,6 +2720,8 @@ export function LineConversationView({
                 speakerCharacter.name || foundMember.name || part.rawSpeaker,
                 '群聊「' + (activeGroup?.name || contactName) + '」中，' + (foundMember.name || part.rawSpeaker) + '说：' + part.text.slice(0, 240),
                 { source: 'line', importance: 55 },
+              );
+            }
             if (foundMember.npcId || foundMember.kind === 'npc') {
               const speakerNpc = allNpcs.find(item => item.id === foundMember.npcId || item.name === foundMember.name);
               if (speakerNpc && activePersona?.id && !friendRequestCheckedNpcIds.has(speakerNpc.id)) {
@@ -2730,9 +2732,12 @@ export function LineConversationView({
                   personaName: activePersona.name || '我',
                   source: 'group-chat',
                   sourceLabel: '群聊「' + (activeGroup?.name || contactName) + '」',
-                  eventContext: '群聊「' + (activeGroup?.name || contactName) + '」的对话：' + parts.map(item => item.rawSpeaker + '：' + item.text).join('\n').slice(-2200),
+                  eventContext: '群聊「' + (activeGroup?.name || contactName) + '」的对话：' + parts.map(item => item.rawSpeaker + '：' + item.text).join('\\n').slice(-2200),
                 }).then(request => {
                   if (request) window.dispatchEvent(new CustomEvent('sane333:npc-friend-requests-updated'));
+                });
+              }
+            }
           }
         }
         window.dispatchEvent(new CustomEvent('sane333:play-sound', { detail: { kind: 'message' } }));
