@@ -2507,7 +2507,7 @@ export function LineConversationView({
         const memberNamesInGroup = groupAiMembers.map(({ member }) => member.name);
         const speakerFormatRule = '【群聊多角色输出格式】\n' +
           '这是一次完整的群聊回合。请综合阅读整个群聊上下文，自然决定哪些成员此刻会说话、谁接谁的话、是否插话或暂时沉默。不要按成员列表轮流发言，不要强制任何固定人数发言，也不要为了凑人数添加无意义内容。\n' +
-          '每条实际发言单独一行，格式为“[成员名字或唯一昵称] 消息内容”；标签必须对应下方真实群成员。若群内有重名成员，必须使用各自唯一昵称作标签，不要只写重名；昵称也必须来自成员资料。允许同一角色发多条，也允许本轮只有一位角色发言。若没有自然回应者，可以输出 [PASS]。不要输出提示词、分析、思维链或格式说明。';
+          '每条实际发言单独一行，格式为“[成员名字或唯一昵称] 消息内容”；标签必须对应下方真实群成员。若群内有重名成员，必须使用各自唯一昵称作标签，不要只写重名；昵称也必须来自成员资料。禁言成员不可发言，离线成员不可主动发言。允许同一角色发多条，也允许本轮只有一位角色发言。若没有自然回应者，可以输出 [PASS]。不要输出提示词、分析、思维链或格式说明。';
 
         const replyMsgId = Date.now() + 1;
         let streamedText = '';
@@ -2553,7 +2553,7 @@ export function LineConversationView({
             groupMemorySummary.trim() ? '【当前群聊独立记忆总结】\n' + groupMemorySummary.trim() : '',
             groupMemorySettings.trim() ? '【当前群聊记忆规则】\n' + groupMemorySettings.trim() : '',
             allowGroupProactiveDM ? '【群聊内容延伸到单聊的许可】可以根据本群实际发生且该角色确实知道的内容，自然判断是否主动向用户发起单聊；必须符合角色性格、关系与情境，不要频繁打扰，也不代表每次都必须发起。此许可仅来源于当前群聊设置。' : '【群聊主动单聊】关闭；不得仅因为群聊内容而主动发起单聊。',
-            '【成员状态】\n' + (activeGroup?.members || []).map(member => member.name + '：' + [member.online === false ? '离线' : '在线', member.mood || '', member.relationship || ''].filter(Boolean).join(' / ')).join('\n'),
+            '【成员状态】\n' + (activeGroup?.members || []).map(member => member.name + '：' + [member.muted ? '禁言，不可发言', member.online === false ? '离线，不可主动发言' : '在线', member.mood || '', member.relationship || ''].filter(Boolean).join(' / ')).join('\n'),
             '【群成员资料】（用于识别成员身份、性格与关系；不是发言名单或轮流发言顺序）\n' + allMemberSummaries,
             speakerFormatRule,
           ].filter(Boolean).join('\n'),
@@ -2582,6 +2582,7 @@ export function LineConversationView({
             const placeholders = parts.map((part, idx) => {
               const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
               if (memberIdx < 0 && !part.primary) return null;
+              if (memberIdx >= 0 && (groupAiMembers[memberIdx]?.member.muted || groupAiMembers[memberIdx]?.member.online === false)) return null;
               const finalIdx = memberIdx >= 0 ? memberIdx : primaryMemberIndex;
               const foundMember = groupAiMembers[finalIdx];
               const foundChar = foundMember?.character;
@@ -2628,6 +2629,7 @@ export function LineConversationView({
         const finalMessages = parts.map((part, idx) => {
           const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
           if (memberIdx < 0 && !part.primary) return null;
+          if (memberIdx >= 0 && (groupAiMembers[memberIdx]?.member.muted || groupAiMembers[memberIdx]?.member.online === false)) return null;
           const finalIdx = memberIdx >= 0 ? memberIdx : primaryMemberIndex;
           const foundMember = groupAiMembers[finalIdx];
           const foundChar = foundMember?.character;
@@ -2663,6 +2665,7 @@ export function LineConversationView({
           const part = parts[i];
           const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
           if (memberIdx < 0 && !part.primary) continue;
+          if (memberIdx >= 0 && (groupAiMembers[memberIdx]?.member.muted || groupAiMembers[memberIdx]?.member.online === false)) continue;
           const finalIdx = memberIdx >= 0 ? memberIdx : primaryMemberIndex;
           const foundMember = groupAiMembers[finalIdx]?.member;
           if (foundMember) {
@@ -3907,7 +3910,7 @@ export function LineConversationView({
             groupMemorySummary.trim() ? '【当前群聊独立记忆总结】\n' + groupMemorySummary.trim() : '',
             groupMemorySettings.trim() ? '【当前群聊记忆规则】\n' + groupMemorySettings.trim() : '',
             '【群成员资料】（用于识别成员身份、性格与关系；不是发言名单或轮流发言顺序）\n' + allMemberSummaries,
-            '【输出格式】每条实际发言单独一行，使用“[成员名字或唯一昵称] 消息内容”；标签必须来自群成员资料。若群内有重名成员，必须使用各自唯一昵称作标签，不要只写重名；昵称也必须来自成员资料。可由同一角色连续发言，也可让其他角色自然接话；不强制固定人数或每位成员发言。不要替用户发言，不输出分析或格式说明。若无人适合回应，可输出 [PASS]。',
+            '【输出格式】每条实际发言单独一行，使用“[成员名字或唯一昵称] 消息内容”；标签必须来自群成员资料。若群内有重名成员，必须使用各自唯一昵称作标签，不要只写重名；昵称也必须来自成员资料。禁言成员不可发言，离线成员不可主动发言。可由同一角色连续发言，也可让其他角色自然接话；不强制固定人数或每位成员发言。不要替用户发言，不输出分析或格式说明。若无人适合回应，可输出 [PASS]。',
           ].filter(Boolean).join('\n'),
           stylePreset: selectedPreset,
           cotTarget: 'group',
@@ -3934,6 +3937,7 @@ export function LineConversationView({
         const finalMessages = parts.map((part, idx) => {
           const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
           if (memberIdx < 0 && !part.primary) return null;
+          if (memberIdx >= 0 && (groupAiMembers[memberIdx]?.member.muted || groupAiMembers[memberIdx]?.member.online === false)) return null;
           const found = groupAiMembers[memberIdx >= 0 ? memberIdx : fallbackIndex] || contextMember;
           const character = found.character || contextMember.character!;
           return {
@@ -3963,6 +3967,7 @@ export function LineConversationView({
         for (const part of parts) {
           const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
           if (memberIdx < 0 && !part.primary) continue;
+          if (memberIdx >= 0 && (groupAiMembers[memberIdx]?.member.muted || groupAiMembers[memberIdx]?.member.online === false)) continue;
           const found = groupAiMembers[memberIdx >= 0 ? memberIdx : fallbackIndex];
           if (!found) continue;
           updateLineGroupMember(activeGroup?.id || '', found.member.id, {
