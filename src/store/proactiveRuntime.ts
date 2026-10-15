@@ -100,7 +100,7 @@ function resolveProactiveConversation(character: ImportedCharacter, personaId?: 
     );
     return matches.length === 1 && matches[0].id
       ? { conversationId: String(matches[0].id), ambiguous: false }
-      : { conversationId: '', ambiguous: matches.length > 1 };
+      : { conversationId: '', ambiguous: true };
   } catch {
     return { conversationId: '', ambiguous: true };
   }
