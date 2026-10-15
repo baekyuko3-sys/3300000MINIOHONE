@@ -135,7 +135,7 @@ function appendProactiveMessage(character: ImportedCharacter, text: string) {
   emitWorldEvent('character.message', {
     characterId: character.id,
     characterName: character.name,
-    data: { preview: text.replace(/\\s+/g, ' ').slice(0, 120), source: 'proactive' },
+    data: { preview: text.replace(/\s+/g, ' ').slice(0, 120), source: 'proactive' },
   });
   setCharacterRuntime(character.id, {
     activity: '刚刚主动联系了你',
@@ -318,6 +318,7 @@ async function runNpcPrivateProactive(today: string, state: ProactiveState) {
   const persona = getProactivePersona();
   const personaId = persona?.id ? String(persona.id) : '';
   if (!personaId || typeof window === 'undefined') return;
+  state.delivered ||= {};
 
   const settings = readStoredAiSettings();
   if (!settings.apiKey.trim()) return;
@@ -334,6 +335,9 @@ async function runNpcPrivateProactive(today: string, state: ProactiveState) {
     const seedText = today + ':' + personaId + ':' + npc.id;
     const seed = Array.from(seedText).reduce((value, char) => (value * 31 + char.charCodeAt(0)) >>> 0, 7);
     state.delivered[checkKey] = today;
+    // Persist the daily decision immediately; the rest of the scheduled runtime
+    // may have no work today and therefore may not mark its own state dirty.
+    saveLocal('phone:proactive-state', state);
     if (seed % 100 >= 18) continue;
 
     const matches = chats.filter(chat =>
