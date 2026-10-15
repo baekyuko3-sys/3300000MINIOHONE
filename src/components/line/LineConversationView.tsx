@@ -261,12 +261,18 @@ function splitGroupMultiSpeaker(
   const startsSpeakerLine = (line: string): boolean => {
     const value = line.trim();
     if (!value) return false;
-    return [...nameSorted, ...nickSorted].some(({ name }) =>
+    const knownSpeaker = [...nameSorted, ...nickSorted].some(({ name }) =>
       value.startsWith('[' + name + ']') ||
       value.startsWith('【' + name + '】') ||
       value.startsWith(name + '：') ||
-      value.startsWith(name + ':')
+      value.startsWith(name + ':') ||
+      value.startsWith(name + ' ')
     );
+    if (knownSpeaker) return true;
+    // 未知的显式说话者标签也必须单独切块，不能黏到上一位 NPC 的消息里。
+    if (/^(?:\[[^\]\n]{1,60}\]|【[^】\n]{1,60}】)\s*[:：]?/.test(value)) return true;
+    const colonLabel = value.match(/^([^：:\n]{1,24})[：:]\s*/);
+    return Boolean(colonLabel && !/\s/.test(colonLabel[1]));
   };
   const expandedBlocks: string[] = [];
   for (const block of blocks) {
