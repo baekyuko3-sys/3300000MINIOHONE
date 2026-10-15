@@ -55,7 +55,7 @@ export interface CharacterMemory {
   memoryStyle?: CharacterMemoryStyleSettings;
 }
 
-const keyFor = (characterId: string) => `phone:character-memory:${characterId}`;
+const keyFor = (characterId: string, personaId?: string | null) => personaId ? `phone:character-memory:${characterId}:persona:${personaId}` : `phone:character-memory:${characterId}`;
 
 const DEFAULT_MEMORY_STYLE: CharacterMemoryStyleSettings = {
   personality: 'character-style',
@@ -76,38 +76,40 @@ export function getDefaultMemoryStyle(): CharacterMemoryStyleSettings {
 
 
 
-function emptyMemory(characterId: string, characterName: string): CharacterMemory {
+function emptyMemory(characterId: string, characterName: string, personaId?: string | null): CharacterMemory {
   return {
     characterId,
     characterName,
     summary: '',
     items: [],
     updatedAt: new Date().toISOString(),
+    ...(personaId ? { personaId } : {}),
   };
 }
 
-export function clearCharacterMemory(characterId: string) {
+export function clearCharacterMemory(characterId: string, personaId?: string | null) {
   if (typeof window === 'undefined' || !characterId) return;
-  window.localStorage.removeItem(keyFor(characterId));
+  window.localStorage.removeItem(keyFor(characterId, personaId));
 }
 
-export function getCharacterMemory(characterId: string, characterName: string): CharacterMemory {
-  if (typeof window === 'undefined') return emptyMemory(characterId, characterName);
+export function getCharacterMemory(characterId: string, characterName: string, personaId?: string | null): CharacterMemory {
+  if (typeof window === 'undefined') return emptyMemory(characterId, characterName, personaId);
   try {
-    const raw = window.localStorage.getItem(keyFor(characterId));
-    if (!raw) return emptyMemory(characterId, characterName);
+    const raw = window.localStorage.getItem(keyFor(characterId, personaId));
+    if (!raw) return emptyMemory(characterId, characterName, personaId);
     const parsed = JSON.parse(raw) as Partial<CharacterMemory>;
     return {
-      ...emptyMemory(characterId, characterName || parsed.characterName || ''),
+      ...emptyMemory(characterId, characterName || parsed.characterName || '', personaId),
       ...parsed,
       characterId,
       characterName: characterName || parsed.characterName || '',
+      ...(personaId ? { personaId } : {}),
       items: Array.isArray(parsed.items) ? parsed.items : [],
       recentSummaries: Array.isArray(parsed.recentSummaries) ? parsed.recentSummaries : [],
       memoryStyle: parsed.memoryStyle ? { ...getDefaultMemoryStyle(), ...parsed.memoryStyle, sections: { ...getDefaultMemoryStyle().sections, ...(parsed.memoryStyle as CharacterMemoryStyleSettings).sections } } : getDefaultMemoryStyle(),
     };
   } catch {
-    return emptyMemory(characterId, characterName);
+    return emptyMemory(characterId, characterName, personaId);
   }
 }
 
@@ -115,7 +117,7 @@ export function saveCharacterMemory(memory: CharacterMemory): CharacterMemory {
   const next = { ...memory, updatedAt: new Date().toISOString() };
   if (typeof window !== 'undefined') {
     try {
-      window.localStorage.setItem(keyFor(memory.characterId), JSON.stringify(next));
+      window.localStorage.setItem(keyFor(memory.characterId, memory.personaId), JSON.stringify(next));
     } catch {}
   }
   return next;
@@ -125,12 +127,14 @@ export function updateCharacterMemory(
   characterId: string,
   characterName: string,
   patch: Partial<CharacterMemory>,
+  personaId?: string | null,
 ): CharacterMemory {
   return saveCharacterMemory({
-    ...getCharacterMemory(characterId, characterName),
+    ...getCharacterMemory(characterId, characterName, personaId),
     ...patch,
     characterId,
     characterName,
+    ...(personaId ? { personaId } : {}),
   });
 }
 
@@ -138,11 +142,11 @@ export function addRecentMemorySummary(
   characterId: string,
   characterName: string,
   content: string,
-  options?: { source?: RecentMemorySummary['source']; importance?: number },
+  options?: { source?: RecentMemorySummary['source']; importance?: number; personaId?: string | null },
 ): CharacterMemory {
   const trimmed = content.trim();
-  if (!trimmed) return getCharacterMemory(characterId, characterName);
-  const current = getCharacterMemory(characterId, characterName);
+  if (!trimmed) return getCharacterMemory(characterId, characterName, options?.personaId);
+  const current = getCharacterMemory(characterId, characterName, options?.personaId);
   const now = new Date().toISOString();
   const summary: RecentMemorySummary = {
     id: `recent-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
@@ -151,7 +155,7 @@ export function addRecentMemorySummary(
     createdAt: now,
     importance: Math.max(0, Math.min(100, Number(options?.importance ?? 50) || 50)),
   };
-  return saveCharacterMemory({ ...current, recentSummaries: [summary, ...(current.recentSummaries || [])] });
+  return saveCharacterMemory({ ...current, ...(options?.personaId ? { personaId: options.personaId } : {}), recentSummaries: [summary, ...(current.recentSummaries || [])] });
 }
 
 export function mergeRecentMemorySummaries(characterId: string, characterName: string): CharacterMemory {
