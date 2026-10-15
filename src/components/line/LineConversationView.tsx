@@ -2542,6 +2542,7 @@ export function LineConversationView({
     );
 
     if (isGroup) {
+      let activeGroupPlaceholderId: number | null = null;
       // 群聊：一次 API 调用生成所有 NPC 的回复（单角色 system prompt + 多角色摘要 + 强制 [名字] 前缀格式）。
       // 任一成员失败不影响整轮；解析失败时回退到主发言者单条消息。
       try {
@@ -2604,6 +2605,7 @@ export function LineConversationView({
         const replyMsgId = Date.now() + 1;
         let streamedText = '';
         const placeholderId = replyMsgId;
+        activeGroupPlaceholderId = placeholderId;
         // 先插入一个"AI 正在输入"的占位气泡（用主发言者名字）
         setMessages(prev => prev.some(m => m.id === placeholderId)
           ? prev
@@ -2815,7 +2817,7 @@ export function LineConversationView({
         const message = error instanceof Error ? error.message : '群聊 AI 请求失败';
         setMessages(prev => {
           // 删占位 + 标为可删除的失败提示
-          const cleaned = prev.filter(m => !String(m.id).startsWith(String(Date.now() + 1)));
+          const cleaned = prev.filter(m => activeGroupPlaceholderId == null || !String(m.id).startsWith(String(activeGroupPlaceholderId)));
           return [...cleaned, {
             id: 'group-fail-' + Date.now(),
             sender: 'other',
