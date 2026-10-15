@@ -2966,7 +2966,8 @@ export function LineConversationView({
                 importedCharacter.id,
                 importedCharacter.name,
                 batch.map(item => item.id),
-                mergeResult
+                mergeResult,
+                npcForChat ? resolvedPersonaId : undefined
               );
               window.dispatchEvent(new CustomEvent('sane333:memory-merged', {
                 detail: {
