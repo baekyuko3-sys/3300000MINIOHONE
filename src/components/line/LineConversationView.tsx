@@ -634,7 +634,11 @@ export function LineConversationView({
   onGroupRenamed,
 }: LineConversationViewProps) {
   // Input & Messages
-  const conversationStorageId = conversationId || characterId || contactName;
+  // An NPC is its own LINE identity. Its bound characterId is profile metadata,
+  // not a transcript key; otherwise the NPC chat can read/write the imported character's history.
+  // Parent-provided conversationId remains authoritative and separates multiple persona chats.
+  const conversationStorageId = conversationId ||
+    (npcId ? `npc:${npcId}:persona:${personaId || 'legacy'}` : characterId || contactName);
   const [inputText, setInputText] = useState(initialDraft);
   const [selectedOpeningContext, setSelectedOpeningContext] = usePersistentState<string>(`line:opening-context:${conversationStorageId}`, openingContext || '');
   const [lineLocale] = usePersistentState<'zh-CN' | 'ja-JP'>('line:locale', 'zh-CN');
