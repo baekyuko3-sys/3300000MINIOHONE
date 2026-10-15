@@ -2497,8 +2497,7 @@ export function LineConversationView({
       // 任一成员失败不影响整轮；解析失败时回退到主发言者单条消息。
       try {
         if (groupAiMembers.length === 0) {
-          showToast('这个群还没有导入可接入 AI 的角色卡');
-          setMessages(prev => prev.filter(message => message.id !== msgId));
+          showToast('这个群还没有可接入 AI 的在线角色；你发送的消息已保留');
           setIsTyping(false);
           return;
         }
