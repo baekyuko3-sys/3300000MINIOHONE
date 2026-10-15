@@ -34,6 +34,9 @@ function readAllLocalContent(): Record<string, unknown> {
     if (!key || EXCLUDED_EXACT_KEYS.has(key)) continue;
     // NPC generation receives only the worldbooks explicitly selected in its dedicated context.
     if (key === 'phone:worldbooks' || key === 'phone:characters') continue;
+    // Memories and conversations are identity-scoped runtime data, not generic app content.
+    // Excluding every memory namespace prevents one NPC/persona from seeing another's records.
+    if (key.startsWith('phone:character-memory:')) continue;
     // Never dump raw LINE conversations, friend requests, or persona-private chat records
     // into the generic "all content" payload: it can cross NPC/persona boundaries.
     if (/^line:(chat-items|npc-friend-requests|npc-friendships|friends-list|active-persona|user-personas)$/.test(key)) continue;
