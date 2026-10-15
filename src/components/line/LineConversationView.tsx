@@ -1215,7 +1215,7 @@ export function LineConversationView({
         creatorNotes: npcForChat.relationship || '',
       } as ImportedCharacter)
     : boundImportedCharacter;
-  const characterMemoryForPersona = importedCharacter ? getCharacterMemory(importedCharacter.id, importedCharacter.name) : null;
+  const characterMemoryForPersona = importedCharacter ? getCharacterMemory(importedCharacter.id, importedCharacter.name, npcForChat ? resolvedPersonaId : undefined) : null;
 
   const [personaLiveWeather, setPersonaLiveWeather] = useState<LineWeatherSnapshot | null>(null);
 
@@ -1328,7 +1328,7 @@ export function LineConversationView({
     ...lineFriends.map(friend => friend.name).filter(Boolean),
     ...getLineGroups().filter(group => group.id !== activeGroup?.id).map(group => group.name).filter(Boolean),
   ]));
-  const characterMemory = getCharacterMemory(importedCharacter?.id || contactName, contactName);
+  const characterMemory = getCharacterMemory(importedCharacter?.id || contactName, contactName, npcForChat ? resolvedPersonaId : undefined);
   const contactOnline = isGroup
     ? groupAiMembers.some(({ member }) => member.online !== false)
     : (lineFriends.find(friend => friend.characterId === characterId || friend.name === contactName)?.online ?? true);
@@ -2535,7 +2535,8 @@ export function LineConversationView({
             const personality = String(character?.personality || '').slice(0, 120);
             const identity = String(character?.identity || '').slice(0, 80);
             // 每个 NPC 都要拿到自己的近期经历；不能只给本轮主发言者提供记忆。
-            const memberMemory = character ? getCharacterMemory(character.id, character.name) : null;
+            const memberIsNpc = Boolean(member.npcId || member.kind === 'npc');
+            const memberMemory = character ? getCharacterMemory(character.id, character.name, memberIsNpc ? resolvedPersonaId : undefined) : null;
             const recentMemory = memberMemory
               ? (memberMemory.recentSummaries || []).slice(0, 6).map(item => item.content).join('；').slice(0, 900)
               : '';
@@ -2547,7 +2548,7 @@ export function LineConversationView({
           .join('\n');
 
         const primaryProfile = getCharacterProfile(primary.character!.name, primary.character!.id);
-        const primaryMemory = getCharacterMemory(primary.character!.id, primary.character!.name);
+        const primaryMemory = getCharacterMemory(primary.character!.id, primary.character!.name, (primary.member.npcId || primary.member.kind === 'npc') ? resolvedPersonaId : undefined);
         const memberNamesInGroup = groupAiMembers.map(({ member }) => member.name);
         const speakerFormatRule = '【群聊多角色输出格式】\n' +
           '这是一次完整的群聊回合。请综合阅读整个群聊上下文，自然决定哪些成员此刻会说话、谁接谁的话、是否插话或暂时沉默。不要按成员列表轮流发言，不要强制任何固定人数发言，也不要为了凑人数添加无意义内容。\n' +
@@ -2733,7 +2734,7 @@ export function LineConversationView({
                 memoryOwnerId,
                 memoryOwnerName,
                 '群聊「' + (activeGroup?.name || contactName) + '」中，' + memoryOwnerName + '说：' + part.text.slice(0, 240),
-                { source: 'line', importance: 55 },
+                { source: 'line', importance: 55, personaId: speakerNpc ? resolvedPersonaId : undefined },
               );
             }
             if (speakerNpc) {
@@ -2946,11 +2947,11 @@ export function LineConversationView({
               importedCharacter.id,
               importedCharacter.name,
               content,
-              { source: 'line', importance: item.importance }
+              { source: 'line', importance: item.importance, personaId: npcForChat ? resolvedPersonaId : undefined }
             );
           }
 
-          const latestMemory = getCharacterMemory(importedCharacter.id, importedCharacter.name);
+          const latestMemory = getCharacterMemory(importedCharacter.id, importedCharacter.name, npcForChat ? resolvedPersonaId : undefined);
           const pending = latestMemory.recentSummaries || [];
           if (pending.length >= 100 && !memoryMergeBusyRef.current) {
             memoryMergeBusyRef.current = true;
@@ -3970,7 +3971,8 @@ export function LineConversationView({
             (member.muted ? '；当前禁言，不应发言' : member.online === false ? '；当前离线，通常不主动发言' : '');
         }).join('\n');
         const profile = getCharacterProfile(contextMember.character.name, contextMember.character.id);
-        const memory = getCharacterMemory(contextMember.character.id, contextMember.character.name);
+        const contextMemberIsNpc = Boolean(contextMember.member.npcId || contextMember.member.kind === 'npc');
+        const memory = getCharacterMemory(contextMember.character.id, contextMember.character.name, contextMemberIsNpc ? resolvedPersonaId : undefined);
         const replyId = Date.now() + 1;
         let streamed = '';
         const result = await generateCharacterReply({
@@ -4074,7 +4076,7 @@ export function LineConversationView({
               memoryOwnerId,
               memoryOwnerName,
               '群聊「' + (activeGroup?.name || contactName) + '」中，' + memoryOwnerName + '说：' + part.text.slice(0, 240),
-              { source: 'line', importance: 55 },
+              { source: 'line', importance: 55, personaId: npc ? resolvedPersonaId : undefined },
             );
           }
           if (npc) {
