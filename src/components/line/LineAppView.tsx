@@ -1201,7 +1201,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     // A public post does not turn an unadded stranger into a LINE friend.
     if (authorKey) {
       const isFriend = p.npcId
-        ? friendsList.some(f => !f.deleted && f.npcId === p.npcId)
+        ? friendsList.some(f => !f.deleted && f.npcId === p.npcId && (!f.personaId || f.personaId === effectivePersonaId))
         : friendsList.some(f => !f.deleted && !f.npcId && ((p.characterId && f.characterId === p.characterId) || (p.name && f.name === p.name)));
       if (!isFriend && !isVroomAllowedEdge(viewerKey, authorKey)) return false;
     }
@@ -1853,7 +1853,9 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
+                            const isLiking = !post.liked;
                             setMomentsPosts((prev) => prev.map((p) => (p.id === post.id ? toggleMomentLike(p, meName) : p)));
+                            if (isLiking) void tryAutonomousMomentComment(String(post.id));
                           }}
                           className={`cursor-pointer flex items-center gap-1 hover:text-[#ae7e89] transition-colors ${
                             post.liked ? 'text-[#ae7e89]' : ''
@@ -3805,7 +3807,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 {(() => {
                   const postNpc = allLineNpcs.find(npc => npc.id === postDetail.npcId || (postDetail.npcId == null && npc.name === postDetail.name));
                   if (!postNpc) return null;
-                  const alreadyFriend = friendsList.some(friend => friend.npcId === postNpc.id);
+                  const alreadyFriend = friendsList.some(friend => friend.npcId === postNpc.id && (!friend.personaId || friend.personaId === effectivePersonaId));
                   if (alreadyFriend) return null;
                   return (
                     <button type="button" onClick={() => { setPostDetail(null); selectNpcAsFriendCandidate(postNpc); }}
