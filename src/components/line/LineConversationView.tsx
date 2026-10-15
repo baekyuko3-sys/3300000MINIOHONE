@@ -2613,7 +2613,7 @@ export function LineConversationView({
               id: placeholderId,
               sender: 'other',
               senderType: primary.member.kind === 'npc' ? 'npc' : 'character',
-              senderId: primary.member.id || primary.member.npcId || primary.character!.id,
+              senderId: (primary.member.kind === 'npc' ? primary.member.npcId || primary.member.id : primary.member.id) || primary.character!.id,
               senderName: primary.member.name,
               characterId: primary.character!.id,
               text: '',
@@ -2684,7 +2684,7 @@ export function LineConversationView({
                 id: placeholderId + idx,
                 sender: 'other' as const,
                 senderType: foundMember?.member.kind === 'npc' ? 'npc' as const : 'character' as const,
-                senderId: foundMember?.member.id || foundMember?.member.npcId || foundChar?.id || primary.character!.id,
+                senderId: (foundMember?.member.kind === 'npc' ? foundMember.member.npcId || foundMember.member.id : foundMember?.member.id) || foundChar?.id || primary.character!.id,
                 senderName: foundMember?.member.name || part.rawSpeaker,
                 characterId: foundChar?.id || primary.character!.id,
                 text: part.text,
@@ -2731,7 +2731,7 @@ export function LineConversationView({
             id: placeholderId + idx,
             sender: 'other' as const,
             senderType: foundMember?.member.kind === 'npc' ? 'npc' as const : 'character' as const,
-            senderId: foundMember?.member.id || foundMember?.member.npcId || foundChar?.id || primary.character!.id,
+            senderId: (foundMember?.member.kind === 'npc' ? foundMember.member.npcId || foundMember.member.id : foundMember?.member.id) || foundChar?.id || primary.character!.id,
             senderName: foundMember?.member.name || part.rawSpeaker,
             characterId: foundChar?.id || primary.character!.id,
             text: part.text,
@@ -2740,7 +2740,7 @@ export function LineConversationView({
             showThinking: false,
             status: 'delivered' as const,
             createdAt: new Date().toISOString(),
-            metadata: { characterId: foundChar?.id || primary.character!.id, senderId: foundMember?.member.id || foundMember?.member.npcId || foundChar?.id || primary.character!.id },
+            metadata: { characterId: foundChar?.id || primary.character!.id, senderId: (foundMember?.member.kind === 'npc' ? foundMember.member.npcId || foundMember.member.id : foundMember?.member.id) || foundChar?.id || primary.character!.id },
           };
         }).filter(Boolean) as any[];
         if (!finalMessages.length) {
@@ -4091,7 +4091,7 @@ export function LineConversationView({
             id: replyId + idx,
             sender: 'other' as const,
             senderType: found.member.kind === 'npc' ? 'npc' as const : 'character' as const,
-            senderId: found.member.id || found.member.npcId || character.id,
+            senderId: (found.member.kind === 'npc' ? found.member.npcId || found.member.id : found.member.id) || character.id,
             senderName: found.member.name || part.rawSpeaker,
             characterId: character.id,
             text: part.text,
@@ -4103,7 +4103,7 @@ export function LineConversationView({
             aiModel: result.model,
             thinkingSummary: result.thinkingSummary,
             actionDescription: result.actionDescription,
-            metadata: { characterId: character.id, senderId: found.member.id || found.member.npcId || character.id, ...(result.thinkingSummary ? { thinkingSummary: result.thinkingSummary } : {}), ...(result.actionDescription ? { actionDescription: result.actionDescription } : {}) },
+            metadata: { characterId: character.id, senderId: (found.member.kind === 'npc' ? found.member.npcId || found.member.id : found.member.id) || character.id, ...(result.thinkingSummary ? { thinkingSummary: result.thinkingSummary } : {}), ...(result.actionDescription ? { actionDescription: result.actionDescription } : {}) },
           };
         }).filter(Boolean) as any[];
         if (!finalMessages.length) {
