@@ -353,28 +353,36 @@ function resolveSpeakerIndex(
 ): number {
   const target = String(rawSpeaker || '').trim();
   if (!target) return -1;
-  // 精确
-  let idx = candidateNames.findIndex(n => n === target);
-  if (idx >= 0) return idx;
-  // 去前缀/后缀
   const cleaned = target.replace(/^[\[【\s]+|[:：\]\】\s]+$/g, '').trim();
+  const uniqueIndex = (values: string[], value: string): number => {
+    const matches = values.reduce<number[]>((found, item, index) => {
+      if (item && item.trim() === value) found.push(index);
+      return found;
+    }, []);
+    return matches.length === 1 ? matches[0] : -1;
+  };
+
+  // 只接受唯一匹配。重名/重复昵称时不猜测，避免把消息记到错误 NPC 身上。
+  let idx = uniqueIndex(candidateNames, target);
+  if (idx >= 0) return idx;
   if (cleaned && cleaned !== target) {
-    idx = candidateNames.findIndex(n => n === cleaned);
+    idx = uniqueIndex(candidateNames, cleaned);
     if (idx >= 0) return idx;
   }
-  // nickname
-  if (cleaned) {
-    idx = candidateNicknames.findIndex(n => n && n === cleaned);
-    if (idx >= 0) return idx;
-  }
-  // 包含匹配（短的输入是长的成员名的子串，例如 AI 写了"程"而成员是"程凛"）
-  if (cleaned) {
-    idx = candidateNames.findIndex(n => n && (cleaned.includes(n) || n.includes(cleaned)));
-    if (idx >= 0) return idx;
-    idx = candidateNicknames.findIndex(n => n && (cleaned.includes(n) || n.includes(cleaned)));
-    if (idx >= 0) return idx;
-  }
-  return -1;
+  idx = uniqueIndex(candidateNicknames, cleaned || target);
+  if (idx >= 0) return idx;
+
+  // 兼容 AI 省略部分名字，但只有唯一候选时才允许模糊匹配。
+  const fuzzyMatches = candidateNames.reduce<number[]>((found, name, index) => {
+    if (name && cleaned && (cleaned.includes(name) || name.includes(cleaned))) found.push(index);
+    return found;
+  }, []);
+  if (fuzzyMatches.length === 1) return fuzzyMatches[0];
+  const nicknameMatches = candidateNicknames.reduce<number[]>((found, name, index) => {
+    if (name && cleaned && (cleaned.includes(name) || name.includes(cleaned))) found.push(index);
+    return found;
+  }, []);
+  return nicknameMatches.length === 1 ? nicknameMatches[0] : -1;
 }
 
 function spliceExpandedLineReply(prev: any[], replyMsgId: any, expanded: any[]) {
@@ -2477,7 +2485,7 @@ export function LineConversationView({
         // 构建名字/昵称列表：顺序和 groupAiMembers 完全对应
         const candidateNames = groupAiMembers.map(({ member }) => member.name);
         const candidateNicknames = groupAiMembers.map(({ member }) => member.nickname || '');
-        const primaryMemberIndex = groupAiMembers.findIndex(({ member }) => member.name === primary.member.name);
+        const primaryMemberIndex = groupAiMembers.findIndex(({ member }) => member.id === primary.member.id);
 
         // 群所有成员摘要：让 AI 知道群里都有谁、各自什么性格
         const allMemberSummaries = groupAiMembers
@@ -3910,6 +3918,7 @@ export function LineConversationView({
         const fallbackIndex = groupAiMembers.findIndex(item => item.member.id === contextMember.member.id);
         const finalMessages = parts.map((part, idx) => {
           const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
+          if (memberIdx < 0 && !part.primary) return null;
           const found = groupAiMembers[memberIdx >= 0 ? memberIdx : fallbackIndex] || contextMember;
           const character = found.character || contextMember.character!;
           return {
