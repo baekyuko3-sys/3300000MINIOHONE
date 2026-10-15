@@ -299,7 +299,7 @@ function splitGroupMultiSpeaker(
       const candidates = [
         '[' + name + ']', '【' + name + '】',
         name + '：', name + ':',
-        name,
+        name + ' ',
       ];
       for (const prefix of candidates) {
         const idx = blockTrim.indexOf(prefix);
@@ -317,7 +317,7 @@ function splitGroupMultiSpeaker(
         const candidates = [
           '[' + name + ']', '【' + name + '】',
           name + '：', name + ':',
-          name,
+          name + ' ',
         ];
         for (const prefix of candidates) {
           const idx = blockTrim.indexOf(prefix);
@@ -335,8 +335,19 @@ function splitGroupMultiSpeaker(
       const rest = blockTrim.slice(matchedIndex).replace(/^[:：]\s*/, '').trim();
       out.push({ rawSpeaker: matchedName, text: rest, primary: false });
     } else {
-      // 没有前缀：当主说话人
-      out.push({ rawSpeaker: primarySpeakerName, text: blockTrim, primary: true });
+      // 显式标注了说话者但标签不在成员名单中时，保留未知标签交给调用方拒绝；
+      // 只有真正没有说话者标签的普通文本，才回退给本轮主说话人。
+      const bracketSpeaker = blockTrim.match(/^(?:\[([^\]\n]{1,60})\]|【([^】\n]{1,60})】)\s*[:：]?\s*([\s\S]*)$/);
+      const colonSpeaker = !bracketSpeaker
+        ? blockTrim.match(/^([^：:\n]{1,24})[：:]\s*([\s\S]*)$/)
+        : null;
+      if (bracketSpeaker) {
+        out.push({ rawSpeaker: String(bracketSpeaker[1] || bracketSpeaker[2] || '').trim(), text: String(bracketSpeaker[3] || '').trim(), primary: false });
+      } else if (colonSpeaker && !/\s/.test(colonSpeaker[1])) {
+        out.push({ rawSpeaker: String(colonSpeaker[1] || '').trim(), text: String(colonSpeaker[2] || '').trim(), primary: false });
+      } else {
+        out.push({ rawSpeaker: primarySpeakerName, text: blockTrim, primary: true });
+      }
     }
   }
   return out.filter(item => item.text);
