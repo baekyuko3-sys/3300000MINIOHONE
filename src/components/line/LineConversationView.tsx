@@ -1213,12 +1213,20 @@ export function LineConversationView({
     ? activeGroup.members.filter((member: any) => !!member && typeof member === 'object')
     : [];
   const allNpcs = getNpcs();
+  const resolveGroupMemberNpc = (member: any) => {
+    if (!member || (!member.npcId && member.kind !== 'npc')) return null;
+    const explicitNpcId = String(member.npcId || '').trim();
+    const candidateNpcId = explicitNpcId || (member.kind === 'npc' ? String(member.id || '').trim() : '');
+    const byId = candidateNpcId ? allNpcs.find(item => String(item.id) === candidateNpcId) : undefined;
+    if (byId) return byId;
+    if (explicitNpcId || member.kind !== 'npc') return null;
+    const legacyNameMatches = allNpcs.filter(item => item.name === member.name);
+    return legacyNameMatches.length === 1 ? legacyNameMatches[0] : null;
+  };
   const resolveGroupMemberCharacter = (member: any): ImportedCharacter | null => {
     if (member?.npcId || member?.kind === 'npc') {
-      // Resolve NPC records by stable IDs first; only legacy members without IDs may fall back to names.
-      const npcId = String(member.npcId || (member.kind === 'npc' ? member.id || '' : '')).trim();
-      const npc = (npcId ? allNpcs.find(item => String(item.id) === npcId) : undefined)
-        || (!npcId ? allNpcs.find(item => item.name === member.name) : undefined);
+      // Prefer stable NPC IDs; only legacy NPC members without npcId may use a unique name fallback.
+      const npc = resolveGroupMemberNpc(member);
       if (!npc || npc.active === false) return null;
       const bound = importedCharacters.find(character => character.id === (member.characterId || npc.boundCharacterId))
         || importedCharacters.find(character => character.id === npc.boundCharacterId)
@@ -7626,10 +7634,7 @@ export function LineConversationView({
                 <div className="px-3.5 pt-3 flex items-center gap-2 overflow-x-auto no-scrollbar">
                   {(activeGroup?.members || []).filter((mm: any) => mm && mm.kind !== 'user' && mm.role !== 'owner' && mm.id !== activeGroup?.ownerId).map((m: any) => {
                     const c = resolveGroupMemberCharacter(m);
-                    const memberNpcId = String(m.npcId || (m.kind === 'npc' ? m.id || '' : '')).trim();
-                     const npc = (memberNpcId ? allNpcs.find(n => String(n.id) === memberNpcId) : undefined)
-                       || (!memberNpcId ? allNpcs.find(n => n.name === m.name) : undefined)
-                       || null;
+                    const npc = resolveGroupMemberNpc(m);
                     const av = c?.avatar || npc?.avatar || m.avatar;
                     return (
                       <button key={m.id || m.characterId || m.npcId || m.name} type="button" title={m.nickname || m.name} onClick={() => setExpandedGroupMemberEditId(m.id)} className="shrink-0 flex flex-col items-center gap-1 w-12">
@@ -7659,10 +7664,7 @@ export function LineConversationView({
                   <div className="rounded-[12px] border border-[#ebe6e8] bg-[#faf9fa] max-h-56 overflow-y-auto overscroll-contain space-y-2 p-2">
                     {(activeGroup?.members || []).filter((mm: any) => mm && mm.kind !== 'user' && mm.role !== 'owner' && mm.id !== activeGroup?.ownerId).map((m: any) => {
                       const c = resolveGroupMemberCharacter(m);
-                      const memberNpcId = String(m.npcId || (m.kind === 'npc' ? m.id || '' : '')).trim();
-                     const npc = (memberNpcId ? allNpcs.find(n => String(n.id) === memberNpcId) : undefined)
-                       || (!memberNpcId ? allNpcs.find(n => n.name === m.name) : undefined)
-                       || null;
+                      const npc = resolveGroupMemberNpc(m);
                       const av = c?.avatar || npc?.avatar || m.avatar;
                       const isMe = m.kind === 'user' || m.role === 'owner' || m.id === activeGroup?.ownerId;
                       const expanded = expandedGroupMemberEditId === m.id;
@@ -10075,10 +10077,7 @@ export function LineConversationView({
               <div className="grid grid-cols-4 gap-x-2 gap-y-3">
                 {(activeGroup?.members || groupMembers).filter((m: any) => m && m.kind !== 'user' && m.role !== 'owner' && m.id !== activeGroup?.ownerId).slice(0, 11).map((m: any) => {
                   const c = resolveGroupMemberCharacter(m);
-                  const memberNpcId = String(m.npcId || (m.kind === 'npc' ? m.id || '' : '')).trim();
-                     const npc = (memberNpcId ? allNpcs.find(n => String(n.id) === memberNpcId) : undefined)
-                       || (!memberNpcId ? allNpcs.find(n => n.name === m.name) : undefined)
-                       || null;
+                  const npc = resolveGroupMemberNpc(m);
                   const av = c?.avatar || npc?.avatar || m.avatar;
                   return (
                     <div key={m.id || m.characterId || m.npcId || m.name} className="flex flex-col items-center gap-1 min-w-0">
@@ -10119,10 +10118,7 @@ export function LineConversationView({
                 <div className="rounded-[12px] border border-[#ebe6e8] bg-[#faf9fa] max-h-72 overflow-y-auto overscroll-contain space-y-2 p-2">
                   {(activeGroup?.members || groupMembers).filter((mm: any) => mm && mm.kind !== 'user' && mm.role !== 'owner' && mm.id !== activeGroup?.ownerId).map((member: any) => {
                     const character = resolveGroupMemberCharacter(member);
-                    const memberNpcId = String(member.npcId || (member.kind === 'npc' ? member.id || '' : '')).trim();
-                     const npc = (memberNpcId ? allNpcs.find(n => String(n.id) === memberNpcId) : undefined)
-                       || (!memberNpcId ? allNpcs.find(n => n.name === member.name) : undefined)
-                       || null;
+                    const npc = resolveGroupMemberNpc(member);
                     const isMeMember = member.kind === 'user' || member.role === 'owner' || member.id === activeGroup?.ownerId;
                     const avatar = character?.avatar || npc?.avatar || member.avatar;
                     const kindLabel = member.npcId || member.kind === 'npc' ? 'NPC' : isMeMember ? '我' : '角色';
