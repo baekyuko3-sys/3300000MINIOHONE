@@ -34,6 +34,10 @@ function readAllLocalContent(): Record<string, unknown> {
     if (!key || EXCLUDED_EXACT_KEYS.has(key)) continue;
     // NPC generation receives only the worldbooks explicitly selected in its dedicated context.
     if (key === 'phone:worldbooks' || key === 'phone:characters') continue;
+    // Never dump raw LINE conversations, friend requests, or persona-private chat records
+    // into the generic "all content" payload: it can cross NPC/persona boundaries.
+    if (/^line:(chat-items|npc-friend-requests|npc-friendships|friends-list|active-persona|user-personas)$/.test(key)) continue;
+    if (/^line:.*(message|conversation|chat-history|private-chat)/i.test(key)) continue;
     if (!key.startsWith('phone:') && !key.startsWith('line:')) continue;
     try {
       const raw = JSON.parse(localStorage.getItem(key) || 'null');
@@ -116,6 +120,9 @@ export function buildNpcRuntimeContext(
       : [],
   );
   const relationToMe = getNpcRuntimeRelation(npc, personaId);
+  const personaMatchesRelation = !npc.relationToMeName || !relationToMe ||
+    getNpcPersonaName(personaId) === npc.relationToMeName;
+  const relationshipForPersona = personaMatchesRelation ? npc.relationship : '';
   const personaFriendship = getNpcPersonaFriendship(npc.id, personaId);
   return [
     '【NPC 独立身份】' + npc.name,
@@ -125,7 +132,7 @@ export function buildNpcRuntimeContext(
     '性格：' + (npc.personality || '未设定'),
     '外貌：' + (npc.appearance || ''),
     '背景：' + (npc.background || ''),
-    '与用户的关系：' + [npc.relationship, relationToMe].filter(Boolean).join('；'),
+    '与用户的关系：' + [relationshipForPersona, relationToMe].filter(Boolean).join('；'),
     '与当前聊天人设的 LINE 好友状态：' + personaFriendship,
     '兴趣：' + (npc.interests || []).join('、'),
     '个性签名：' + (npc.statusMessage || ''),
@@ -156,6 +163,17 @@ function collectNpcRuntimeWorldBooks(
       worldBookIds: Array.isArray(npc.worldBookIds) ? npc.worldBookIds : [],
     },
   });
+}
+
+function getNpcPersonaName(personaId?: string | null): string {
+  const activeId = personaId !== undefined
+    ? personaId
+    : readPersistentState<string | null>('line:active-persona', null);
+  const personas = readPersistentState<Array<{ id: string; name?: string; isDefault?: boolean }>>('line:user-personas', []);
+  return personas.find(item => item.id === activeId)?.name
+    || personas.find(item => item.isDefault)?.name
+    || personas[0]?.name
+    || '';
 }
 
 function getNpcPersonaFriendship(npcId: string, personaId?: string | null): string {
