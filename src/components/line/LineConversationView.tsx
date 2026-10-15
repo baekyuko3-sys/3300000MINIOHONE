@@ -4051,6 +4051,21 @@ export function LineConversationView({
             memory: [...(found.member.memory || []), part.text.slice(0, 160)].slice(-20),
           });
           addLineGroupMemory(activeGroup?.id || '', found.member.name + ' 在群聊中说：' + part.text.slice(0, 180));
+          if (found.member.npcId || found.member.kind === 'npc') {
+            const npc = allNpcs.find(item => item.id === found.member.npcId || item.id === found.member.id || item.name === found.member.name);
+            if (npc && activePersona?.id) {
+              void considerNpcFriendRequest({
+                npc,
+                personaId: activePersona.id,
+                personaName: activePersona.name || '我',
+                source: 'group-chat',
+                sourceLabel: '群聊「' + (activeGroup?.name || contactName) + '」',
+                eventContext: '群聊继续生成：' + parts.map(item => item.rawSpeaker + '：' + item.text).join('\\n').slice(-2200),
+              }).then(request => {
+                if (request) window.dispatchEvent(new CustomEvent('sane333:npc-friend-requests-updated'));
+              });
+            }
+          }
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : '群聊继续生成失败';
