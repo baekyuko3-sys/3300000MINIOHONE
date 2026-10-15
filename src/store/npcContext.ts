@@ -111,7 +111,7 @@ export function buildNpcRuntimeContext(
     book.enabled
       ? book.entries
           .filter(entry => entry.enabled)
-          .map(entry => '【' + book.name + ' / ' + entry.name + '】\\n' + entry.content)
+          .map(entry => '【' + book.name + ' / ' + entry.name + '】\n' + entry.content)
       : [],
   );
   const relationToMe = getNpcRuntimeRelation(npc);
@@ -132,9 +132,9 @@ export function buildNpcRuntimeContext(
     ...(memory.recentSummaries || []).slice(0, 8).map(item => 'NPC 最近经历：' + item.content),
     'NPC 最近生活：' + (npc.recentLife || '未记录'),
     '绑定角色仅用于关联，不代表 NPC 与其拥有相同人格或经历：' + (npc.boundCharacterName || '未绑定'),
-    '【NPC 专属/当前场景适用世界书】\\n' + (enabledEntries.join('\\n\\n') || '暂无适用条目'),
+    '【NPC 专属/当前场景适用世界书】\n' + (enabledEntries.join('\n\n') || '暂无适用条目'),
     '【身份边界】必须以 NPC 自己的身份、性格、关系、记忆和生活为准。不得把绑定角色的第一人称经历、记忆或关系直接当成 NPC 自己的经历。只使用当前场景可见的信息。',
-  ].filter(Boolean).join('\\n');
+  ].filter(Boolean).join('\n');
 }
 
 function collectNpcRuntimeWorldBooks(
