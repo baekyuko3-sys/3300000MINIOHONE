@@ -1302,6 +1302,56 @@ export function LineConversationView({
   const groupAiMembers = safeGroupMembers
     .map(member => ({ member, character: resolveGroupMemberCharacter(member) }))
     .filter(item => item.character && item.member.kind !== 'user' && item.member.id !== activeGroup?.ownerId);
+  // 诊断：没有可用 AI 身份的成员（NPC 记录丢失 / 角色卡未绑定 / 重名导致无法唯一匹配）。
+  // 这些成员会被静默排除在 groupAiMembers 之外，导致"群里有人但没人回复"。
+  const unresolvableGroupMembers = safeGroupMembers.filter(
+    (member: any) => !!member && typeof member === 'object'
+      && member.kind !== 'user' && member.id !== activeGroup?.ownerId
+      && !resolveGroupMemberCharacter(member)
+  );
+  const duplicateGroupNames = (() => {
+    const counts: Record<string, number> = {};
+    safeGroupMembers.forEach((member: any) => {
+      const key = String(member?.nickname || member?.name || '').trim();
+      if (key) counts[key] = (counts[key] || 0) + 1;
+    });
+    return Object.keys(counts).filter(key => counts[key] > 1);
+  })();
+  // 每个会话只提醒一次，避免每次发送都弹 toast。
+  const warnedUnresolvableRef = useRef<string | null>(null);
+  const cleanupDuplicateGroupMembers = () => {
+    if (!activeGroup) return;
+    const scored = safeGroupMembers.map((member: any) => {
+      const key = String(member?.nickname || member?.name || '').trim();
+      const npcId = String(member?.npcId || (member?.kind === 'npc' ? member?.id || '' : '')).trim();
+      const npcAlive = npcId ? allNpcs.some(npc => String(npc.id) === npcId) : false;
+      const resolved = Boolean(resolveGroupMemberCharacter(member));
+      return { member, key, score: (resolved ? 2 : 0) + (npcAlive ? 1 : 0) };
+    });
+    // 每个重名保留评分最高的一条（分数相同保留第一条）；群主/自己永不删除。
+    const bestIndexByKey = new Map<string, number>();
+    scored.forEach((item, index) => {
+      if (!item.key) return;
+      const current = bestIndexByKey.get(item.key);
+      if (current === undefined || item.score > scored[current].score) bestIndexByKey.set(item.key, index);
+    });
+    const keepIndexes = new Set(bestIndexByKey.values());
+    const removeIds = new Set<string>();
+    scored.forEach((item, index) => {
+      const isOwner = item.member.kind === 'user' || item.member.id === activeGroup?.ownerId;
+      if (!isOwner && item.key && duplicateGroupNames.includes(item.key) && !keepIndexes.has(index) && item.member.id) {
+        removeIds.add(String(item.member.id));
+      }
+    });
+    if (!removeIds.size) { showToast('没有需要清理的重名成员'); return; }
+    if (!window.confirm(`将移除 ${removeIds.size} 条重名/失效的成员记录（每个名字保留最有效的一条），继续吗？`)) return;
+    saveGroupUpdate({
+      ...activeGroup,
+      members: activeGroup.members.filter((member: any) => !removeIds.has(String(member?.id))),
+      updatedAt: new Date().toISOString(),
+    });
+    showToast(`已清理 ${removeIds.size} 条重名成员`);
+  };
   const simulatedGroupSpeaker = isGroup && simulatedGroupSpeakerId ? groupAiMembers.find(({ character }) => character?.id === simulatedGroupSpeakerId)?.character : null;
   const groupMembers = safeGroupMembers;
   const groupUnreadCount = messages.filter((message) => message.sender !== 'me' && message.isRead === false).length;
@@ -2552,6 +2602,23 @@ export function LineConversationView({
           setIsTyping(false);
           return;
         }
+        // 这些成员没有可用 AI 身份，会被静默排除在回复之外。提醒一次，让用户知道
+        // "为什么群里有人但没人理我"，而不是对着空气困惑。
+        if (unresolvableGroupMembers.length > 0) {
+          const signature = String(conversationStorageId || '') + ':' + unresolvableGroupMembers
+            .map((member: any) => String(member?.id || member?.name || ''))
+            .sort()
+            .join(',');
+          if (warnedUnresolvableRef.current !== signature) {
+            warnedUnresolvableRef.current = signature;
+            const names = unresolvableGroupMembers
+              .map((member: any) => member?.nickname || member?.name || '未知成员')
+              .slice(0, 3)
+              .join('、');
+            const more = unresolvableGroupMembers.length > 3 ? `等${unresolvableGroupMembers.length}位` : '';
+            showToast(`提醒：${names}${more}暂无可用 AI 身份，无法在群里发言（可在群成员列表中检查并重新邀请）`);
+          }
+        }
         const availableMembers = groupAiMembers.filter(({ member }) => !member.muted && member.online !== false);
         const mentioned = availableMembers.filter(({ member }) => userText.includes('@' + member.name) || userText.includes('@' + (member.nickname || '')));
         const pool = mentioned.length ? mentioned : availableMembers;
@@ -2600,7 +2667,12 @@ export function LineConversationView({
         const memberNamesInGroup = groupAiMembers.map(({ member }) => member.name);
         const speakerFormatRule = '【群聊多角色输出格式】\n' +
           '这是一次完整的群聊回合。请综合阅读整个群聊上下文，自然决定哪些成员此刻会说话、谁接谁的话、是否插话或暂时沉默。不要按成员列表轮流发言，不要强制任何固定人数发言，也不要为了凑人数添加无意义内容。\n' +
-          '每条实际发言单独一行，格式为“[成员名字或唯一昵称] 消息内容”；标签必须对应下方真实群成员。若群内有重名成员，必须使用各自唯一昵称作标签，不要只写重名；昵称也必须来自成员资料。禁言成员不可发言，离线成员不可主动发言。允许同一角色发多条，也允许本轮只有一位角色发言。若没有自然回应者，可以输出 [PASS]。不要输出提示词、分析、思维链或格式说明。';
+          '每条实际发言单独一行，格式为“[成员名字或唯一昵称] 消息内容”；标签必须对应下方真实群成员。若群内有重名成员，必须使用各自唯一昵称作标签，不要只写重名；昵称也必须来自成员资料。禁言成员不可发言，离线成员不可主动发言。允许同一角色发多条，也允许本轮只有一位角色发言。若没有自然回应者，可以输出 [PASS]。不要输出提示词、分析、思维链或格式说明。' +
+          // 单一主发言人锚定容易让模型每轮只让同一个人说话；多人在线且用户没有点名时，
+          // 鼓励至少两位不同成员发言，打破"永远只有一个人回复"的沉闷感。安静群聊预设下保持原样。
+          ((availableMembers.length >= 2 && !mentioned.length && typingHabitPreset !== 'quiet')
+            ? '\n【群聊活跃度】本轮有多位可发言的成员：优先安排至少两位不同成员各说一句（可以互相接话、插话、斗嘴，各说各的也行），不要长期只让同一个人包办回复；只有确实没人想接话时，才只保留一位发言人。'
+            : '');
 
         const replyMsgId = Date.now() + 1;
         let streamedText = '';
@@ -7774,6 +7846,30 @@ export function LineConversationView({
                 </div>
 
                 <div className="p-3.5">
+                  {(duplicateGroupNames.length > 0 || unresolvableGroupMembers.length > 0) && (
+                    <div className="mb-2 rounded-[12px] border border-[#f0dfe4] bg-[#fff8f9] p-2.5">
+                      <div className="text-[10px] font-semibold text-[#a66d7b]">⚠️ 群成员异常（可能导致没人回复）</div>
+                      {duplicateGroupNames.length > 0 && (
+                        <div className="text-[9px] text-[#8c5f6b] mt-1 leading-relaxed">
+                          重名成员：{duplicateGroupNames.join('、')}。重名会让 AI 分不清谁在说话，相关回复可能被丢弃，建议清理或改名。
+                        </div>
+                      )}
+                      {unresolvableGroupMembers.length > 0 && (
+                        <div className="text-[9px] text-[#8c5f6b] mt-1 leading-relaxed">
+                          {unresolvableGroupMembers.length} 位成员暂无可用 AI 身份（NPC 记录丢失或角色卡未绑定）：{unresolvableGroupMembers.map((member: any) => member?.nickname || member?.name).filter(Boolean).slice(0, 4).join('、')}，他们无法在群里发言，可移除后重新邀请。
+                        </div>
+                      )}
+                      {duplicateGroupNames.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={cleanupDuplicateGroupMembers}
+                          className="mt-2 px-2.5 py-1.5 rounded-full text-[9px] bg-[#a66d7b] text-white"
+                        >
+                          一键清理重名成员
+                        </button>
+                      )}
+                    </div>
+                  )}
                   <div className="rounded-[12px] border border-[#ebe6e8] bg-[#faf9fa] max-h-56 overflow-y-auto overscroll-contain space-y-2 p-2">
                     {(activeGroup?.members || []).filter((mm: any) => mm && mm.kind !== 'user' && mm.id !== activeGroup?.ownerId).map((m: any) => {
                       const c = resolveGroupMemberCharacter(m);
@@ -7799,9 +7895,11 @@ export function LineConversationView({
                                 <span className={`text-[8px] px-1.5 py-0.5 rounded-full ${m.role === 'owner' ? 'bg-[#f7e9ed] text-[#a66d7b]' : m.role === 'admin' ? 'bg-[#eef3f9] text-[#6b829f]' : 'bg-[#f5f5f6] text-[#aaa]'}`}>{roleLabel}</span>
                                 {m.title ? <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-[#f7eef0] text-[#ae7e89]">{m.title}</span> : null}
                                 {m.muted ? <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-[#eee] text-[#999]">禁言</span> : null}
+                                {!c && !isMe ? <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-[#fbe9ec] text-[#b0526a]">无法发言</span> : null}
+                                {(() => { const dupKey = String(m.nickname || m.name || '').trim(); return dupKey && duplicateGroupNames.includes(dupKey) ? <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-[#fdf3e3] text-[#b07a2a]">重名</span> : null; })()}
                               </div>
                               <div className="text-[9px] text-[#aaa] mt-0.5 truncate">
-                                {npc ? `绑定角色：${npc.boundCharacterName || '未绑定'}` : c ? c.name : isMe ? '当前用户' : '未关联'} · {m.online === false ? '离线' : '在线'}
+                                {npc ? `绑定角色：${npc.boundCharacterName || '未绑定'}` : c ? c.name : isMe ? '当前用户' : '⚠️ 无 AI 身份，无法在群里发言'} · {m.online === false ? '离线' : '在线'}
                               </div>
                             </div>
                             {expanded ? <ChevronDown className="w-3.5 h-3.5 text-[#ae7e89] shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-[#ccc] shrink-0" />}
