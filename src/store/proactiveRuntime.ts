@@ -137,6 +137,7 @@ function appendProactiveMessage(character: ImportedCharacter, text: string) {
       characterName: character.name,
       conversationId,
       text,
+      persisted: true,
       kind: 'text',
       createdAt: new Date().toISOString(),
       reason: 'scheduled-proactive',
