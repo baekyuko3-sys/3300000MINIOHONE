@@ -104,7 +104,6 @@ function appendProactiveMessage(character: ImportedCharacter, text: string) {
   } catch {
     // Keep the legacy key if the chat list cannot be read.
   }
-  const legacyKey = `line:conversation:${character.name}`;
   const key = `line:conversation:${conversationId}`;
   const messageId = `proactive-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
