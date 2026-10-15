@@ -518,25 +518,29 @@ const AUTONOMOUS_COMMENT_STATE_KEY = 'phone:moments-autonomous-comment';
  * 自主评论：挑一条近期动态，让角色/NPC 留一条。
  * 直接读写 localStorage 的 line:moments-posts，并派发更新事件。
  */
-export async function tryAutonomousMomentComment(): Promise<boolean> {
+export async function tryAutonomousMomentComment(targetPostId?: string): Promise<boolean> {
   if (typeof window === 'undefined') return false;
   const settings = readMomentsSettings();
   if (!shouldAutonomousSpawn(settings)) return false;
   if (!settings.allowCharacterComment && !settings.allowNpcComment) return false;
 
-  const state = readPersistentState<{ lastAt?: string }>(AUTONOMOUS_COMMENT_STATE_KEY, {});
+  // 自主巡游使用全局冷却；点赞触发则按目标动态单独冷却，避免无关动态被评论。
+  const stateKey = targetPostId ? `${AUTONOMOUS_COMMENT_STATE_KEY}:${targetPostId}` : AUTONOMOUS_COMMENT_STATE_KEY;
+  const state = readPersistentState<{ lastAt?: string }>(stateKey, {});
   const lastAt = state.lastAt ? Date.parse(state.lastAt) : 0;
-  const cooldownMs = 8 * 60 * 1000;
+  const cooldownMs = targetPostId ? 2 * 60 * 1000 : 8 * 60 * 1000;
   if (lastAt && Date.now() - lastAt < cooldownMs) return false;
 
   const posts = readPersistentState<any[]>(MOMENTS_POSTS_KEY, []);
   if (!posts.length) return false;
 
-  // Prefer recent posts that aren't already flooded
-  const candidates = posts.slice(0, 12).filter(p => {
-    const tree = normalizeMomentComments(p.commentsList);
-    return countMomentComments(tree) < 12;
-  });
+  // 点赞事件只针对被点赞的动态；常规自主巡游才从近期动态中选择。
+  const candidates = targetPostId
+    ? posts.filter(p => String(p.id) === String(targetPostId))
+    : posts.slice(0, 12).filter(p => {
+        const tree = normalizeMomentComments(p.commentsList);
+        return countMomentComments(tree) < 12;
+      });
   if (!candidates.length) return false;
   const post = candidates[Math.floor(Math.random() * Math.min(5, candidates.length))];
 
@@ -577,7 +581,7 @@ export async function tryAutonomousMomentComment(): Promise<boolean> {
       return { ...p, commentsList: appendMomentComment(tree, comment) };
     });
     window.localStorage.setItem(MOMENTS_POSTS_KEY, JSON.stringify(nextPosts.slice(0, 200)));
-    window.localStorage.setItem(AUTONOMOUS_COMMENT_STATE_KEY, JSON.stringify({ lastAt: new Date().toISOString() }));
+    window.localStorage.setItem(stateKey, JSON.stringify({ lastAt: new Date().toISOString() }));
     window.dispatchEvent(new CustomEvent('sane333:moments-updated', {
       detail: { postId: post.id, commenter: commenterName(commenter), kind: 'autonomous-comment' },
     }));
