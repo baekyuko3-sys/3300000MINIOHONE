@@ -1227,7 +1227,7 @@ export function LineConversationView({
   };
   const groupAiMembers = safeGroupMembers
     .map(member => ({ member, character: resolveGroupMemberCharacter(member) }))
-    .filter(item => item.character && item.member.name !== currentUserNameFallback());
+    .filter(item => item.character && item.member.kind !== 'user' && item.member.id !== activeGroup?.ownerId);
   const simulatedGroupSpeaker = isGroup && simulatedGroupSpeakerId ? groupAiMembers.find(({ character }) => character?.id === simulatedGroupSpeakerId)?.character : null;
   const groupMembers = safeGroupMembers;
   const groupUnreadCount = messages.filter((message) => message.sender !== 'me' && message.isRead === false).length;
@@ -2468,9 +2468,9 @@ export function LineConversationView({
           setIsTyping(false);
           return;
         }
-        const mentioned = groupAiMembers.filter(({ member }) => userText.includes('@' + member.name) || userText.includes('@' + (member.nickname || '')));
         const availableMembers = groupAiMembers.filter(({ member }) => !member.muted && member.online !== false);
-        const pool = (mentioned.length ? mentioned : availableMembers).filter(({ member }) => !member.muted);
+        const mentioned = availableMembers.filter(({ member }) => userText.includes('@' + member.name) || userText.includes('@' + (member.nickname || '')));
+        const pool = mentioned.length ? mentioned : availableMembers;
 
         // 主发言者：@ 模式只选被 @ 的；否则选"最后发言 NPC 的下一位"
         const lastGroupSpeaker = [...messages].reverse().find(message => message.sender !== 'me' && message.sender !== 'system-nudge');
@@ -2483,6 +2483,7 @@ export function LineConversationView({
           : pool;
         const primary = mentioned.length ? pool[0] : rotatedPool[0];
         if (!primary) {
+          showToast(availableMembers.length ? '没有找到可回应的群成员，请检查 @ 名称或昵称' : '群里目前没有可发言的在线成员，请检查成员在线状态和禁言设置');
           setIsTyping(false);
           return;
         }
