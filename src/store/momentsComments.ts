@@ -536,7 +536,10 @@ export async function tryAutonomousMomentComment(targetPostId?: string): Promise
 
   // 点赞事件只针对被点赞的动态；常规自主巡游才从近期动态中选择。
   const candidates = targetPostId
-    ? posts.filter(p => String(p.id) === String(targetPostId))
+    ? posts.filter(p => {
+        if (String(p.id) !== String(targetPostId)) return false;
+        return countMomentComments(normalizeMomentComments(p.commentsList)) < 12;
+      })
     : posts.slice(0, 12).filter(p => {
         const tree = normalizeMomentComments(p.commentsList);
         return countMomentComments(tree) < 12;
