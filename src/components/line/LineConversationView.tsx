@@ -2714,16 +2714,21 @@ export function LineConversationView({
             });
             addLineGroupMemory(activeGroup?.id || '', (foundMember.name || part.rawSpeaker) + ' 在群聊中说：' + part.text.slice(0, 180));
             const speakerCharacter = groupAiMembers[finalIdx]?.character;
-            if (speakerCharacter?.id) {
+            const speakerNpc = (foundMember.npcId || foundMember.kind === 'npc')
+              ? allNpcs.find(item => item.id === foundMember.npcId || item.id === foundMember.id || item.name === foundMember.name)
+              : undefined;
+            // NPC 的个人经历必须写入 NPC 自己的记忆键，不能只写入绑定角色的记忆。
+            const memoryOwnerId = speakerNpc?.id || speakerCharacter?.id;
+            const memoryOwnerName = speakerNpc?.name || speakerCharacter?.name || foundMember.name || part.rawSpeaker;
+            if (memoryOwnerId) {
               addRecentMemorySummary(
-                speakerCharacter.id,
-                speakerCharacter.name || foundMember.name || part.rawSpeaker,
-                '群聊「' + (activeGroup?.name || contactName) + '」中，' + (foundMember.name || part.rawSpeaker) + '说：' + part.text.slice(0, 240),
+                memoryOwnerId,
+                memoryOwnerName,
+                '群聊「' + (activeGroup?.name || contactName) + '」中，' + memoryOwnerName + '说：' + part.text.slice(0, 240),
                 { source: 'line', importance: 55 },
               );
             }
-            if (foundMember.npcId || foundMember.kind === 'npc') {
-              const speakerNpc = allNpcs.find(item => item.id === foundMember.npcId || item.name === foundMember.name);
+            if (speakerNpc) {
               if (speakerNpc && activePersona?.id && !friendRequestCheckedNpcIds.has(speakerNpc.id)) {
                 friendRequestCheckedNpcIds.add(speakerNpc.id);
                 void considerNpcFriendRequest({
