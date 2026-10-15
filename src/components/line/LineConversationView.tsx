@@ -2510,7 +2510,7 @@ export function LineConversationView({
           return;
         }
         const availableMembers = groupAiMembers.filter(({ member }) => !member.muted && member.online !== false);
-        const mentionTokens = Array.from(userText.matchAll(/@([^\\s@，。！？、,.!?;；:：]+)/g), match => String(match[1] || '').trim()).filter(Boolean);
+        const mentionTokens = Array.from(userText.matchAll(/@([^\s@，。！？、,.!?;；:：]+)/g), match => String(match[1] || '').trim()).filter(Boolean);
         const mentioned = availableMembers.filter(({ member }) => [member.name, member.nickname]
           .map(alias => String(alias || '').trim())
           .some(alias => Boolean(alias) && mentionTokens.includes(alias)));
