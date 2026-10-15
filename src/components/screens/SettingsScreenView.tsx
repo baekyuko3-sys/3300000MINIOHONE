@@ -427,10 +427,10 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
         <span className="text-[8px] font-mono text-[#8b7560]">{localStats.keys} KEYS</span>
       </header>
 
-      <div className="relative z-10 flex-1 overflow-y-auto no-scrollbar p-4 space-y-3 text-xs">
+      <div className="relative z-10 flex-1 overflow-y-auto no-scrollbar p-4 pb-10 space-y-3 text-xs">
         <section className="relative overflow-hidden p-4 rounded-2xl bg-white/65 border border-[rgba(40,36,31,.1)]">
           <div className="absolute -right-8 -top-10 w-28 h-28 rounded-full border border-[#d4aab5]/20" />
-          <div className="absolute right-3 bottom-2 text-5xl font-serif text-[#d4aab5]/10">333</div>
+          <div className="absolute right-4 top-3 text-4xl font-serif text-[#d4aab5]/10 select-none pointer-events-none">333</div>
           <div className="relative text-[8px] font-mono tracking-[2px] text-[#aaa]">SANE333 / PRIVATE DEVICE</div>
           <div className="relative mt-2 text-[17px] font-serif font-bold text-[#292724]">你的 API、角色与存档，都在这里。</div>
           <div className="relative mt-1 text-[9px] text-[#817a72] leading-relaxed">Gemini、OpenAI Compatible、语音、图片、记忆与后台运行，都从这里管理。</div>

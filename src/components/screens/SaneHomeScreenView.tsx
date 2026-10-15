@@ -30,11 +30,11 @@ export function SaneHomeScreenView({ onNavigate, onOpenSheet, onToggleTheme }: S
   type DesktopPage = 1 | 2;
 
   const defaultPage1Layout: DesktopItem[] = [
-    { id: 'widget-date', x: 26, y: 105 },
+    { id: 'widget-date', x: 26, y: 130 },
     { id: 'widget-photo', x: 260, y: 145 },
-    { id: 'widget-weather', x: 26, y: 270 },
-    { id: 'widget-note', x: 201, y: 270 },
-    { id: 'widget-music', x: 26, y: 395 },
+    { id: 'widget-weather', x: 26, y: 280 },
+    { id: 'widget-note', x: 201, y: 280 },
+    { id: 'widget-music', x: 26, y: 400 },
     { id: 'app-line', x: 32, y: 510 },
     { id: 'app-moments', x: 120, y: 510 },
     { id: 'app-music', x: 208, y: 510 },
@@ -391,7 +391,7 @@ export function SaneHomeScreenView({ onNavigate, onOpenSheet, onToggleTheme }: S
           </div>
 
           {worldUnread > 0 && (
-            <button onClick={() => onNavigate('chat')} className="absolute z-20 left-[26px] right-[26px] top-[266px] flex items-center justify-between px-3 py-2 rounded-full bg-white/75 border border-[rgba(40,36,31,.09)] shadow-[0_5px_18px_rgba(45,37,30,.05)] backdrop-blur-md text-[8px] font-mono text-[#6f685f]">
+            <button onClick={() => onNavigate('chat')} className="absolute z-20 left-[26px] right-[26px] top-[286px] flex items-center justify-between px-3 py-2 rounded-full bg-white/75 border border-[rgba(40,36,31,.09)] shadow-[0_5px_18px_rgba(45,37,30,.05)] backdrop-blur-md text-[8px] font-mono text-[#6f685f]">
               <span>WORLD · 有新的世界动态</span>
               <span className="text-[#9b625b]">{worldUnread} NEW</span>
             </button>
