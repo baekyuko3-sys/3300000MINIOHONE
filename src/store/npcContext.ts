@@ -123,9 +123,14 @@ export function buildNpcRuntimeContext(
       : [],
   );
   const relationToMe = getNpcRuntimeRelation(npc, personaId);
-  const personaMatchesRelation = !npc.relationToMeName || !relationToMe ||
+  // NPC.relationship is legacy shared profile data. In a persona-bound chat, only expose it
+  // when the NPC explicitly names the matching persona; otherwise it can leak relationship
+  // assumptions from one LINE identity into another.
+  const personaMatchesRelation = Boolean(npc.relationToMeName) &&
     getNpcPersonaName(personaId) === npc.relationToMeName;
-  const relationshipForPersona = personaMatchesRelation ? npc.relationship : '';
+  const relationshipForPersona = personaId == null
+    ? npc.relationship
+    : (personaMatchesRelation ? npc.relationship : '');
   const personaFriendship = getNpcPersonaFriendship(npc.id, personaId);
   return [
     '【NPC 独立身份】' + npc.name,
