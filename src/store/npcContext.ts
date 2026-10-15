@@ -116,6 +116,7 @@ export function buildNpcRuntimeContext(
       : [],
   );
   const relationToMe = getNpcRuntimeRelation(npc, personaId);
+  const personaFriendship = getNpcPersonaFriendship(npc.id, personaId);
   return [
     '【NPC 独立身份】' + npc.name,
     'NPC ID：' + npc.id,
@@ -125,6 +126,7 @@ export function buildNpcRuntimeContext(
     '外貌：' + (npc.appearance || ''),
     '背景：' + (npc.background || ''),
     '与用户的关系：' + [npc.relationship, relationToMe].filter(Boolean).join('；'),
+    '与当前聊天人设的 LINE 好友状态：' + personaFriendship,
     '兴趣：' + (npc.interests || []).join('、'),
     '个性签名：' + (npc.statusMessage || ''),
     '简介：' + (npc.bio || ''),
@@ -154,6 +156,17 @@ function collectNpcRuntimeWorldBooks(
       worldBookIds: Array.isArray(npc.worldBookIds) ? npc.worldBookIds : [],
     },
   });
+}
+
+function getNpcPersonaFriendship(npcId: string, personaId?: string | null): string {
+  const activeId = personaId !== undefined
+    ? personaId
+    : readPersistentState<string | null>('line:active-persona', null);
+  if (!activeId) return '未指定人设，无法判断';
+  const links = readPersistentState<Array<{ npcId: string; personaId: string }>>('line:npc-friendships', []);
+  return links.some(item => item.npcId === npcId && item.personaId === activeId)
+    ? '已是好友'
+    : '尚未成为好友';
 }
 
 function getNpcRuntimeRelation(npc: import('./npcs').SaneNpc, personaId?: string | null): string {
