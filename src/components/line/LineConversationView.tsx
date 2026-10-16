@@ -3080,6 +3080,7 @@ export function LineConversationView({
                 speakers: [...speakers.values()],
                 groupName: activeGroup?.name || '群聊',
                 roundSummary: parts.map(p => p.rawSpeaker + '：' + p.text).join('\n').slice(0, 800),
+                personaId: resolvedPersonaId,
               });
               if (posted) showToast('有成员发了一条朋友圈 ✦');
             } catch { /* best-effort */ }

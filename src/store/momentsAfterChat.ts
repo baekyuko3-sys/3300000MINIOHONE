@@ -10,6 +10,7 @@ import {
 import { readPersistentState } from './usePersistentState';
 import type { SaneNpc } from './npcs';
 import { buildNpcRuntimeContext } from './npcContext';
+import { setFriendEdge } from './vroomScope';
 
 function readPosts(): any[] {
   return readPersistentState<any[]>(MOMENTS_POSTS_KEY, []);
@@ -253,6 +254,7 @@ export async function maybePostGroupMomentAfterRound(opts: {
   }>;
   groupName: string;
   roundSummary: string;
+  personaId?: string | null;
 }): Promise<boolean> {
   if (typeof window === 'undefined') return false;
   if (!opts.speakers.length) return false;
@@ -315,6 +317,12 @@ export async function maybePostGroupMomentAfterRound(opts: {
     if (comments.length) post.commentsList = comments;
   } catch { /* best-effort */ }
   writePosts([post, ...readPosts()]);
+  // 群里发出来的朋友圈，确保用户看得见：加一条 VROOM 可见边（作者→当前人设）。
+  try {
+    const viewerKey = 'persona:' + (opts.personaId || 'default');
+    const authorKey = post.npcId ? 'npc:' + post.npcId : post.characterId ? 'character:' + post.characterId : '';
+    if (authorKey) setFriendEdge(viewerKey, authorKey, true);
+  } catch { /* best-effort */ }
   return true;
 }
 
