@@ -676,12 +676,12 @@ export function MusicScreenView({ onNavigate }: MusicScreenViewProps) {
           <div className="pt-1 space-y-3">
             <section className="relative flex items-end gap-[18px] mt-3">
               <button onClick={openIdentityEditor} className="relative shrink-0 w-[88px] h-[88px] rounded-[30px] overflow-hidden bg-[#f5ebe7] border border-[#eee4de] grid place-items-center text-[30px] text-[#987e78]">
-                {identityAvatar ? <img src={identityAvatar} alt="" className="w-full h-full object-cover" /> : activeIdentity.name.slice(0,1)}
+                {identityAvatar ? <img src={identityAvatar} alt="" className="w-full h-full object-cover" /> : (linkedPersona?.name || activeIdentity.name).slice(0,1)}
                 <span className="absolute right-0.5 bottom-0.5 w-5 h-5 rounded-md bg-[#2d2724] text-white grid place-items-center"><Pencil className="w-2.5 h-2.5" /></span>
               </button>
               <div className="min-w-0 flex-1 pb-0.5">
                 <div className="text-[11px] tracking-[.4px] text-[#857b73]">音乐 ID</div>
-                <button onClick={openIdentityEditor} className="max-w-full flex items-center gap-1 text-left mt-0.5"><span className="font-serif font-semibold text-[23px] leading-tight truncate">{activeIdentity.name}</span><Pencil className="w-3 h-3 text-[#a59a92] shrink-0" /></button>
+                <button onClick={openIdentityEditor} className="max-w-full flex items-center gap-1 text-left mt-0.5"><span className="font-serif font-semibold text-[23px] leading-tight truncate">{linkedPersona?.name || activeIdentity.name}</span><Pencil className="w-3 h-3 text-[#a59a92] shrink-0" /></button>
                 <button onClick={openIdentityEditor} className="mt-1.5 max-w-full text-left text-[12px] leading-snug text-[#857b73] line-clamp-2">
                   {activeIdentity.note?.trim() || '点击添加个性签名'}
                 </button>
