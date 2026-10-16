@@ -2885,7 +2885,7 @@ export function LineConversationView({
           groupName: activeGroup?.name || '',
           authorNote: [
             lineConversationRules,
-            '群聊预设：' + activeGroupPreset.name,
+            '群聊预设：' + activeGroupPreset.name + (activeGroupPreset.maxResponders ? `（本轮建议 ${activeGroupPreset.maxResponders} 人发言，可多可少，自然为主）` : ''),
             activeGroupPreset.systemPrompt,
             (groupNoticeText || activeGroup?.announcement) ? '群公告：' + (groupNoticeText || activeGroup?.announcement) : '',
             groupLorebookActive.trim() ? '【群聊风格补充】\n' + groupLorebookActive.trim() : '',
@@ -4347,7 +4347,7 @@ export function LineConversationView({
           authorNote: [
             lineConversationRules,
             '这是群聊 Continue：一次生成完整的群聊回合，不是逐个 NPC 轮询。',
-            '群聊预设：' + activeGroupPreset.name,
+            '群聊预设：' + activeGroupPreset.name + (activeGroupPreset.maxResponders ? `（本轮建议 ${activeGroupPreset.maxResponders} 人发言，可多可少，自然为主）` : ''),
             activeGroupPreset.systemPrompt,
             (groupNoticeText || activeGroup?.announcement) ? '群公告：' + (groupNoticeText || activeGroup?.announcement) : '',
             groupLorebookActive.trim() ? '【群聊风格补充】\n' + groupLorebookActive.trim() : '',
@@ -8301,7 +8301,7 @@ export function LineConversationView({
               <summary className="list-none cursor-pointer p-3.5 flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
                 <div>
                   <div className="font-semibold text-[12px] text-[#333]">回复表现 / 预设流程</div>
-                  <div className="text-[10px] text-[#999] mt-0.5">{getActivePromptPreset('group')?.name || '默认预设'}</div>
+                  <div className="text-[10px] text-[#999] mt-0.5">{activeGroupPreset.name}</div>
                 </div>
                 <ChevronDown className="w-4 h-4 text-[#ae7e89] shrink-0" />
               </summary>
@@ -8309,7 +8309,7 @@ export function LineConversationView({
                 <div className="flex items-center justify-between"><span className="text-[10px] text-[#444]">生成思考摘要</span><button type="button" onClick={() => setEnableChainOfThought(v => !v)} className={'px-2.5 py-1 rounded-full text-[9px] ' + (enableChainOfThought ? 'bg-[#292724] text-white' : 'bg-[#eee] text-[#888]')}>{enableChainOfThought ? '开启' : '关闭'}</button></div>
                 <div className="flex items-center justify-between"><span className="text-[10px] text-[#444]">显示思考摘要</span><button type="button" onClick={() => setShowChainOfThoughtInChat(v => !v)} className={'px-2.5 py-1 rounded-full text-[9px] ' + (showChainOfThoughtInChat ? 'bg-[#292724] text-white' : 'bg-[#eee] text-[#888]')}>{showChainOfThoughtInChat ? '开启' : '关闭'}</button></div>
                 <div className="flex items-center justify-between"><span className="text-[10px] text-[#444]">动作描写</span><span className="px-2.5 py-1 rounded-full text-[9px] bg-[#eee] text-[#888]">群聊已关闭</span></div>
-                <div className="rounded-lg bg-[#fafafa] p-2.5"><div className="text-[9px] text-[#888]">当前群聊预设流程</div><div className="mt-1 text-[10px] text-[#9d6e7b]">{getActivePromptPreset('group')?.name || '默认预设'}</div></div>
+                <div className="rounded-lg bg-[#fafafa] p-2.5"><div className="text-[9px] text-[#888]">当前群聊预设流程</div><div className="mt-1 text-[10px] text-[#9d6e7b]">{activeGroupPreset.name}</div></div>
               </div>
             </details>
 
