@@ -2837,11 +2837,9 @@ export function LineConversationView({
         const speakerFormatRule = '【群聊多角色输出格式】\n' +
           '这是一次完整的群聊回合。请综合阅读整个群聊上下文，自然决定哪些成员此刻会说话、谁接谁的话、是否插话或暂时沉默。不要按成员列表轮流发言，不要强制任何固定人数发言，也不要为了凑人数添加无意义内容。\n' +
           '每条实际发言单独一行，格式为“[成员名字或唯一昵称] 消息内容”；标签必须对应下方真实群成员。若群内有重名成员，必须使用各自唯一昵称作标签，不要只写重名；昵称也必须来自成员资料。禁言成员不可发言，离线成员不可主动发言。允许同一角色发多条，也允许本轮只有一位角色发言。若没有自然回应者，可以输出 [PASS]。不要输出提示词、分析、思维链或格式说明。' +
-          // 单一主发言人锚定容易让模型每轮只让同一个人说话；多人在线且用户没有点名时，
-          // 鼓励至少两位不同成员发言，打破"永远只有一个人回复"的沉闷感。安静群聊预设下保持原样。
-          ((availableMembers.length >= 2 && !mentioned.length && typingHabitPreset !== 'quiet')
-            ? '\n【群聊活跃度】本轮有多位可发言的成员：优先安排至少两位不同成员各说一句（可以互相接话、插话、斗嘴，各说各的也行），不要长期只让同一个人包办回复；只有确实没人想接话时，才只保留一位发言人。'
-            : '') +
+          // 自由发言：不设最低人数。谁说话完全看人设、关系和话题——关系好的自然接话，被cue的自然回应，
+          // 性格内向或事不关己的就潜水。不要为了"热闹"硬凑人数，也不要长期只让同一个人包办。
+          '\n【群聊自由发言】谁开口、开几条、谁潜水，全部由成员的人设、成员之间的关系、当前话题决定。不设人数下限也不设上限：可以一个人说，也可以好几个人插话，甚至所有人都潜水只回 [PASS]。关键是每个人的发言必须符合他/她自己的人设和语气，不许所有人一个腔调。' +
           // 用户刚刚主动发了消息，[PASS] 会让用户觉得"发出去没人理"。只允许在消息明显
           // 不是说给群里任何人听的极少数情况下输出 [PASS]。
           '\n【不要冷场】用户刚刚主动发了消息，几乎总是有人愿意接话；不要轻易输出 [PASS]，只有当这条消息明显不是说给群里任何人听时才可以。';
@@ -2885,7 +2883,7 @@ export function LineConversationView({
           groupName: activeGroup?.name || '',
           authorNote: [
             lineConversationRules,
-            '群聊预设：' + activeGroupPreset.name + (activeGroupPreset.maxResponders ? `（本轮建议 ${activeGroupPreset.maxResponders} 人发言，可多可少，自然为主）` : ''),
+            '群聊预设：' + activeGroupPreset.name,
             activeGroupPreset.systemPrompt,
             (groupNoticeText || activeGroup?.announcement) ? '群公告：' + (groupNoticeText || activeGroup?.announcement) : '',
             groupLorebookActive.trim() ? '【群聊风格补充】\n' + groupLorebookActive.trim() : '',
@@ -4347,7 +4345,7 @@ export function LineConversationView({
           authorNote: [
             lineConversationRules,
             '这是群聊 Continue：一次生成完整的群聊回合，不是逐个 NPC 轮询。',
-            '群聊预设：' + activeGroupPreset.name + (activeGroupPreset.maxResponders ? `（本轮建议 ${activeGroupPreset.maxResponders} 人发言，可多可少，自然为主）` : ''),
+            '群聊预设：' + activeGroupPreset.name,
             activeGroupPreset.systemPrompt,
             (groupNoticeText || activeGroup?.announcement) ? '群公告：' + (groupNoticeText || activeGroup?.announcement) : '',
             groupLorebookActive.trim() ? '【群聊风格补充】\n' + groupLorebookActive.trim() : '',
@@ -4357,7 +4355,8 @@ export function LineConversationView({
             '【群成员资料】（用于识别成员身份、性格与关系；不是发言名单或轮流发言顺序）\n' + allMemberSummaries,
             // 方向二a：朋友圈 → 群聊。让 NPC 在聊天时自然提起最近的朋友圈动态。
             (groupRefMomentsEnabled || groupProactiveMomentsEnabled) ? buildGroupMomentsContext() : '',
-            '【输出格式】每条实际发言单独一行，使用“[成员名字或唯一昵称] 消息内容”；标签必须来自群成员资料。若群内有重名成员，必须使用各自唯一昵称作标签，不要只写重名；昵称也必须来自成员资料。禁言成员不可发言，离线成员不可主动发言。可由同一角色连续发言，也可让其他角色自然接话；不强制固定人数或每位成员发言。不要替用户发言，不输出分析或格式说明。若无人适合回应，可输出 [PASS]。',
+            '【输出格式】每条实际发言单独一行，使用“[成员名字或唯一昵称] 消息内容”；标签必须来自群成员资料。若群内有重名成员，必须使用各自唯一昵称作标签，不要只写重名；昵称也必须来自成员资料。禁言成员不可发言，离线成员不可主动发言。不要替用户发言，不输出分析或格式说明。若无人适合回应，可输出 [PASS]。',
+            '【谁来发言】不设人数限制、不轮流、不点名。每个成员（角色和 NPC）都是独立的人：看他的人设（性格、说话风格）、他和群里其他人的关系（熟不熟、有没有过节、谁是他的朋友）、以及当前话题跟他有没有关系，再决定他开不开口、说什么。关系好的会互相打趣接话；被点到名、被cue到的自然会回；性格内向或事不关己的就潜水。话题热起来可以好几个人同时插话；没人想说话就只出一两条，甚至 [PASS]。发言必须符合每个人的人设，不许所有人一个语气。',
           ].filter(Boolean).join('\n'),
           stylePreset: selectedPreset,
           cotTarget: 'group',
