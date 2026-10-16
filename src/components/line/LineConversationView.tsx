@@ -5733,7 +5733,12 @@ export function LineConversationView({
 
           if (msg.type === 'system-nudge') {
             return (
-              <div key={msg.id} data-line-message-id={msg.id} className="flex justify-center my-1.5 animate-in fade-in items-center gap-1.5">
+              <div key={msg.id} data-line-message-id={msg.id} className="flex justify-center my-1.5 animate-in fade-in items-center gap-1.5"
+                onPointerDown={(event) => handleMessagePointerDown(event, msg)}
+                onPointerUp={clearMessageLongPress}
+                onPointerLeave={clearMessageLongPress}
+                onContextMenu={(event) => { event.preventDefault(); setContextMenuMsg(msg); }}
+              >
                 <span className={`text-[10px] px-3 py-1 rounded-full shadow-2xs ${msg.status === 'failed' ? 'text-[#8b5d68] bg-[#fff7f8] border border-[#ead9de]' : 'text-[#999b9f] bg-[#f5f5f6] border border-[#ececee]'}`}>
                   {msg.text}
                 </span>
@@ -10836,6 +10841,21 @@ export function LineConversationView({
           >
             <div className="w-8 h-1 bg-[#ddd] rounded-full mx-auto" />
 
+            {/* 系统消息（失败提示等）：只保留删除 */}
+            {contextMenuMsg.type === 'system-nudge' ? (
+              <div
+                onClick={() => {
+                  setMessages((prev) => prev.filter((m) => String(m.id) !== String(contextMenuMsg.id)));
+                  setContextMenuMsg(null);
+                  showToast('已删除');
+                }}
+                className="py-3 flex items-center gap-3 cursor-pointer hover:bg-neutral-50 px-2 text-[#e0656e]"
+              >
+                <span className="text-[#333]">删除这条消息</span>
+              </div>
+            ) : (
+            <>
+
             {/* 表情回应条 (Emoji Reactions) */}
             <div className="flex items-center justify-around bg-[#f8f8fa] py-2 px-3 rounded-full text-xl shadow-2xs">
               {['❤️', '👍', '😂', '😮', '😭', '🥺'].map((emoji) => (
@@ -11024,6 +11044,8 @@ export function LineConversationView({
                 <span>{isMusicTogetherMessage(contextMenuMsg) ? '删除邀请卡' : '删除消息'}</span>
               </div>
             </div>
+            </>
+            )}
 
             <button
               onClick={() => setContextMenuMsg(null)}
