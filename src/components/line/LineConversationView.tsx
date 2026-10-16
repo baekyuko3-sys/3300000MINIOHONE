@@ -6314,7 +6314,7 @@ export function LineConversationView({
                             e.preventDefault();
                             setContextMenuMsg(msg);
                           }}
-                          className={`max-w-full rounded-[18px] px-3.5 py-2 text-[13px] leading-[1.5] whitespace-pre-wrap select-text shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
+                          className={`max-w-full rounded-[16px] px-3 py-1.5 text-[13px] leading-[1.5] whitespace-pre-wrap select-text shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
                             isMe
                               ? 'bubble-me bg-[#f7eef0] text-[#303034]'
                               : 'bubble-other bg-[#f5f5f6] text-[#303034]'
@@ -6398,8 +6398,9 @@ export function LineConversationView({
                   {/* 单条消息操作通过左右滑动触发：左滑编辑，右滑引用。这里不再常驻按钮，保持气泡紧凑。 */}
                 </div>
 
-              {/* Timestamp belongs below the message bubble, matching LINE's compact layout. */}
-              {!msg.isRecalled && (currentDateIsValid || msg.time) && (
+              {/* Timestamp belongs below the message bubble, matching LINE's compact layout.
+                  同一人连续发言时只在最后一条显示时间（C 版折叠），避免同一时间重复刷屏。 */}
+              {!msg.isRecalled && (currentDateIsValid || msg.time) && !effectiveSameAsNext && (
                 <div
                   title={formatLineMessageExactDateTime(msg, chatTimezone, lineTimeDisplayLocale)}
                   aria-label={formatLineMessageExactDateTime(msg, chatTimezone, lineTimeDisplayLocale)}
