@@ -501,10 +501,12 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   const [newPostText, setNewPostText] = useState('');
   const [newPostTag, setNewPostTag] = useState('#日常');
   const [showMomentsSettings, setShowMomentsSettings] = useState(false);
-  const [momentsSettings, setMomentsSettings] = usePersistentState<MomentsCommentSettings>(
+  const [momentsSettingsRaw, setMomentsSettings] = usePersistentState<MomentsCommentSettings>(
     'line:moments-settings',
     DEFAULT_MOMENTS_SETTINGS,
   );
+  // 兼容老版本存档：缺失的新字段用默认值补齐，避免 enabledNpcIds.length 这类读取崩溃。
+  const momentsSettings = { ...DEFAULT_MOMENTS_SETTINGS, ...momentsSettingsRaw };
   const [vroomScope, setVroomScope] = useState(() => readVroomScopeSettings());
   const [vroomFriendPersonaId, setVroomFriendPersonaId] = useState<string>('');
   const [vroomRev, setVroomRev] = useState(0);
