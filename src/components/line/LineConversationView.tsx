@@ -5325,6 +5325,8 @@ export function LineConversationView({
             ? getLineMessageDayKey(previousDate, chatTimezone)
             : '';
           const currentDateIsValid = Boolean(currentDate && !Number.isNaN(currentDate.getTime()));
+          // 空的 AI 占位消息（生成中、文字还没流进来）：只显示点点点，不显示头像名字时间。
+          const isEmptyAiPlaceholder = msg.sender !== 'me' && msg.type === 'ai-reply' && !String(msg.text || (msg as any).content || '').trim();
           const previousDateIsValid = Boolean(previousDate && !Number.isNaN(previousDate.getTime()));
           const showDaySeparator = Boolean(currentDateIsValid
             && (messageIndex === 0 || !previousDateIsValid || currentDay !== previousDay));
@@ -5830,8 +5832,8 @@ export function LineConversationView({
                 </div>
               )}
 
-              {/* Other Avatar：群聊里同一人连续发言时只在第一条显示头像，后续用占位保持对齐 */}
-              {!isMe && (
+              {/* Other Avatar：群聊里同一人连续发言时只在第一条显示头像，后续用占位保持对齐；空占位不显示头像 */}
+              {!isMe && !isEmptyAiPlaceholder && (
                 <>
                 {isGroup && effectiveSameAsPrevious ? (
                   <div className="w-[31px] shrink-0" aria-hidden="true" />
@@ -6290,8 +6292,8 @@ export function LineConversationView({
                   /* 常规文本气泡 (支持引用、长按菜单、表情反应) */
                   <div className="relative">
                     <div className={`flex flex-col gap-1 ${isMe ? 'items-end' : 'items-start'}`}>
-                      {/* 群聊角色名放在气泡上方，避免显示在气泡下方显得重复累赘；同一人连续发言只在第一条显示名字 */}
-                      {isGroup && !isMe && !effectiveSameAsPrevious && (
+                      {/* 群聊角色名放在气泡上方，避免显示在气泡下方显得重复累赘；同一人连续发言只在第一条显示名字；空占位不显示名字 */}
+                      {isGroup && !isMe && !effectiveSameAsPrevious && !isEmptyAiPlaceholder && (
                         <div className="text-[10px] leading-tight text-[#9a777f] px-1 mb-0.5 font-medium">
                           {_npcFallback?.name || groupMessageCharacter?.name || groupMessageMember?.nickname || groupMessageMember?.name || msg.senderName || '群成员'}
                         </div>
@@ -6307,7 +6309,13 @@ export function LineConversationView({
                           <div className="truncate opacity-80">{msg.quote.text || '多媒体消息'}</div>
                         </div>
                       )}
-                      {messageBubbleParts.map((part, partIndex) => (
+                      {messageBubbleParts.length === 0 && isEmptyAiPlaceholder ? (
+                        <div className="max-w-full rounded-[16px] px-4 py-2.5 bg-[#f5f5f6] flex items-center gap-1.5">
+                          {[0, 1, 2].map((dot) => (
+                            <span key={dot} className="w-1.5 h-1.5 rounded-full bg-[#b8b8bb] animate-bounce" style={{ animationDelay: `${dot * 140}ms`, animationDuration: '900ms' }} />
+                          ))}
+                        </div>
+                      ) : messageBubbleParts.map((part, partIndex) => (
                         <div
                           key={`${msg.id}-bubble-${partIndex}`}
                           onContextMenu={(e) => {
@@ -6399,8 +6407,8 @@ export function LineConversationView({
                 </div>
 
               {/* Timestamp belongs below the message bubble, matching LINE's compact layout.
-                  同一人连续发言时只在最后一条显示时间（C 版折叠），避免同一时间重复刷屏。 */}
-              {!msg.isRecalled && (currentDateIsValid || msg.time) && !effectiveSameAsNext && (
+                  同一人连续发言时只在最后一条显示时间（C 版折叠），避免同一时间重复刷屏；空占位不显示时间。 */}
+              {!msg.isRecalled && (currentDateIsValid || msg.time) && !effectiveSameAsNext && !isEmptyAiPlaceholder && (
                 <div
                   title={formatLineMessageExactDateTime(msg, chatTimezone, lineTimeDisplayLocale)}
                   aria-label={formatLineMessageExactDateTime(msg, chatTimezone, lineTimeDisplayLocale)}
