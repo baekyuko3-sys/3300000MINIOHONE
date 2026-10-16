@@ -1297,6 +1297,14 @@ export function LineConversationView({
     ? activeGroup.members.filter((member: any) => !!member && typeof member === 'object')
     : [];
   const allNpcs = getNpcs();
+  // 注意：这四个开关必须在 resolveGroupMemberCharacter 之前声明，
+  // 因为它在渲染早期就被调用（TDZ 报错教训）。
+  // NPC 群聊记忆总开关：默认关。关 = 空白，NPC 在本群不写入、不读取任何记忆。
+  const [npcGroupMemoryEnabled, setNpcGroupMemoryEnabled] = usePersistentState<boolean>(`line:npc-group-memory-enabled:${conversationStorageId}`, false);
+  // 朋友圈联动三开关：默认全关。
+  const [groupPostMomentsEnabled, setGroupPostMomentsEnabled] = usePersistentState<boolean>(`line:group-post-moments:${conversationStorageId}`, false);
+  const [groupRefMomentsEnabled, setGroupRefMomentsEnabled] = usePersistentState<boolean>(`line:group-ref-moments:${conversationStorageId}`, false);
+  const [groupProactiveMomentsEnabled, setGroupProactiveMomentsEnabled] = usePersistentState<boolean>(`line:group-proactive-moments:${conversationStorageId}`, false);
   const resolveGroupMemberCharacter = (member: any): ImportedCharacter | null => {
     if (member?.npcId || member?.kind === 'npc') {
       // Resolve NPC records by stable IDs first.
@@ -1749,12 +1757,6 @@ export function LineConversationView({
   const [groupMemoryPendingTimeline, setGroupMemoryPendingTimeline] = usePersistentState<string>(`line:group-memory-pending-timeline:${conversationStorageId}`, '');
   const [groupMemoryLastDraftCount, setGroupMemoryLastDraftCount] = usePersistentState<number>(`line:group-memory-last-count:${conversationStorageId}`, 0);
   const [groupMemoryReviewOpen, setGroupMemoryReviewOpen] = useState(false);
-  // NPC 群聊记忆总开关：默认关。关 = 空白，NPC 在本群不写入、不读取任何记忆。
-  const [npcGroupMemoryEnabled, setNpcGroupMemoryEnabled] = usePersistentState<boolean>(`line:npc-group-memory-enabled:${conversationStorageId}`, false);
-  // 朋友圈联动三开关：默认全关。
-  const [groupPostMomentsEnabled, setGroupPostMomentsEnabled] = usePersistentState<boolean>(`line:group-post-moments:${conversationStorageId}`, false);
-  const [groupRefMomentsEnabled, setGroupRefMomentsEnabled] = usePersistentState<boolean>(`line:group-ref-moments:${conversationStorageId}`, false);
-  const [groupProactiveMomentsEnabled, setGroupProactiveMomentsEnabled] = usePersistentState<boolean>(`line:group-proactive-moments:${conversationStorageId}`, false);
   const buildGroupMemoryDraft = (items: typeof messages) => {
     const indexed = items
       .map((message: any, index: number) => ({ message, index: index + 1, text: String(message.text || message.content || '').trim() }))
