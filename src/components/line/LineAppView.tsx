@@ -1005,6 +1005,30 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       .map(f => ({ ...f, note: typeof f.note === 'string' ? f.note : '', pinyin: typeof f.pinyin === 'string' ? f.pinyin : '' }))
     : [];
 
+  // 一次性补齐：已绑定但没有好友条目的角色，自动建好友（只跑一次）。
+  useEffect(() => {
+    if (window.localStorage.getItem('sane333:bound-friend-sync-v1')) return;
+    const boundIds = new Set<string>();
+    for (const p of userPersonas) {
+      if (Array.isArray((p as any)?.boundCharacterIds)) {
+        for (const id of (p as any).boundCharacterIds) if (id) boundIds.add(String(id));
+      }
+    }
+    if (!boundIds.size) { window.localStorage.setItem('sane333:bound-friend-sync-v1', 'done'); return; }
+    setFriendsList((prev: LineFriend[]) => {
+      const next = [...prev];
+      for (const cid of boundIds) {
+        if (next.some(f => !f.deleted && !f.npcId && (f as any).characterId === cid)) continue;
+        const ch = importedCharacters.find(c => c.id === cid);
+        if (!ch) continue;
+        next.unshift({ name: ch.name || '未命名', characterId: cid, kind: 'character', note: '', online: true, pinyin: '' } as LineFriend);
+      }
+      return next;
+    });
+    window.localStorage.setItem('sane333:bound-friend-sync-v1', 'done');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const refreshRequests = () => setNpcRequestRevision(value => value + 1);
     window.addEventListener('sane333:npc-friend-requests-updated', refreshRequests);
