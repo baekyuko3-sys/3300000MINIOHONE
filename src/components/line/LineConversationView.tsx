@@ -1840,7 +1840,24 @@ export function LineConversationView({
       ),
     }))
     .filter(book => book.entries.length > 0);
-  const [groupPresetId, setGroupPresetId] = usePersistentState(`line:group-preset:${conversationStorageId}`, 'online-natural');
+  // 群预设按群 ID 存，不用 conversationStorageId（动态 key 换会话就丢）。
+  const groupPresetStorageKey = `line:group-preset:${activeGroup?.id || conversationStorageId}`;
+  const [groupPresetId, setGroupPresetId] = usePersistentState(groupPresetStorageKey, 'online-natural');
+  // 迁移老 key 的数据（只跑一次）。
+  useEffect(() => {
+    if (!activeGroup?.id) return;
+    const oldKey = `line:group-preset:${conversationStorageId}`;
+    if (oldKey === groupPresetStorageKey) return;
+    try {
+      const oldVal = window.localStorage.getItem(oldKey);
+      const newVal = window.localStorage.getItem(groupPresetStorageKey);
+      if (oldVal && !newVal) {
+        window.localStorage.setItem(groupPresetStorageKey, oldVal);
+        setGroupPresetId(JSON.parse(oldVal));
+      }
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeGroup?.id]);
   const activeGroupPreset = getGroupPreset(groupPresetId, 'online');
   const [groupNoticeText, setGroupNoticeText] = usePersistentState<string>(`line:group-announcement:${conversationStorageId}`, '');
   const [showGroupInvitePicker, setShowGroupInvitePicker] = useState(false);
