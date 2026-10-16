@@ -66,6 +66,7 @@ import { appendLineMessage, editLineMessage, toggleLineReaction, setLineMessageF
 import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, searchLineMessages, type LineRuntimeMessage } from '../../store/lineRuntime';
 import { fetchLineWeather, formatLineWeather, type LineWeatherSnapshot } from '../../store/lineReality';
 import NpcGroupMemoryPanel from './NpcGroupMemoryPanel';
+import { getRecentMomentsForGroup, maybePostGroupMomentAfterRound } from '../../store/momentsAfterChat';
 import {
   Video, Settings, Plus, Mic, Send, Smile,
   Image as ImageIcon, Film, FileText, Calendar, Sliders, RefreshCw, X,
@@ -1750,6 +1751,10 @@ export function LineConversationView({
   const [groupMemoryReviewOpen, setGroupMemoryReviewOpen] = useState(false);
   // NPC 群聊记忆总开关：默认关。关 = 空白，NPC 在本群不写入、不读取任何记忆。
   const [npcGroupMemoryEnabled, setNpcGroupMemoryEnabled] = usePersistentState<boolean>(`line:npc-group-memory-enabled:${conversationStorageId}`, false);
+  // 朋友圈联动三开关：默认全关。
+  const [groupPostMomentsEnabled, setGroupPostMomentsEnabled] = usePersistentState<boolean>(`line:group-post-moments:${conversationStorageId}`, false);
+  const [groupRefMomentsEnabled, setGroupRefMomentsEnabled] = usePersistentState<boolean>(`line:group-ref-moments:${conversationStorageId}`, false);
+  const [groupProactiveMomentsEnabled, setGroupProactiveMomentsEnabled] = usePersistentState<boolean>(`line:group-proactive-moments:${conversationStorageId}`, false);
   const buildGroupMemoryDraft = (items: typeof messages) => {
     const indexed = items
       .map((message: any, index: number) => ({ message, index: index + 1, text: String(message.text || message.content || '').trim() }))
@@ -2583,6 +2588,68 @@ export function LineConversationView({
     return () => clearInterval(timer);
   }, [showAudioCall]);
 
+  // 方向二：朋友圈 → 群聊。2a 注入动态让 NPC 自然提起；2b 随机主动开话题。两个开关独立。
+  const buildGroupMomentsContext = () => {
+    const moments = getRecentMomentsForGroup(5);
+    if (!moments.length) return '';
+    let ctx = '';
+    if (groupRefMomentsEnabled) {
+      ctx += '【最近朋友圈动态】（群成员可能看过，聊天时可以自然提起、接话或调侃，不要每条都提，不要生硬）\n' +
+        moments.map(m => `${m.name}（${m.time}）：${m.text}`).join('\n');
+    }
+    if (groupProactiveMomentsEnabled && Math.random() < 0.35) {
+      const target = moments[Math.floor(Math.random() * moments.length)];
+      if (ctx) ctx += '\n';
+      ctx += `【主动开话题】${target.name}的朋友圈「${target.text.slice(0, 60)}」挺有意思，选一位性格合适的成员主动开个话题聊聊（不要每次都做，偶尔一次）。`;
+    }
+    return ctx;
+  };
+
+  // 方向二b：手动触发 NPC 主动聊最新朋友圈。
+  const triggerProactiveMomentTopic = async () => {
+    const moments = getRecentMomentsForGroup(3);
+    if (!moments.length) { showToast('最近没有朋友圈动态'); return; }
+    const target = moments[0];
+    // 选一位在线 NPC/角色来开话题
+    const candidates = groupAiMembers.filter(({ member }) => !member.muted && member.online !== false);
+    if (!candidates.length) { showToast('没有可发言的成员'); return; }
+    const picked = candidates[Math.floor(Math.random() * candidates.length)];
+    const npcId = picked.member.npcId || (picked.member.kind === 'npc' ? picked.member.id : '');
+    const npc = npcId ? allNpcs.find(n => String(n.id) === npcId) : undefined;
+    try {
+      const { generateCreativeText, resolveChannelAiSettings } = await import('../../ai/aiEngine');
+      const settings = resolveChannelAiSettings('chat');
+      const topic = await generateCreativeText({
+        settings,
+        systemPrompt: `你是${picked.character?.name || picked.member.name}，在群聊「${activeGroup?.name}」里。刚看到朋友圈动态，想主动开个话题聊聊。只输出一句话（30字内），自然、有你的性格，不要@所有人。`,
+        userPrompt: `朋友圈：${target.name}：${target.text}\n开个话题：`,
+        temperature: 0.85,
+      });
+      const text = String(topic || '').trim();
+      if (!text) { showToast('生成失败，重试一下'); return; }
+      const msg: any = {
+        id: 'grp-proactive-' + Date.now(),
+        sender: 'other',
+        senderType: picked.member.npcId || picked.member.kind === 'npc' ? 'npc' : 'character',
+        senderId: (picked.member.kind === 'npc' ? picked.member.npcId || picked.member.id : picked.member.id) || picked.character?.id,
+        senderName: picked.member.nickname || picked.character?.name || picked.member.name,
+        characterId: picked.character?.id,
+        text,
+        time: '刚刚',
+        type: 'ai-reply',
+        status: 'delivered',
+        createdAt: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, msg]);
+      try {
+        const { appendLineMessage } = await import('../../store/lineRuntime');
+        appendLineMessage(conversationStorageId, msg as any);
+      } catch { /* best-effort */ }
+    } catch (e) {
+      showToast('生成失败，重试一下');
+    }
+  };
+
   const handleSend = async (shouldReply = true) => {
     const userText = inputText.trim();
     if (!userText) return;
@@ -2803,6 +2870,8 @@ export function LineConversationView({
             allowGroupProactiveDM ? '【群聊内容延伸到单聊的许可】可以根据本群实际发生且该角色确实知道的内容，自然判断是否主动向用户发起单聊；必须符合角色性格、关系与情境，不要频繁打扰，也不代表每次都必须发起。此许可仅来源于当前群聊设置。' : '【群聊主动单聊】关闭；不得仅因为群聊内容而主动发起单聊。',
             '【成员状态】\n' + (activeGroup?.members || []).map(member => member.name + '：' + [member.muted ? '禁言，不可发言' : '', member.online === false ? '离线，不可主动发言' : '在线', member.mood || '', member.relationship || ''].filter(Boolean).join(' / ')).join('\n'),
             '【群成员资料】（用于识别成员身份、性格与关系；不是发言名单或轮流发言顺序）\n' + allMemberSummaries,
+            // 方向二a：朋友圈 → 群聊。让 NPC 在聊天时自然提起最近的朋友圈动态。
+            (groupRefMomentsEnabled || groupProactiveMomentsEnabled) ? buildGroupMomentsContext() : '',
             speakerFormatRule,
           ].filter(Boolean).join('\n'),
           stylePreset: selectedPreset,
@@ -2987,6 +3056,35 @@ export function LineConversationView({
           }
         }
         window.dispatchEvent(new CustomEvent('sane333:play-sound', { detail: { kind: 'message' } }));
+
+        // 方向一：群聊 → 朋友圈。本轮结束后，发言者可能有感而发一条。
+        if (groupPostMomentsEnabled && finalMessages.length) {
+          void (async () => {
+            try {
+              const speakers = new Map<string, { kind: 'npc' | 'character'; npc?: any; character?: any; texts: string[] }>();
+              for (const part of parts) {
+                const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
+                const finalIdx = memberIdx >= 0 ? memberIdx : primaryMemberIndex;
+                const gm = groupAiMembers[finalIdx];
+                if (!gm) continue;
+                const key = String(gm.member.npcId || gm.member.id || gm.character?.id);
+                const isNpc = Boolean(gm.member.npcId || gm.member.kind === 'npc');
+                const npcId = String(gm.member.npcId || (gm.member.kind === 'npc' ? gm.member.id || '' : '')).trim();
+                const npc = npcId ? allNpcs.find(n => String(n.id) === npcId) : undefined;
+                if (!speakers.has(key)) {
+                  speakers.set(key, { kind: isNpc ? 'npc' : 'character', npc, character: gm.character, texts: [] });
+                }
+                speakers.get(key)!.texts.push(part.text);
+              }
+              const posted = await maybePostGroupMomentAfterRound({
+                speakers: [...speakers.values()],
+                groupName: activeGroup?.name || '群聊',
+                roundSummary: parts.map(p => p.rawSpeaker + '：' + p.text).join('\n').slice(0, 800),
+              });
+              if (posted) showToast('有成员发了一条朋友圈 ✦');
+            } catch { /* best-effort */ }
+          })();
+        }
 
         setIsTyping(false);
         return;
@@ -4234,6 +4332,8 @@ export function LineConversationView({
             groupMemorySummary.trim() ? '【当前群聊独立记忆总结】\n' + groupMemorySummary.trim() : '',
             groupMemorySettings.trim() ? '【当前群聊记忆规则】\n' + groupMemorySettings.trim() : '',
             '【群成员资料】（用于识别成员身份、性格与关系；不是发言名单或轮流发言顺序）\n' + allMemberSummaries,
+            // 方向二a：朋友圈 → 群聊。让 NPC 在聊天时自然提起最近的朋友圈动态。
+            (groupRefMomentsEnabled || groupProactiveMomentsEnabled) ? buildGroupMomentsContext() : '',
             '【输出格式】每条实际发言单独一行，使用“[成员名字或唯一昵称] 消息内容”；标签必须来自群成员资料。若群内有重名成员，必须使用各自唯一昵称作标签，不要只写重名；昵称也必须来自成员资料。禁言成员不可发言，离线成员不可主动发言。可由同一角色连续发言，也可让其他角色自然接话；不强制固定人数或每位成员发言。不要替用户发言，不输出分析或格式说明。若无人适合回应，可输出 [PASS]。',
           ].filter(Boolean).join('\n'),
           stylePreset: selectedPreset,
@@ -8354,6 +8454,40 @@ export function LineConversationView({
                   personaId={resolvedPersonaId}
                   showToast={showToast}
                 />
+              </div>
+            </details>
+
+            {/* 朋友圈联动：群聊 ↔ 朋友圈双向 */}
+            <details className="bg-white rounded-[14px] border border-[#f0f0f1] overflow-hidden">
+              <summary className="list-none cursor-pointer p-3.5 flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+                <div>
+                  <div className="font-semibold text-[12px] text-[#333]">朋友圈联动</div>
+                  <div className="text-[10px] text-[#999] mt-0.5">群聊 → 朋友圈 · 朋友圈 → 群聊</div>
+                </div>
+                <ChevronDown className="w-4 h-4 text-[#ae7e89] shrink-0" />
+              </summary>
+              <div className="px-3.5 pb-3.5 space-y-3 border-t border-[#f2f2f3] pt-3">
+                <label className="flex items-center justify-between gap-3">
+                  <span className="text-[10px] text-[#555]">群聊后可能发朋友圈<span className="block text-[9px] text-[#aaa] mt-0.5">一轮结束后，发言的 NPC/角色可能有感而发一条</span></span>
+                  <input type="checkbox" checked={groupPostMomentsEnabled} onChange={e => setGroupPostMomentsEnabled(e.target.checked)} className="accent-[#ae7e89] shrink-0" />
+                </label>
+                <label className="flex items-center justify-between gap-3">
+                  <span className="text-[10px] text-[#555]">聊天时参考朋友圈<span className="block text-[9px] text-[#aaa] mt-0.5">NPC 会自然提起最近的朋友圈动态</span></span>
+                  <input type="checkbox" checked={groupRefMomentsEnabled} onChange={e => setGroupRefMomentsEnabled(e.target.checked)} className="accent-[#ae7e89] shrink-0" />
+                </label>
+                <label className="flex items-center justify-between gap-3">
+                  <span className="text-[10px] text-[#555]">主动聊朋友圈<span className="block text-[9px] text-[#aaa] mt-0.5">有新动态时，NPC 可能主动在群里开话题</span></span>
+                  <input type="checkbox" checked={groupProactiveMomentsEnabled} onChange={e => setGroupProactiveMomentsEnabled(e.target.checked)} className="accent-[#ae7e89] shrink-0" />
+                </label>
+                {groupProactiveMomentsEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => void triggerProactiveMomentTopic()}
+                    className="w-full py-2 rounded-lg bg-[#f7eef0] border border-[#ead6dc] text-[#8c5f6b] text-[10px]"
+                  >
+                    让 NPC 现在就聊聊最新朋友圈
+                  </button>
+                )}
               </div>
             </details>
 

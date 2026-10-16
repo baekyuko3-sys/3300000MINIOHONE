@@ -239,3 +239,92 @@ export async function generateNpcMomentNow(npcId?: string): Promise<string> {
   writePosts([post, ...readPosts()]);
   return '生成成功：NPC ' + npc.name + ' 发了一条朋友圈';
 }
+
+/**
+ * 群聊 → 朋友圈：一轮结束后，选一位本轮发言者，有感而发就发一条。
+ * speakers: [{ kind: 'npc'|'character', npc?: SaneNpc, character?: ImportedCharacter, texts: string[] }]
+ */
+export async function maybePostGroupMomentAfterRound(opts: {
+  speakers: Array<{
+    kind: 'npc' | 'character';
+    npc?: SaneNpc;
+    character?: ImportedCharacter;
+    texts: string[];
+  }>;
+  groupName: string;
+  roundSummary: string;
+}): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  if (!opts.speakers.length) return false;
+  const cfg = readMomentsSettings();
+  if (!cfg.allowCharacterAutoPost) return false;
+  // 选本轮话最多的发言者
+  const sorted = [...opts.speakers].sort((a, b) => b.texts.join('').length - a.texts.join('').length);
+  const picked = sorted[0];
+  const name = picked.kind === 'npc' ? picked.npc!.name : picked.character!.name;
+  // 权限检查
+  if (picked.kind === 'npc') {
+    const postable = listPostableNpcs(cfg);
+    if (!postable.some(n => n.id === picked.npc!.id)) return false;
+  } else {
+    if (!isCharacterAllowedToPostMoments(picked.character!.id, cfg)) return false;
+  }
+  const chatText = picked.texts.join('\n').slice(-400);
+  // AI 判定：这轮有没有值得发朋友圈的点
+  let yes = false;
+  try {
+    const settings = resolveChannelAiSettings('moments');
+    const raw = await generateCreativeText({
+      settings: { ...settings, maxOutputTokens: 8 },
+      systemPrompt: '你是朋友圈判定器。只输出 YES 或 NO：角色刚在群聊「' + opts.groupName + '」里聊完这些，是否有值得发朋友圈的生活点（见闻/心情/趣事）？普通问答、干巴寒暄一律 NO。',
+      userPrompt: name + '在群里说：\n' + chatText,
+      temperature: 0.2,
+    });
+    yes = raw.trim().toUpperCase().startsWith('Y');
+  } catch { return false; }
+  if (!yes) return false;
+  // 生成朋友圈正文
+  let text = '';
+  try {
+    if (picked.kind === 'npc') {
+      text = await makeNpcMomentText(picked.npc!, '刚在群聊「' + opts.groupName + '」里聊了这些：\n' + chatText + '\n有感而发就发一条朋友圈（30-120字，有生活感），没感觉就输出空。');
+    } else {
+      text = await makeMomentText(picked.character!, '刚在群聊「' + opts.groupName + '」里聊了这些：\n' + chatText + '\n有感而发就发一条朋友圈（30-120字，有生活感），没感觉就输出空。');
+    }
+  } catch { return false; }
+  if (!text) return false;
+  const post: any = {
+    id: 'moment-group-' + Date.now().toString(36),
+    name,
+    text,
+    time: '刚刚',
+    tag: '#' + opts.groupName,
+    liked: false, likes: 0, likers: [],
+    commentsList: [] as any[],
+    source: 'group-chat',
+    groupName: opts.groupName,
+  };
+  if (picked.kind === 'npc') {
+    post.npcId = picked.npc!.id;
+    post.characterId = picked.npc!.boundCharacterId || undefined;
+  } else {
+    post.characterId = picked.character!.id;
+  }
+  try {
+    const { comments } = await spawnBatchCommentsForPost({ post, meName: meName(), settings: cfg });
+    if (comments.length) post.commentsList = comments;
+  } catch { /* best-effort */ }
+  writePosts([post, ...readPosts()]);
+  return true;
+}
+
+/** 读最近 N 条朋友圈（给群聊 prompt 注入用） */
+export function getRecentMomentsForGroup(count: number = 5): Array<{ name: string; text: string; time: string }> {
+  try {
+    return readPosts().slice(0, count).map((p: any) => ({
+      name: String(p.name || '朋友'),
+      text: String(p.text || '').slice(0, 120),
+      time: String(p.time || ''),
+    })).filter(p => p.text);
+  } catch { return []; }
+}
