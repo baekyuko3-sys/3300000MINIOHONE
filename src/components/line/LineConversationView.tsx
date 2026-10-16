@@ -2888,7 +2888,6 @@ export function LineConversationView({
             (groupNoticeText || activeGroup?.announcement) ? '群公告：' + (groupNoticeText || activeGroup?.announcement) : '',
             groupLorebookActive.trim() ? '【群聊风格补充】\n' + groupLorebookActive.trim() : '',
             activeGroup?.relationships?.length ? '【成员关系】\n' + activeGroup.relationships.map(item => item.from + ' → ' + item.to + '：' + item.relation).join('\n') : '',
-            activeGroup?.events?.length ? '【群事件记忆】\n' + activeGroup.events.slice(-12).map(item => item.text).join('\n') : '',
             (npcGroupMemoryEnabled ? buildGroupAiSummariesContext(conversationStorageId) : '').trim() ? '【群聊记忆（AI 总结）】\n' + buildGroupAiSummariesContext(conversationStorageId).trim() : '',
             groupMemorySettings.trim() ? '【当前群聊记忆规则】\n' + groupMemorySettings.trim() : '',
             allowGroupProactiveDM ? '【群聊内容延伸到单聊的许可】可以根据本群实际发生且该角色确实知道的内容，自然判断是否主动向用户发起单聊；必须符合角色性格、关系与情境，不要频繁打扰，也不代表每次都必须发起。此许可仅来源于当前群聊设置。' : '【群聊主动单聊】关闭；不得仅因为群聊内容而主动发起单聊。',
@@ -3039,7 +3038,6 @@ export function LineConversationView({
               mood: '刚刚参与群聊',
               memory: [...(foundMember.memory || []), part.text.slice(0, 160)].slice(-20),
             });
-            addLineGroupMemory(activeGroup?.id || '', (foundMember.name || part.rawSpeaker) + ' 在群聊中说：' + part.text.slice(0, 180));
             const speakerCharacter = groupAiMembers[finalIdx]?.character;
             const isNpcMember = Boolean(foundMember.npcId || foundMember.kind === 'npc');
             const memberNpcId = String(foundMember.npcId || (foundMember.kind === 'npc' ? foundMember.id || '' : '')).trim();
@@ -4256,7 +4254,6 @@ export function LineConversationView({
           }),
           '【群公告】' + (groupNoticeText || activeGroup?.announcement || '暂无'),
           '【已有关系】' + (activeGroup?.relationships || groupRelationships || []).map(item => item.from + ' → ' + item.to + '：' + item.relation).join('\n'),
-          '【群事件】' + (activeGroup?.events || []).slice(-12).map(item => item.text).join('\n'),
           '【最近聊天】' + messages.slice(-Math.max(1, groupMemoryContextCount || 20)).map(message => (message.sender === 'me' ? '我' : (message.senderName || '角色')) + ': ' + (message.text || '')).join('\n'),
         ].join('\n'),
         temperature: 0.55,
@@ -4353,7 +4350,6 @@ export function LineConversationView({
             (groupNoticeText || activeGroup?.announcement) ? '群公告：' + (groupNoticeText || activeGroup?.announcement) : '',
             groupLorebookActive.trim() ? '【群聊风格补充】\n' + groupLorebookActive.trim() : '',
             activeGroup?.relationships?.length ? '【成员关系】\n' + activeGroup.relationships.map(item => item.from + ' → ' + item.to + '：' + item.relation).join('\n') : '',
-            activeGroup?.events?.length ? '【群事件记忆】\n' + activeGroup.events.slice(-12).map(item => item.text).join('\n') : '',
             (npcGroupMemoryEnabled ? buildGroupAiSummariesContext(conversationStorageId) : '').trim() ? '【群聊记忆（AI 总结）】\n' + buildGroupAiSummariesContext(conversationStorageId).trim() : '',
             groupMemorySettings.trim() ? '【当前群聊记忆规则】\n' + groupMemorySettings.trim() : '',
             '【群成员资料】（用于识别成员身份、性格与关系；不是发言名单或轮流发言顺序）\n' + allMemberSummaries,
@@ -4424,7 +4420,6 @@ export function LineConversationView({
             online: true, lastSeenAt: new Date().toISOString(), mood: '刚刚参与群聊',
             memory: [...(found.member.memory || []), part.text.slice(0, 160)].slice(-20),
           });
-          addLineGroupMemory(activeGroup?.id || '', found.member.name + ' 在群聊中说：' + part.text.slice(0, 180));
           const isNpcMember = Boolean(found.member.npcId || found.member.kind === 'npc');
           const memberNpcId = String(found.member.npcId || (found.member.kind === 'npc' ? found.member.id || '' : '')).trim();
           // Stable NPC IDs are authoritative. Only legacy members without an ID
@@ -5868,6 +5863,10 @@ export function LineConversationView({
             : (importedCharacter?.avatar || '');
           const thinkingContent = msg.thinkingSummary || msg.metadata?.thinkingSummary || msg.thinking || msg.metadata?.thinking || '';
           const hasThinking = Boolean(String(thinkingContent).trim()) && showChainOfThoughtInChat;
+          // COT 预设指示器：每轮只在第一条 AI 回复上方显示一次，不在每条上重复。
+          const prevVisibleMsg = messageIndex > 0 ? visibleMessages[messageIndex - 1] : null;
+          const isAiRoundStart = !prevVisibleMsg || prevVisibleMsg.sender === 'me' || prevVisibleMsg.sender === 'user';
+          const showCotHeader = hasThinking && isAiRoundStart;
           const cotLabel = getActivePromptPreset(isGroup ? 'group' : 'single')?.name || '预设流程';
           const cotStyle = resolvedCotPreset.displayStyle || 'minimal';
           const cotStyleClass = cotStyle === 'soft'
@@ -6017,7 +6016,7 @@ export function LineConversationView({
                 className={`${isGroup && !isMe ? 'flex-1 min-w-0 flex flex-col items-start' : 'max-w-[78%] relative touch-pan-y select-none ' + (isMe ? 'items-end' : 'items-start')}`}
               >
                 {/* Preset flow · keep the existing compact disclosure UI */}
-                {!isMe && hasThinking && (
+                {!isMe && showCotHeader && (
                   <div className={`mb-1.5 ${cotStyle === 'minimal' ? '' : 'rounded-[11px] border px-2.5 py-1.5'} ${cotStyleClass}`}>
                     <button
                       type="button"
