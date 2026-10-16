@@ -5830,9 +5830,12 @@ export function LineConversationView({
                 </div>
               )}
 
-              {/* Other Avatar */}
+              {/* Other Avatar：群聊里同一人连续发言时只在第一条显示头像，后续用占位保持对齐 */}
               {!isMe && (
                 <>
+                {isGroup && effectiveSameAsPrevious ? (
+                  <div className="w-[31px] shrink-0" aria-hidden="true" />
+                ) : (
                 <div
                   onClick={() => {
                     if (isGroup) {
@@ -5872,6 +5875,7 @@ export function LineConversationView({
                     );
                   })()}
                 </div>
+                )}
                 </>
               )}
 
@@ -6286,8 +6290,8 @@ export function LineConversationView({
                   /* 常规文本气泡 (支持引用、长按菜单、表情反应) */
                   <div className="relative">
                     <div className={`flex flex-col gap-1 ${isMe ? 'items-end' : 'items-start'}`}>
-                      {/* 群聊角色名放在气泡上方，避免显示在气泡下方显得重复累赘 */}
-                      {isGroup && !isMe && (
+                      {/* 群聊角色名放在气泡上方，避免显示在气泡下方显得重复累赘；同一人连续发言只在第一条显示名字 */}
+                      {isGroup && !isMe && !effectiveSameAsPrevious && (
                         <div className="text-[10px] leading-tight text-[#9a777f] px-1 mb-0.5 font-medium">
                           {_npcFallback?.name || groupMessageCharacter?.name || groupMessageMember?.nickname || groupMessageMember?.name || msg.senderName || '群成员'}
                         </div>
@@ -6402,6 +6406,8 @@ export function LineConversationView({
                   className={`mt-0.5 flex min-h-[12px] items-center gap-1 px-1 text-[9px] leading-[1.2] text-[#a6a6aa] ${isMe ? 'justify-end' : 'justify-start'}`}
                 >
                   {isMe ? (() => {
+                    // 群聊里不显示已读/未读（成员多时语义含混），只留时间；单聊保持原逻辑。
+                    if (isGroup) return null;
                     const msgIndex = messages.findIndex((candidate) => String(candidate.id) === String(msg.id));
                     const hasRoleReply = msgIndex >= 0 && messages.slice(msgIndex + 1).some((candidate) =>
                       candidate.sender !== 'me' && candidate.type !== 'system-nudge'
@@ -6409,7 +6415,8 @@ export function LineConversationView({
                     const readLabel = hasRoleReply || msg.isRead ? '已读' : '未读';
                     return <span className={msg.isRead || hasRoleReply ? "text-[#ae7e89] font-medium" : "text-[#b8b8bb] font-medium"}>{readLabel}</span>;
                   })() : (
-                    <span className="text-[#ae7e89] font-medium">已读</span>
+                    // 群聊里他人的消息不显示"已读"（无意义），只留时间；单聊保持原样。
+                    isGroup ? null : <span className="text-[#ae7e89] font-medium">已读</span>
                   )}
                   <span>{formatLineMessageClock(msg, chatTimezone, lineTimeDisplayLocale)}</span>
                 </div>
