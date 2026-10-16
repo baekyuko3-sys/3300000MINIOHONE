@@ -1072,7 +1072,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
 
   const resolveFriendAvatar = (friend: LineFriend) => {
     if (friend.npcId) {
-      const npc = allLineNpcs.find(item => item.id === friend.npcId);
+      const npc = allLineNpcs.find(item => item && item.id === friend.npcId);
       if (npc?.avatar) return npc.avatar;
       const bound = importedCharacters.find(c => c.id === (npc?.boundCharacterId || friend.characterId));
       return bound?.avatar || '';
@@ -1089,7 +1089,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       return '';
     }
     if (item.npcId) {
-      const npc = allLineNpcs.find(n => n.id === item.npcId);
+      const npc = allLineNpcs.find(n => n && n.id === item.npcId);
       if (npc?.avatar) return npc.avatar;
       const bound = importedCharacters.find(c => c.id === (npc?.boundCharacterId || item.characterId));
       return bound?.avatar || '';
@@ -1183,7 +1183,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   };
   const resolveMomentAvatar = (p: Record<string, any>) => {
     if (p?.npcId) {
-      const npc = allLineNpcs.find(n => n.id === p.npcId);
+      const npc = allLineNpcs.find(n => n && n.id === p.npcId);
       if (npc?.avatar) return npc.avatar;
       const bound = importedCharacters.find(c => c.id === (npc?.boundCharacterId || p.characterId));
       return bound?.avatar || '';
@@ -1200,6 +1200,8 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     );
   };
   const visibleMoments = momentsPosts.filter((p) => {
+    // 数据完整性兜底：坏掉的帖子（无 id / 正文不是字符串）直接过滤，不进渲染，避免整屏崩溃。
+    if (!p || typeof p !== 'object' || !p.id || typeof p.text !== 'string') return false;
     if (isOwnMoment(p)) return true;
     const authorKey = p.npcId ? 'npc:' + p.npcId : p.characterId ? 'character:' + p.characterId : p.name ? 'character-name:' + p.name : '';
     const viewerKey = 'persona:' + (effectivePersonaId || 'default');
@@ -1220,7 +1222,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     }
     if (hasBounds) {
       if (p.npcId) {
-        const npc = allLineNpcs.find(n => n.id === p.npcId);
+        const npc = allLineNpcs.find(n => n && n.id === p.npcId);
         const bound = npc?.boundCharacterId || p.characterId;
         return !bound || boundSet.has(bound);
       }
@@ -3266,7 +3268,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                             canPostMoments: turningOn,
                           });
                           setMomentsSettings(prev => {
-                            const allIds = allLineNpcs.map(n => n.id);
+                            const allIds = allLineNpcs.filter(n => n).map(n => n.id);
                             const current = prev.enabledNpcIds.length === 0 ? allIds : prev.enabledNpcIds;
                             let next = turningOn
                               ? (current.includes(npc.id) ? current : [...current, npc.id])

@@ -47,6 +47,7 @@ const KEY = 'phone:npcs';
 export function getNpcs(): SaneNpc[] {
   const saved = readPersistentState<Partial<SaneNpc>[]>(KEY, []);
   return saved
+    .filter(item => item && typeof item === 'object')
     .map(item => ({
       ...item,
       boundCharacterId: item.boundCharacterId || item.sourceCharacterId || '',
