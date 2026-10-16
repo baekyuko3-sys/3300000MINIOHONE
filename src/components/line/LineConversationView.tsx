@@ -65,8 +65,8 @@ import {
 import { appendLineMessage, editLineMessage, toggleLineReaction, setLineMessageFavorite, recordLineCall, markLineMessageFailed, clearLineConversation, recallLineMessage, updateLineMessage } from '../../store/lineRuntime';
 import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, searchLineMessages, type LineRuntimeMessage } from '../../store/lineRuntime';
 import { fetchLineWeather, formatLineWeather, type LineWeatherSnapshot } from '../../store/lineReality';
-import NpcGroupMemoryPanel from './NpcGroupMemoryPanel';
 import { getRecentMomentsForGroup, maybePostGroupMomentAfterRound } from '../../store/momentsAfterChat';
+import { getGroupAiSummaries, updateGroupAiSummary, deleteGroupAiSummary, buildGroupAiSummariesContext } from '../../store/groupAiSummaries';
 import {
   Video, Settings, Plus, Mic, Send, Smile,
   Image as ImageIcon, Film, FileText, Calendar, Sliders, RefreshCw, X,
@@ -1757,56 +1757,78 @@ export function LineConversationView({
   const [groupMemoryPendingTimeline, setGroupMemoryPendingTimeline] = usePersistentState<string>(`line:group-memory-pending-timeline:${conversationStorageId}`, '');
   const [groupMemoryLastDraftCount, setGroupMemoryLastDraftCount] = usePersistentState<number>(`line:group-memory-last-count:${conversationStorageId}`, 0);
   const [groupMemoryReviewOpen, setGroupMemoryReviewOpen] = useState(false);
-  const buildGroupMemoryDraft = (items: typeof messages) => {
-    const indexed = items
-      .map((message: any, index: number) => ({ message, index: index + 1, text: String(message.text || message.content || '').trim() }))
-      .filter((item) => item.text);
-    const recent = indexed.slice(-Math.max(1, groupMemoryEvery));
-    const lines = recent.map(({ message, text }) => {
-      const speaker = message.sender === 'me' || message.sender === 'user' ? '我' : (message.senderName || message.characterName || message.sender || '群成员');
-      return `${speaker}：${text.replace(/\s+/g, ' ')}`;
-    });
-    const compact = lines.slice(-Math.max(10, Math.floor(groupMemoryLength / 35)));
-    const summary = [
-      '【阶段概述】',
-      compact.slice(0, Math.min(3, compact.length)).join('；'),
-      '',
-      '【关键进展】',
-      ...compact.slice(-Math.max(3, Math.floor(compact.length * 0.3))),
-    ].join('\n');
-    const boundedSummary = summary.length > groupMemoryLength ? summary.slice(0, groupMemoryLength) + '…' : summary;
-    const timeline = recent.reduce((events: string[], item, index) => {
-      const prior = recent[index - 1];
-      const time = (item.message as any).timestamp || (item.message as any).createdAt || (item.message as any).time;
-      const priorTime = prior && ((prior.message as any).timestamp || (prior.message as any).createdAt || (prior.message as any).time);
-      const gap = time && priorTime ? Math.abs(new Date(time).getTime() - new Date(priorTime).getTime()) : 0;
-      const startsEvent = index === 0 || (Number.isFinite(gap) && gap > 30 * 60 * 1000);
-      const speaker = item.message.sender === 'me' || item.message.sender === 'user' ? '我' : (item.message.senderName || item.message.characterName || item.message.sender || '群成员');
-      const entry = `${item.index} · ${speaker}：${item.text.replace(/\s+/g, ' ').slice(0, 180)}`;
-      if (startsEvent || events.length === 0) events.push(`消息 ${item.index}：${entry}`);
-      else events[events.length - 1] += `\n${entry}`;
-      return events;
-    }, []);
-    return { summary: boundedSummary, timeline: timeline.join('\n\n') };
+  // 新版统一记忆：上下文条数（默认20，可手写）+ 总结风格 + 时间轴风格
+  const [groupMemoryContextCount, setGroupMemoryContextCount] = usePersistentState<number>(`line:group-memory-context-count:${conversationStorageId}`, 20);
+  const [groupMemorySummaryStyle, setGroupMemorySummaryStyle] = usePersistentState<string>(`line:group-memory-summary-style:${conversationStorageId}`, '简洁');
+  const [groupMemorySummaryStyleCustom, setGroupMemorySummaryStyleCustom] = usePersistentState<string>(`line:group-memory-summary-style-custom:${conversationStorageId}`, '');
+  const [groupMemoryTimelineStyle, setGroupMemoryTimelineStyle] = usePersistentState<string>(`line:group-memory-timeline-style:${conversationStorageId}`, '一句话');
+  const [groupMemoryTimelineStyleCustom, setGroupMemoryTimelineStyleCustom] = usePersistentState<string>(`line:group-memory-timeline-style-custom:${conversationStorageId}`, '');
+  const [groupAiSummariesTick, setGroupAiSummariesTick] = useState(0);
+  const [groupTimelineOpen, setGroupTimelineOpen] = useState(false);
+  const [editingSummaryId, setEditingSummaryId] = useState<string | null>(null);
+  const [editingSummaryText, setEditingSummaryText] = useState('');
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  // 真·AI 总结：调 API 生成，不再是字符串拼接。
+  const generateGroupAiSummary = async (kind: 'auto' | 'manual' = 'auto'): Promise<boolean> => {
+    if (!messages.length || isGeneratingSummary) return false;
+    setIsGeneratingSummary(true);
+    try {
+      const { generateCreativeText, resolveChannelAiSettings } = await import('../../ai/aiEngine');
+      const { addGroupAiSummary } = await import('../../store/groupAiSummaries');
+      const every = Math.max(10, groupMemoryEvery || 100);
+      const slice = messages.slice(-every);
+      const rangeEnd = messages.length;
+      const rangeStart = Math.max(1, rangeEnd - slice.length + 1);
+      const lines = slice.map((m: any) => {
+        const speaker = m.sender === 'me' || m.sender === 'user' ? '我' : (m.senderName || m.characterName || m.sender || '群成员');
+        return `${speaker}：${String(m.text || m.content || '').replace(/\s+/g, ' ').slice(0, 200)}`;
+      }).filter(Boolean).join('\n');
+      const styleText = groupMemorySummaryStyleCustom.trim() || `风格：${groupMemorySummaryStyle}`;
+      const tlStyleText = groupMemoryTimelineStyleCustom.trim() || `风格：${groupMemoryTimelineStyle}`;
+      const settings = resolveChannelAiSettings('chat');
+      const raw = await generateCreativeText({
+        settings: { ...settings, maxOutputTokens: 600 },
+        systemPrompt: `你是群聊记忆整理员。把下面这段群聊（第${rangeStart}–${rangeEnd}楼）总结成一段话。${styleText}。只讲重要的人、事、关系变化和约定，不要逐条复述，不要输出分析过程。`,
+        userPrompt: lines.slice(0, 6000),
+        temperature: 0.5,
+      });
+      const text = String(raw || '').trim();
+      if (!text) { showToast('AI 总结失败，重试一下'); return false; }
+      // 时间轴标题：一句话
+      let title = '';
+      try {
+        const t = await generateCreativeText({
+          settings: { ...settings, maxOutputTokens: 30 },
+          systemPrompt: `给下面这段群聊总结起一个时间轴标题，${tlStyleText}，15字以内，只输出标题。`,
+          userPrompt: text.slice(0, 800),
+          temperature: 0.7,
+        });
+        title = String(t || '').trim().slice(0, 30) || '群聊记录';
+      } catch { title = '群聊记录'; }
+      addGroupAiSummary(conversationStorageId, { rangeStart, rangeEnd, text, title, kind });
+      setGroupAiSummariesTick(t => t + 1);
+      setGroupMemoryLastDraftCount(messages.length);
+      showToast('已生成 AI 总结 ✦');
+      return true;
+    } catch (e) {
+      showToast('AI 总结失败：' + (e instanceof Error ? e.message : '未知错误'));
+      return false;
+    } finally {
+      setIsGeneratingSummary(false);
+    }
   };
+  // 自动：每攒够 N 条调一次真 API
   useEffect(() => {
-    if (!isGroup || !groupMemoryAutoEnabled || messages.length < groupMemoryLastDraftCount + groupMemoryEvery) return;
-    const draft = buildGroupMemoryDraft(messages);
-    setGroupMemoryPendingDraft(draft.summary);
-    setGroupMemoryPendingTimeline(draft.timeline);
-    setGroupMemoryLastDraftCount(messages.length);
-    setGroupMemoryReviewOpen(true);
-  }, [isGroup, groupMemoryAutoEnabled, messages.length, groupMemoryEvery]);
+    if (!isGroup || !groupMemoryAutoEnabled || !npcGroupMemoryEnabled) return;
+    if (messages.length < groupMemoryLastDraftCount + Math.max(10, groupMemoryEvery || 100)) return;
+    void generateGroupAiSummary('auto');
+  }, [isGroup, groupMemoryAutoEnabled, messages.length, groupMemoryEvery, npcGroupMemoryEnabled]);
   const generateGroupMemoryDraftManually = () => {
     if (!messages.length) {
       showToast('当前群聊还没有可整理的消息');
       return;
     }
-    const draft = buildGroupMemoryDraft(messages);
-    setGroupMemoryPendingDraft(draft.summary);
-    setGroupMemoryPendingTimeline(draft.timeline);
-    setGroupMemoryLastDraftCount(messages.length);
-    setGroupMemoryReviewOpen(true);
+    void generateGroupAiSummary('manual');
   };
   const groupWorldbooks = worldbooks
     .filter(book => book.enabled)
@@ -2867,7 +2889,7 @@ export function LineConversationView({
             groupLorebookActive.trim() ? '【群聊风格补充】\n' + groupLorebookActive.trim() : '',
             activeGroup?.relationships?.length ? '【成员关系】\n' + activeGroup.relationships.map(item => item.from + ' → ' + item.to + '：' + item.relation).join('\n') : '',
             activeGroup?.events?.length ? '【群事件记忆】\n' + activeGroup.events.slice(-12).map(item => item.text).join('\n') : '',
-            groupMemorySummary.trim() ? '【当前群聊独立记忆总结】\n' + groupMemorySummary.trim() : '',
+            (npcGroupMemoryEnabled ? buildGroupAiSummariesContext(conversationStorageId) : '').trim() ? '【群聊记忆（AI 总结）】\n' + buildGroupAiSummariesContext(conversationStorageId).trim() : '',
             groupMemorySettings.trim() ? '【当前群聊记忆规则】\n' + groupMemorySettings.trim() : '',
             allowGroupProactiveDM ? '【群聊内容延伸到单聊的许可】可以根据本群实际发生且该角色确实知道的内容，自然判断是否主动向用户发起单聊；必须符合角色性格、关系与情境，不要频繁打扰，也不代表每次都必须发起。此许可仅来源于当前群聊设置。' : '【群聊主动单聊】关闭；不得仅因为群聊内容而主动发起单聊。',
             '【成员状态】\n' + (activeGroup?.members || []).map(member => member.name + '：' + [member.muted ? '禁言，不可发言' : '', member.online === false ? '离线，不可主动发言' : '在线', member.mood || '', member.relationship || ''].filter(Boolean).join(' / ')).join('\n'),
@@ -4189,7 +4211,7 @@ export function LineConversationView({
           '【长期记忆】' + (characterMemory.summary || '暂无'),
           ...characterMemory.items.slice(0, 12).map(item => '- ' + item.content),
           '【世界书】' + (worldbooks.flatMap(book => book.enabled ? book.entries.filter(entry => entry.enabled).map(entry => entry.name + ': ' + entry.content) : []).join('\n') || '暂无'),
-          '【最近聊天】' + messages.slice(-20).map(message => (message.sender === 'me' ? '用户' : (message.senderName || importedCharacter.name)) + ': ' + (message.text || message.transcript || '')).join('\n'),
+          '【最近聊天】' + messages.slice(-Math.max(1, groupMemoryContextCount || 20)).map(message => (message.sender === 'me' ? '用户' : (message.senderName || importedCharacter.name)) + ': ' + (message.text || message.transcript || '')).join('\n'),
         ].join('\n'),
         temperature: Math.min(0.8, Number(presetTemp) || 0.7),
         macroNames: { char: importedCharacter.name, user: activePersona?.name },
@@ -4235,7 +4257,7 @@ export function LineConversationView({
           '【群公告】' + (groupNoticeText || activeGroup?.announcement || '暂无'),
           '【已有关系】' + (activeGroup?.relationships || groupRelationships || []).map(item => item.from + ' → ' + item.to + '：' + item.relation).join('\n'),
           '【群事件】' + (activeGroup?.events || []).slice(-12).map(item => item.text).join('\n'),
-          '【最近聊天】' + messages.slice(-30).map(message => (message.sender === 'me' ? '我' : (message.senderName || '角色')) + ': ' + (message.text || '')).join('\n'),
+          '【最近聊天】' + messages.slice(-Math.max(1, groupMemoryContextCount || 20)).map(message => (message.sender === 'me' ? '我' : (message.senderName || '角色')) + ': ' + (message.text || '')).join('\n'),
         ].join('\n'),
         temperature: 0.55,
         macroNames: { char: importedCharacter?.name || characterProfile.nickname, user: activePersona?.name },
@@ -4332,7 +4354,7 @@ export function LineConversationView({
             groupLorebookActive.trim() ? '【群聊风格补充】\n' + groupLorebookActive.trim() : '',
             activeGroup?.relationships?.length ? '【成员关系】\n' + activeGroup.relationships.map(item => item.from + ' → ' + item.to + '：' + item.relation).join('\n') : '',
             activeGroup?.events?.length ? '【群事件记忆】\n' + activeGroup.events.slice(-12).map(item => item.text).join('\n') : '',
-            groupMemorySummary.trim() ? '【当前群聊独立记忆总结】\n' + groupMemorySummary.trim() : '',
+            (npcGroupMemoryEnabled ? buildGroupAiSummariesContext(conversationStorageId) : '').trim() ? '【群聊记忆（AI 总结）】\n' + buildGroupAiSummariesContext(conversationStorageId).trim() : '',
             groupMemorySettings.trim() ? '【当前群聊记忆规则】\n' + groupMemorySettings.trim() : '',
             '【群成员资料】（用于识别成员身份、性格与关系；不是发言名单或轮流发言顺序）\n' + allMemberSummaries,
             // 方向二a：朋友圈 → 群聊。让 NPC 在聊天时自然提起最近的朋友圈动态。
@@ -8393,70 +8415,95 @@ export function LineConversationView({
               <summary className="list-none cursor-pointer p-3.5 flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
                 <span>
                   <span className="block font-semibold text-[12px] text-[#333]">群聊记忆</span>
-                  <span className="block text-[10px] text-[#999] mt-1">总结 · 时间线 · 自动整理 · NPC 记忆</span>
+                  <span className="block text-[10px] text-[#999] mt-1">AI 总结 · 时间轴 · 自动整理</span>
                 </span>
                 <ChevronDown className="w-4 h-4 text-[#ae7e89] shrink-0" />
               </summary>
               <div className="px-3.5 pb-3.5 space-y-2.5 border-t border-[#f2f2f3] pt-3">
+                <label className="flex items-center justify-between gap-3 bg-[#fdf8f9] rounded-[10px] border border-[#f0e6e9] p-3">
+                  <span className="text-[11px] text-[#555]">群聊记忆<span className="block text-[9px] text-[#aaa] mt-0.5">关 = 空白，NPC 在本群不写入、不读取任何记忆</span></span>
+                  <input type="checkbox" checked={npcGroupMemoryEnabled} onChange={e => setNpcGroupMemoryEnabled(e.target.checked)} className="accent-[#ae7e89] shrink-0 w-4 h-4" />
+                </label>
+                {npcGroupMemoryEnabled && (<>
                 <details className="rounded-[10px] border border-[#f0f0f1] overflow-hidden">
-                  <summary className="list-none cursor-pointer p-3 flex items-center justify-between [&::-webkit-details-marker]:hidden"><span className="text-[11px] font-semibold text-[#444]">群总结</span><ChevronDown className="w-3.5 h-3.5 text-[#999] shrink-0" /></summary>
-                  <div className="px-3 pb-3 space-y-2">
-                    <div className="text-[9px] text-[#999]">只保存当前群聊的精简长期上下文。</div>
-                    <textarea value={groupMemorySummary} onChange={e => setGroupMemorySummary(e.target.value)} placeholder="记录当前群聊的重要经历、关系变化和未完成约定……" className="w-full min-h-[100px] p-2.5 rounded-[10px] bg-[#fafafa] border border-[#e8e8e8] text-[10px] leading-relaxed outline-none resize-y" />
-                    <button type="button" onClick={() => showToast('群聊总结已自动保存')} className="px-3 py-1.5 rounded-lg bg-[#f7eef0] text-[#8c5f6b] text-[9px]">保存总结</button>
-                  </div>
-                </details>
-                <details className="rounded-[10px] border border-[#f0f0f1] overflow-hidden">
-                  <summary className="list-none cursor-pointer p-3 flex items-center justify-between [&::-webkit-details-marker]:hidden"><span className="text-[11px] font-semibold text-[#444]">阶段时间线</span><ChevronDown className="w-3.5 h-3.5 text-[#999] shrink-0" /></summary>
-                  <div className="px-3 pb-3 space-y-2">
-                    <textarea value={groupMemoryTimeline} onChange={e => setGroupMemoryTimeline(e.target.value)} placeholder="点击下方整理草稿后可保存阶段记录……" className="w-full min-h-[120px] p-2.5 rounded-[10px] bg-[#fafafa] border border-[#e8e8e8] text-[10px] leading-relaxed outline-none resize-y" />
-                    <div className="flex gap-2">
-                      <button type="button" onClick={generateGroupMemoryDraftManually} className="flex-1 py-2 rounded-lg bg-[#f7eef0] border border-[#ead6dc] text-[#8c5f6b] text-[10px]">整理待确认草稿</button>
-                      <button type="button" onClick={() => { if (!groupMemoryPendingDraft.trim()) { showToast('请先整理草稿'); return; } setGroupMemorySummary(groupMemoryPendingDraft); setGroupMemoryTimeline(groupMemoryPendingTimeline); setGroupMemoryPendingDraft(''); setGroupMemoryPendingTimeline(''); setGroupMemoryReviewOpen(false); showToast('已保存群总结与阶段时间线'); }} className="flex-1 py-2 rounded-lg border border-[#e5e5e5] text-[#666] text-[10px]">确认并保存</button>
+                  <summary className="list-none cursor-pointer p-3 flex items-center justify-between [&::-webkit-details-marker]:hidden"><span className="text-[11px] font-semibold text-[#444]">读取与总结规则</span><ChevronDown className="w-3.5 h-3.5 text-[#999] shrink-0" /></summary>
+                  <div className="px-3 pb-3 space-y-3 border-t border-[#f6f4f6] pt-2">
+                    <label className="flex items-center justify-between gap-3">
+                      <span className="text-[10px] text-[#555]">每次读取上下文<span className="block text-[9px] text-[#aaa] mt-0.5">发消息时给 AI 看最近多少条</span></span>
+                      <span className="flex items-center gap-1 shrink-0"><input type="number" min={1} max={200} value={groupMemoryContextCount} onChange={e => setGroupMemoryContextCount(Math.max(1, Math.min(200, Number(e.target.value) || 20)))} className="w-16 text-center p-1.5 rounded-lg bg-[#fafafa] border border-[#e8e8e8] text-[11px] text-[#8c5f6b] font-semibold outline-none" /><span className="text-[10px] text-[#999]">条</span></span>
+                    </label>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[10px] text-[#555]">自动总结<span className="block text-[9px] text-[#aaa] mt-0.5">每攒够 N 条，调 AI 生成一条总结</span></span>
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] text-[#999]">每</span>
+                        <input type="number" min={10} max={500} value={groupMemoryEvery} onChange={e => setGroupMemoryEvery(Math.max(10, Math.min(500, Number(e.target.value) || 100)))} className="w-16 text-center p-1.5 rounded-lg bg-[#fafafa] border border-[#e8e8e8] text-[11px] text-[#8c5f6b] font-semibold outline-none" />
+                        <span className="text-[10px] text-[#999]">条</span>
+                        <input type="checkbox" checked={groupMemoryAutoEnabled} onChange={e => setGroupMemoryAutoEnabled(e.target.checked)} className="accent-[#ae7e89]" />
+                      </span>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-[#555] mb-1.5">总结风格<span className="block text-[9px] text-[#aaa] mt-0.5">AI 写总结时的口吻</span></div>
+                      <div className="flex gap-1.5 flex-wrap mb-1.5">
+                        {['简洁', '详细', '生动', '正经'].map(p => (
+                          <button key={p} type="button" onClick={() => setGroupMemorySummaryStyle(p)} className={'text-[10px] px-3 py-1.5 rounded-full border ' + (groupMemorySummaryStyle === p && !groupMemorySummaryStyleCustom.trim() ? 'bg-[#f7eef0] border-[#e5cdd5] text-[#8c5f6b] font-semibold' : 'border-[#e5e5e5] text-[#888] bg-white')}>{p}</button>
+                        ))}
+                      </div>
+                      <input value={groupMemorySummaryStyleCustom} onChange={e => setGroupMemorySummaryStyleCustom(e.target.value)} placeholder="或自定义风格，如：用吃瓜群众的口吻，带点调侃…" className="w-full p-2 rounded-lg bg-[#fafafa] border border-[#e8e8e8] text-[10px] outline-none placeholder:text-[#ccc]" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-[#555] mb-1.5">时间轴总结风格<span className="block text-[9px] text-[#aaa] mt-0.5">时间轴标题的口吻</span></div>
+                      <div className="flex gap-1.5 flex-wrap mb-1.5">
+                        {['一句话', '标题党', '日记体'].map(p => (
+                          <button key={p} type="button" onClick={() => setGroupMemoryTimelineStyle(p)} className={'text-[10px] px-3 py-1.5 rounded-full border ' + (groupMemoryTimelineStyle === p && !groupMemoryTimelineStyleCustom.trim() ? 'bg-[#f7eef0] border-[#e5cdd5] text-[#8c5f6b] font-semibold' : 'border-[#e5e5e5] text-[#888] bg-white')}>{p}</button>
+                        ))}
+                      </div>
+                      <input value={groupMemoryTimelineStyleCustom} onChange={e => setGroupMemoryTimelineStyleCustom(e.target.value)} placeholder="或自定义风格，如：像新闻标题一样抓眼球…" className="w-full p-2 rounded-lg bg-[#fafafa] border border-[#e8e8e8] text-[10px] outline-none placeholder:text-[#ccc]" />
                     </div>
                   </div>
                 </details>
                 <details className="rounded-[10px] border border-[#f0f0f1] overflow-hidden">
-                  <summary className="list-none cursor-pointer p-3 flex items-center justify-between [&::-webkit-details-marker]:hidden"><span className="text-[11px] font-semibold text-[#444]">自动整理 / 其它</span><ChevronDown className="w-3.5 h-3.5 text-[#999] shrink-0" /></summary>
-                  <div className="px-3 pb-3 space-y-3">
-                    <label className="flex items-center justify-between gap-3"><span className="text-[10px] text-[#555]">自动生成待确认草稿</span><input type="checkbox" checked={groupMemoryAutoEnabled} onChange={e => setGroupMemoryAutoEnabled(e.target.checked)} className="accent-[#ae7e89]" /></label>
-                    <label className="block text-[10px] text-[#888]">每累计多少条新消息检查一次<select value={groupMemoryEvery} onChange={e => setGroupMemoryEvery(Number(e.target.value))} className="w-full mt-1.5 p-2.5 rounded-lg bg-[#fafafa] border border-[#e8e8e8] text-[10px]"><option value={50}>50 条</option><option value={100}>100 条</option><option value={150}>150 条</option><option value={200}>200 条</option></select></label>
-                    <label className="block text-[10px] text-[#888]">精简总结长度上限<select value={groupMemoryLength} onChange={e => setGroupMemoryLength(Number(e.target.value))} className="w-full mt-1.5 p-2.5 rounded-lg bg-[#fafafa] border border-[#e8e8e8] text-[10px]"><option value={300}>约 300 字</option><option value={500}>约 500 字</option><option value={800}>约 800 字</option><option value={1200}>约 1200 字</option></select></label>
-                    {groupMemoryReviewOpen && (
-                      <div className="rounded-[10px] border border-[#ead6dc] bg-[#fdf8f9] p-2.5 space-y-2">
-                        <div className="text-[10px] font-semibold text-[#8c5f6b]">待确认的群总结</div>
-                        <textarea value={groupMemoryPendingDraft} onChange={e => setGroupMemoryPendingDraft(e.target.value)} className="w-full min-h-[80px] p-2 rounded-lg bg-white border border-[#ead6dc] text-[10px] outline-none resize-y" />
-                        <div className="text-[10px] font-semibold text-[#8c5f6b]">待确认的阶段时间线</div>
-                        <textarea value={groupMemoryPendingTimeline} onChange={e => setGroupMemoryPendingTimeline(e.target.value)} className="w-full min-h-[80px] p-2 rounded-lg bg-white border border-[#ead6dc] text-[10px] outline-none resize-y" />
-                        <div className="flex gap-2">
-                          <button type="button" onClick={() => { setGroupMemorySummary(groupMemoryPendingDraft); setGroupMemoryTimeline(groupMemoryPendingTimeline); setGroupMemoryPendingDraft(''); setGroupMemoryPendingTimeline(''); setGroupMemoryReviewOpen(false); showToast('已确认并保存群聊记忆'); }} className="flex-1 py-2 rounded-lg bg-[#ead6dc] text-[#704d57] text-[10px]">确认保存</button>
-                          <button type="button" onClick={() => { setGroupMemoryPendingDraft(''); setGroupMemoryPendingTimeline(''); setGroupMemoryReviewOpen(false); }} className="flex-1 py-2 rounded-lg bg-white border border-[#e5e5e5] text-[#777] text-[10px]">丢弃</button>
+                  <summary className="list-none cursor-pointer p-3 flex items-center justify-between [&::-webkit-details-marker]:hidden">
+                    <span className="text-[11px] font-semibold text-[#444]">AI 总结记录 <span className="text-[10px] text-[#bbb] font-normal">共 {getGroupAiSummaries(conversationStorageId).length} 条</span></span>
+                    <ChevronDown className="w-3.5 h-3.5 text-[#999] shrink-0" />
+                  </summary>
+                  <div className="px-3 pb-3 space-y-2 border-t border-[#f6f4f6] pt-2" key={groupAiSummariesTick}>
+                    <button type="button" onClick={() => void generateGroupAiSummary('manual')} disabled={isGeneratingSummary} className="w-full py-2 rounded-lg bg-[#f7eef0] border border-[#ead6dc] text-[#8c5f6b] text-[10px] disabled:opacity-50">{isGeneratingSummary ? 'AI 总结中…' : '＋ 手动总结一次'}</button>
+                    {getGroupAiSummaries(conversationStorageId).map(s => (
+                      <div key={s.id} className="rounded-[10px] border border-[#f0ecee] p-2.5 bg-white">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] font-semibold text-[#8c5f6b] bg-[#f7eef0] rounded-full px-2 py-0.5">第 {s.rangeStart}–{s.rangeEnd} 楼</span>
+                          <span className="text-[9px] text-[#bbb]">{new Date(s.createdAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
+                        {editingSummaryId === s.id ? (
+                          <div className="space-y-1.5">
+                            <textarea value={editingSummaryText} onChange={e => setEditingSummaryText(e.target.value)} className="w-full min-h-[70px] p-2 rounded-lg bg-[#fafafa] border border-[#e8e8e8] text-[10px] leading-relaxed outline-none resize-y" />
+                            <div className="flex gap-1.5">
+                              <button type="button" onClick={() => { updateGroupAiSummary(conversationStorageId, s.id, { text: editingSummaryText }); setEditingSummaryId(null); setGroupAiSummariesTick(t => t + 1); showToast('已保存'); }} className="flex-1 py-1.5 rounded-lg bg-[#ead6dc] text-[#704d57] text-[10px]">保存</button>
+                              <button type="button" onClick={() => setEditingSummaryId(null)} className="flex-1 py-1.5 rounded-lg border border-[#e5e5e5] text-[#888] text-[10px]">取消</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="text-[11px] font-semibold text-[#444] mb-1">{s.title}</div>
+                            <div className="text-[10px] text-[#777] leading-relaxed line-clamp-3">{s.text}</div>
+                            <div className="flex gap-1.5 mt-1.5">
+                              <button type="button" onClick={() => { setEditingSummaryId(s.id); setEditingSummaryText(s.text); }} className="text-[9px] text-[#8c5f6b] border border-[#ead6dc] rounded-full px-2.5 py-1">编辑</button>
+                              <button type="button" onClick={() => { if (window.confirm('删除这条总结？NPC 会忘记这段记忆。')) { deleteGroupAiSummary(conversationStorageId, s.id); setGroupAiSummariesTick(t => t + 1); } }} className="text-[9px] text-[#d08888] border border-[#f0d5d5] rounded-full px-2.5 py-1">删除</button>
+                            </div>
+                          </div>
+                        )}
                       </div>
+                    ))}
+                    {!getGroupAiSummaries(conversationStorageId).length && (
+                      <div className="text-center text-[10px] text-[#bbb] py-4">暂无总结，攒够 {groupMemoryEvery} 条消息会自动生成<br />也可以点上方手动总结一次</div>
                     )}
-                    <label className="flex items-center justify-between gap-3"><span className="text-[10px] text-[#555]">允许群成员主动发起单聊</span><input type="checkbox" checked={allowGroupProactiveDM} onChange={e => setAllowGroupProactiveDM(e.target.checked)} className="accent-[#ae7e89]" /></label>
-                    <textarea value={groupMemorySettings} onChange={e => setGroupMemorySettings(e.target.value)} placeholder="群聊记忆补充设定（可选）" className="w-full min-h-[60px] p-2.5 rounded-[10px] bg-[#fafafa] border border-[#e8e8e8] text-[10px] outline-none resize-y" />
                   </div>
                 </details>
-                {/* NPC 群聊记忆：只在这里管理。开关关 = 空白，NPC 在本群不写入、不读取任何记忆。 */}
-                <NpcGroupMemoryPanel
-                  enabled={npcGroupMemoryEnabled}
-                  onToggle={setNpcGroupMemoryEnabled}
-                  npcMembers={safeGroupMembers
-                    .filter((m: any) => m && (m.npcId || m.kind === 'npc'))
-                    .map((m: any) => {
-                      const c = resolveGroupMemberCharacter(m);
-                      const nid = String(m.npcId || (m.kind === 'npc' ? m.id || '' : '')).trim();
-                      const npc = nid ? allNpcs.find(n => String(n.id) === nid) : undefined;
-                      return {
-                        id: String(c?.id || npc?.id || nid || m.id || ''),
-                        name: String(c?.name || npc?.name || m.nickname || m.name || ''),
-                      };
-                    })
-                    .filter(x => x.id && x.name)}
-                  personaId={resolvedPersonaId}
-                  showToast={showToast}
-                />
+                <button type="button" onClick={() => setGroupTimelineOpen(true)} className="w-full flex items-center justify-between rounded-[10px] border border-[#ead6dc] bg-gradient-to-br from-[#fdf7f8] to-[#f7eef0] p-3">
+                  <span className="text-left"><span className="block text-[11px] font-semibold text-[#8c5f6b]">阶段时间线</span><span className="block text-[9px] text-[#b99] mt-0.5">按时间轴查看群大事记</span></span>
+                  <span className="text-[16px] text-[#c9a0ac]">›</span>
+                </button>
+                </>)}
               </div>
             </details>
 
@@ -10353,6 +10400,38 @@ export function LineConversationView({
       )}
 
       {/* 群成员管理完整页面：不是底部弹窗 */}
+      {/* 阶段时间线：独立时间轴页面 */}
+      {groupTimelineOpen && isGroup && (
+        <div className="absolute inset-0 z-[70] bg-[#faf8f9] flex flex-col">
+          <div className="px-4 py-3.5 flex items-center justify-center relative border-b border-[#f0ecee] bg-[#faf8f9]">
+            <button type="button" onClick={() => setGroupTimelineOpen(false)} className="absolute left-3 text-[20px] text-[#555]">‹</button>
+            <span className="text-[15px] font-bold">阶段时间线</span>
+          </div>
+          <div className="flex-1 overflow-y-auto px-5 py-5">
+            <div className="relative pl-7">
+              <div className="absolute left-[8px] top-2 bottom-2 w-[2px] rounded bg-gradient-to-b from-[#e5cdd5] to-[#f0e6e9]" />
+              {getGroupAiSummaries(conversationStorageId).map(s => (
+                <div key={s.id} className="relative mb-5">
+                  <div className={`absolute -left-7 top-1.5 w-3 h-3 rounded-full border-[3px] ${s.kind === 'event' ? 'bg-[#d4a24e] border-[#fdf6e8] shadow-[0_0_0_1px_#ecd9b0]' : 'bg-[#ae7e89] border-[#f7eef0] shadow-[0_0_0_1px_#e5cdd5]'}`} />
+                  <div className="bg-white border border-[#f0f0f1] rounded-[12px] p-3">
+                    <div className="mb-1.5">
+                      <span className={`text-[9px] rounded px-1.5 py-0.5 ${s.kind === 'event' ? 'bg-[#fdf3e0] text-[#b07f2e]' : s.kind === 'manual' ? 'bg-[#eef4f0] text-[#5f8c6b]' : 'bg-[#f0e8ec] text-[#8c5f6b]'}`}>
+                        {s.kind === 'event' ? '事件' : s.kind === 'manual' ? '手动总结' : `第${s.rangeStart}–${s.rangeEnd}楼`}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-[#bbb] mb-1">{new Date(s.createdAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                    <div className="text-[13px] font-bold mb-1.5">{s.title}</div>
+                    <div className="text-[11px] text-[#777] leading-relaxed">{s.text}</div>
+                  </div>
+                </div>
+              ))}
+              {!getGroupAiSummaries(conversationStorageId).length && (
+                <div className="text-center text-[11px] text-[#bbb] py-10">还没有时间线<br />攒够 {groupMemoryEvery} 条消息会自动生成总结</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {/* LINE / 微信风格：邀请成员（角色卡 + NPC App 已绑定角色） */}
       {showGroupInvitePicker && isGroup && (() => {
         const selectedMeta = groupInviteSelected.map(key => {
