@@ -2492,7 +2492,25 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
           importedCharacters={importedCharacters}
           onClose={() => setPersonaHomeOpen(false)}
           onSelect={(p: any, i: number) => { setActivePersonaId(p.id); setActiveChatId(null); setPersonaHomeIndex(i); showToast(`已切换为 ${p.name || '未命名'}`); }}
-          onSave={(persona: any) => { setUserPersonas((prev: any[]) => prev.some(x => x.id === persona.id) ? prev.map(x => x.id === persona.id ? persona : x) : [persona, ...prev]); setActivePersonaId(persona.id); showToast('已保存人设卡'); }}
+          onSave={(persona: any) => {
+            setUserPersonas((prev: any[]) => prev.some(x => x.id === persona.id) ? prev.map(x => x.id === persona.id ? persona : x) : [persona, ...prev]);
+            setActivePersonaId(persona.id);
+            // 绑定角色 = 自动建好友：确保每个 boundCharacterId 都有对应的好友条目，否则好友列表显示 0。
+            const boundIds: string[] = Array.isArray(persona.boundCharacterIds) ? persona.boundCharacterIds : [];
+            if (boundIds.length) {
+              setFriendsList((prev: LineFriend[]) => {
+                const next = [...prev];
+                for (const cid of boundIds) {
+                  if (next.some(f => !f.deleted && !f.npcId && f.characterId === cid)) continue;
+                  const ch = importedCharacters.find(c => c.id === cid);
+                  if (!ch) continue;
+                  next.unshift({ name: ch.name || '未命名', characterId: cid, kind: 'character', note: '', online: true, pinyin: '' } as LineFriend);
+                }
+                return next;
+              });
+            }
+            showToast('已保存人设卡');
+          }}
           onDelete={(id: string) => { setUserPersonas((prev: any[]) => prev.filter(x => x.id !== id)); if (activePersonaId === id) setActivePersonaId(null); showToast('已删除人设卡'); }}
           onCreate={() => { setPersonaHomeOpen(false); setPersonaEditorIndex(userPersonas.length); setPersonaDraft({ name: '', age: '', ageMode: 'manual', ageReferenceCharacterId: '', profession: '', region: '', timezone: '', birthday: '', setting: '', avatar: '', themeColor: '#ffffff', boundCharacterIds: [] }); setPersonaEditorOpen(true); }}
         />

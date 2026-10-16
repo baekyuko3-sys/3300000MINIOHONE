@@ -358,7 +358,10 @@ export function importLineBackup(backup: LineBackup) {
 
 export function clearLineConversation(id: string) {
   if (typeof window === 'undefined') return;
-  window.localStorage.removeItem(conversationKey(id));
+  // 同步写空数组而不是删 key：删 key 会导致 usePersistentState 回退到初始值（如默认开场白），
+  // 且若组件在 setMessages([]) 的 effect 执行前卸载，旧数据可能被残留的 effect 写回。
+  // 写 [] 确保任何路径读取到的都是空。
+  writeJson(conversationKey(id), []);
   const meta = readJson<Record<string, LineConversationMeta>>(META_KEY, {});
   delete meta[id];
   writeJson(META_KEY, meta);
