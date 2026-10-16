@@ -1200,8 +1200,9 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     );
   };
   const visibleMoments = momentsPosts.filter((p) => {
-    // 数据完整性兜底：坏掉的帖子（无 id / 正文不是字符串）直接过滤，不进渲染，避免整屏崩溃。
-    if (!p || typeof p !== 'object' || !p.id || typeof p.text !== 'string') return false;
+    // 数据完整性兜底：坏掉的帖子（无 id）直接过滤，不进渲染，避免整屏崩溃。
+    // 注意：不要校验 text 字段，图片/卡片帖的 text 可能为空，渲染层已做 String() 兜底。
+    if (!p || typeof p !== 'object' || !p.id) return false;
     if (isOwnMoment(p)) return true;
     const authorKey = p.npcId ? 'npc:' + p.npcId : p.characterId ? 'character:' + p.characterId : p.name ? 'character-name:' + p.name : '';
     const viewerKey = 'persona:' + (effectivePersonaId || 'default');
