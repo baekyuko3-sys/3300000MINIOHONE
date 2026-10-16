@@ -5856,7 +5856,7 @@ export function LineConversationView({
                       handleMessageAvatarDoubleClick(msg.senderName || characterProfile.nickname);
                     }
                   }}
-                  className={`w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 self-end mb-1 cursor-pointer hover:opacity-80 active:scale-95 transition-all ${
+                  className={`w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 self-start mt-0.5 cursor-pointer hover:opacity-80 active:scale-95 transition-all ${
                     nudgeAvatar ? 'scale-110 ring-2 ring-[#d4aab5]' : ''
                   }`}
                   title={isGroup ? `单击查看${msg.senderName || characterProfile.nickname}心声，双击@该成员` : '单击打开状态卡，双击拍一拍'}
@@ -6431,7 +6431,7 @@ export function LineConversationView({
                   <div className="w-[31px] shrink-0" aria-hidden="true" />
                 ) : (
                 <div
-                  className="w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 self-end mb-0.5 border border-white"
+                  className="w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 self-start mt-0.5 border border-white"
                   title={activePersona.name ? `我的人设：${activePersona.name}` : '我的头像'}
                 >
                   {activePersona.avatar ? (
