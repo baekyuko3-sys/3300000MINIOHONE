@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type MouseEvent, type PointerEvent } from 'react';
+import { useState, useRef, useEffect, useMemo, type MouseEvent, type PointerEvent } from 'react';
 import { readPersistentState, usePersistentState } from '../../store/usePersistentState';
 import type { ImportedCharacter } from '../../data/characterImport';
 import type { ScreenType, WorldBook } from '../../types';
@@ -704,11 +704,12 @@ export function LineConversationView({
   );
   // Old/local data can be malformed. A bad conversation record must never prevent
   // the chat screen itself from opening.
-  const messages = Array.isArray(storedMessages)
+  // useMemo 稳定引用：否则每次渲染都生成新数组，依赖 messages 的 effect 会无限循环。
+  const messages = useMemo(() => Array.isArray(storedMessages)
     ? storedMessages
         .filter((message): message is Record<string, any> => !!message && typeof message === 'object')
         .map(hydrateLineChatMessage)
-    : [];
+    : [], [storedMessages]);
 
   // Async AI work (especially status-bar generation) must always see the newest
   // conversation state, not the render that started the request.
@@ -773,7 +774,6 @@ export function LineConversationView({
   // giving the conversation a durable runtime layer for search, read state and events.
   useEffect(() => {
     const stored = getLineConversationMessages(conversationStorageId);
-    console.log('[Restore] mount', conversationStorageId, 'stored:', stored.length, 'messages:', messages.length);
     if (stored.length && messages.length === 0) {
       setMessages(stored.map((message) => hydrateLineChatMessage({
         ...message,
@@ -2551,7 +2551,8 @@ export function LineConversationView({
 
       try {
         const raw = window.localStorage.getItem(`line:conversation:${conversationStorageId}`);
-        if (raw) setMessages(JSON.parse(raw));
+        // 空数组不触发 setMessages，避免无意义的引用变化导致 effect 循环。
+        if (raw && raw !== '[]') setMessages(JSON.parse(raw));
       } catch {
         // Keep the current conversation state.
       }
@@ -3587,9 +3588,7 @@ export function LineConversationView({
 
   // 清空聊天记录 (Clear Chat)
   const handleClearChat = () => {
-    console.log('[ClearChat] clearing', conversationStorageId, 'before:', window.localStorage.getItem(`line:conversation:${conversationStorageId}`)?.slice(0, 100));
     clearLineConversation(conversationStorageId);
-    console.log('[ClearChat] after:', window.localStorage.getItem(`line:conversation:${conversationStorageId}`));
     setMessages([]);
     setLoadedMessageCount(LINE_PAGE_SIZE);
     setShowClearConfirm(false);
