@@ -6448,16 +6448,19 @@ export function LineConversationView({
               </div>
           );
         })}
-        {/* AI 正在生成时，固定显示在消息流最底部，而不是顶栏 */}
+        {/* AI 正在生成时，固定显示在消息流最底部，而不是顶栏。
+            群聊里只留点点点，不要头像圈（单聊的角色头像在群里会显示成奇怪的 fallback）。 */}
         {isTyping && (
           <div className="flex items-end gap-2 px-0.5 py-1.5 animate-in fade-in">
-            <div className="w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 border border-white">
-              {importedCharacter?.avatar ? (
-                <img src={importedCharacter.avatar} alt={characterProfile.nickname} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-              ) : (
-                <span className="text-[10px] text-[#999]">{characterProfile.nickname.slice(0, 1)}</span>
-              )}
-            </div>
+            {!isGroup && (
+              <div className="w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 border border-white">
+                {importedCharacter?.avatar ? (
+                  <img src={importedCharacter.avatar} alt={characterProfile.nickname} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <span className="text-[10px] text-[#999]">{characterProfile.nickname.slice(0, 1)}</span>
+                )}
+              </div>
+            )}
             <div className="px-1 py-1 flex items-center gap-1">
               {[0, 1, 2].map((dot) => (
                 <span key={dot} className="w-1.5 h-1.5 rounded-full bg-[#b8b8bb] animate-bounce" style={{ animationDelay: `${dot * 140}ms`, animationDuration: '900ms' }} />
