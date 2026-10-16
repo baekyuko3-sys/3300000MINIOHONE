@@ -773,6 +773,7 @@ export function LineConversationView({
   // giving the conversation a durable runtime layer for search, read state and events.
   useEffect(() => {
     const stored = getLineConversationMessages(conversationStorageId);
+    console.log('[Restore] mount', conversationStorageId, 'stored:', stored.length, 'messages:', messages.length);
     if (stored.length && messages.length === 0) {
       setMessages(stored.map((message) => hydrateLineChatMessage({
         ...message,
@@ -3586,7 +3587,9 @@ export function LineConversationView({
 
   // 清空聊天记录 (Clear Chat)
   const handleClearChat = () => {
+    console.log('[ClearChat] clearing', conversationStorageId, 'before:', window.localStorage.getItem(`line:conversation:${conversationStorageId}`)?.slice(0, 100));
     clearLineConversation(conversationStorageId);
+    console.log('[ClearChat] after:', window.localStorage.getItem(`line:conversation:${conversationStorageId}`));
     setMessages([]);
     setLoadedMessageCount(LINE_PAGE_SIZE);
     setShowClearConfirm(false);
