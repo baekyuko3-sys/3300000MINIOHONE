@@ -111,6 +111,7 @@ export function buildNpcRuntimeContext(
   npc: import('./npcs').SaneNpc,
   scope: 'online-chat' | 'offline-story' = 'online-chat',
   personaId?: string | null,
+  includeMemory: boolean = true,
 ): string {
   const books = readPersistentState<WorldBook[]>('phone:worldbooks', []);
   const selectedBooks = collectNpcRuntimeWorldBooks(npc, books, scope);
@@ -147,7 +148,7 @@ export function buildNpcRuntimeContext(
     '简介：' + (npc.bio || ''),
     // A persona-scoped chat must not fall back to npc.memory, which is a legacy shared field.
     // Otherwise a persona with no scoped memory could inherit another persona's old experiences.
-    'NPC 自己的长期记忆（不得与绑定角色记忆混为一谈）：' + (memory.summary || (!personaId ? npc.memory : '') || '暂无'),
+    'NPC 自己的长期记忆（不得与绑定角色记忆混为一谈）：' + (includeMemory ? (memory.summary || (!personaId ? npc.memory : '') || '暂无') : '暂无'),
     ...memory.items.slice(0, 12).map(item => 'NPC 记忆：' + item.content),
     ...(memory.recentSummaries || []).slice(0, 8).map(item => 'NPC 最近经历：' + item.content),
     'NPC 最近生活：' + (npc.recentLife || '未记录'),

@@ -8,7 +8,7 @@ import { readAppSettings } from '../../store/appSettings';
 import type { ChannelAiSettings } from '../../store/appSettings';
 import { getMedia, putMedia } from '../../store/mediaVault';
 import { VroomImage } from '../VroomImage';
-import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory } from '../../store/characterMemory';
+import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory, updateCharacterMemoryItem, deleteCharacterMemoryItem, clearCharacterMemory } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
 import { getCharacterProfile } from '../../data/characterProfiles';
 import { getInitialChatMessages } from '../../data/characterChatSeeds';
@@ -65,6 +65,7 @@ import {
 import { appendLineMessage, editLineMessage, toggleLineReaction, setLineMessageFavorite, recordLineCall, markLineMessageFailed, clearLineConversation, recallLineMessage, updateLineMessage } from '../../store/lineRuntime';
 import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, searchLineMessages, type LineRuntimeMessage } from '../../store/lineRuntime';
 import { fetchLineWeather, formatLineWeather, type LineWeatherSnapshot } from '../../store/lineReality';
+import NpcGroupMemoryPanel from './NpcGroupMemoryPanel';
 import {
   Video, Settings, Plus, Mic, Send, Smile,
   Image as ImageIcon, Film, FileText, Calendar, Sliders, RefreshCw, X,
@@ -1321,7 +1322,8 @@ export function LineConversationView({
         // NPC identity takes precedence over the linked character's persona.
         personality: npc.personality || '',
         scenario: npc.background || '',
-        systemPrompt: buildNpcRuntimeContext(npc, 'online-chat', resolvedPersonaId),
+        // NPC 群聊记忆总开关：关 = 空白，systemPrompt 里不带记忆。
+        systemPrompt: buildNpcRuntimeContext(npc, 'online-chat', resolvedPersonaId, npcGroupMemoryEnabled),
         creatorNotes: [bound?.creatorNotes || '', npc.relationship || ''].filter(Boolean).join('\n'),
       } as ImportedCharacter;
     }
@@ -1746,6 +1748,8 @@ export function LineConversationView({
   const [groupMemoryPendingTimeline, setGroupMemoryPendingTimeline] = usePersistentState<string>(`line:group-memory-pending-timeline:${conversationStorageId}`, '');
   const [groupMemoryLastDraftCount, setGroupMemoryLastDraftCount] = usePersistentState<number>(`line:group-memory-last-count:${conversationStorageId}`, 0);
   const [groupMemoryReviewOpen, setGroupMemoryReviewOpen] = useState(false);
+  // NPC 群聊记忆总开关：默认关。关 = 空白，NPC 在本群不写入、不读取任何记忆。
+  const [npcGroupMemoryEnabled, setNpcGroupMemoryEnabled] = usePersistentState<boolean>(`line:npc-group-memory-enabled:${conversationStorageId}`, false);
   const buildGroupMemoryDraft = (items: typeof messages) => {
     const indexed = items
       .map((message: any, index: number) => ({ message, index: index + 1, text: String(message.text || message.content || '').trim() }))
@@ -2956,7 +2960,8 @@ export function LineConversationView({
               : undefined;
             const memoryOwnerId = isNpcMember ? speakerNpc?.id : speakerCharacter?.id;
             const memoryOwnerName = speakerNpc?.name || speakerCharacter?.name || foundMember.name || part.rawSpeaker;
-            if (memoryOwnerId) {
+            // NPC 群聊记忆总开关：关 = 空白，不写入。
+            if (memoryOwnerId && (!isNpcMember || npcGroupMemoryEnabled)) {
               addRecentMemorySummary(
                 memoryOwnerId,
                 memoryOwnerName,
@@ -4306,7 +4311,8 @@ export function LineConversationView({
             : undefined;
           const memoryOwnerId = isNpcMember ? npc?.id : found.character?.id;
           const memoryOwnerName = npc?.name || found.character?.name || found.member.name;
-          if (memoryOwnerId) {
+          // NPC 群聊记忆总开关：关 = 空白，不写入。
+          if (memoryOwnerId && (!isNpcMember || npcGroupMemoryEnabled)) {
             addRecentMemorySummary(
               memoryOwnerId,
               memoryOwnerName,
@@ -8284,7 +8290,7 @@ export function LineConversationView({
               <summary className="list-none cursor-pointer p-3.5 flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
                 <span>
                   <span className="block font-semibold text-[12px] text-[#333]">群聊记忆</span>
-                  <span className="block text-[10px] text-[#999] mt-1">总结 · 时间线 · 自动整理</span>
+                  <span className="block text-[10px] text-[#999] mt-1">总结 · 时间线 · 自动整理 · NPC 记忆</span>
                 </span>
                 <ChevronDown className="w-4 h-4 text-[#ae7e89] shrink-0" />
               </summary>
@@ -8329,6 +8335,25 @@ export function LineConversationView({
                     <textarea value={groupMemorySettings} onChange={e => setGroupMemorySettings(e.target.value)} placeholder="群聊记忆补充设定（可选）" className="w-full min-h-[60px] p-2.5 rounded-[10px] bg-[#fafafa] border border-[#e8e8e8] text-[10px] outline-none resize-y" />
                   </div>
                 </details>
+                {/* NPC 群聊记忆：只在这里管理。开关关 = 空白，NPC 在本群不写入、不读取任何记忆。 */}
+                <NpcGroupMemoryPanel
+                  enabled={npcGroupMemoryEnabled}
+                  onToggle={setNpcGroupMemoryEnabled}
+                  npcMembers={safeGroupMembers
+                    .filter((m: any) => m && (m.npcId || m.kind === 'npc'))
+                    .map((m: any) => {
+                      const c = resolveGroupMemberCharacter(m);
+                      const nid = String(m.npcId || (m.kind === 'npc' ? m.id || '' : '')).trim();
+                      const npc = nid ? allNpcs.find(n => String(n.id) === nid) : undefined;
+                      return {
+                        id: String(c?.id || npc?.id || nid || m.id || ''),
+                        name: String(c?.name || npc?.name || m.nickname || m.name || ''),
+                      };
+                    })
+                    .filter(x => x.id && x.name)}
+                  personaId={resolvedPersonaId}
+                  showToast={showToast}
+                />
               </div>
             </details>
 
