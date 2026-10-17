@@ -1026,6 +1026,7 @@ export function LineConversationView({
   const [callMode, setCallMode] = useState<'voice' | 'video'>('voice');
   const [callBackground, setCallBackground] = useState<string>('');
   const [callGenBgLoading, setCallGenBgLoading] = useState(false);
+  const [callGenAppearanceLoading, setCallGenAppearanceLoading] = useState(false);
   const [callAiSpeaking, setCallAiSpeaking] = useState(false);
   const [imageGenPresetId, setImageGenPresetId] = useState<string>('');
   const [imageGenPrompt, setImageGenPrompt] = useState('');
@@ -6819,6 +6820,61 @@ export function LineConversationView({
                             className="w-full py-3 rounded-[14px] bg-white/15 text-white text-[13px] backdrop-blur disabled:opacity-40"
                           >
                             {callGenBgLoading ? '生成中...' : '✨ AI 生成背景'}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* 看看TA现在：根据聊天内容生成角色当前样子 */}
+                      {aiImageEnabled && (
+                        <div className="px-8 mb-4">
+                          <button
+                            disabled={callGenAppearanceLoading}
+                            onClick={async () => {
+                              const preset = imagePresets[0];
+                              if (!preset) { showToast('请先添加生图预设'); return; }
+                              setCallGenAppearanceLoading(true);
+                              try {
+                                // 1. 让 AI 根据最近聊天推断角色现在的状态
+                                const recentText = messages.slice(-10).map(m => {
+                                  const who = m.sender === 'me' ? '我' : (m.senderName || 'TA');
+                                  return `${who}: ${m.text || '[媒体]'}`;
+                                }).join('\n');
+                                const { generateCreativeText } = await import('../../ai/aiEngine');
+                                const sceneDesc = await generateCreativeText({
+                                  settings: conversationAiSettings(),
+                                  systemPrompt: '你是场景描述器。根据聊天记录，用一句话描述角色现在的外貌状态、穿着、环境。只输出描述，不要解释。例如："刚洗完澡，头发微湿，穿着宽松睡衣，躺在床上，背景是卧室暖光"。',
+                                  userPrompt: `聊天记录：\n${recentText}\n\n角色名：${importedCharacter?.name || npcForChat?.name || 'TA'}`,
+                                });
+                                // 2. 用推断出的场景 + 预设 + 锁脸生成
+                                const aiSettings = conversationAiSettings();
+                                let refB64: string | undefined;
+                                if (preset.useReference) {
+                                  const avatarUrl = importedCharacter?.avatar || npcForChat?.avatar;
+                                  if (avatarUrl && avatarUrl.startsWith('data:')) refB64 = avatarUrl;
+                                }
+                                const result = await generateImage(
+                                  `video call selfie, looking at camera, upper body: ${sceneDesc.trim()}`,
+                                  preset,
+                                  {
+                                    apiKey: aiSettings.apiKey,
+                                    baseUrl: aiSettings.apiBaseUrl || 'https://api.openai.com',
+                                    model: 'gpt-image-1',
+                                  },
+                                  refB64
+                                );
+                                if (result.ok && result.imageBase64) {
+                                  setCallBackground(`data:image/png;base64,${result.imageBase64}`);
+                                  showToast('已生成TA现在的样子');
+                                } else {
+                                  showToast('生成失败：' + (result.error || '未知错误'));
+                                }
+                              } finally {
+                                setCallGenAppearanceLoading(false);
+                              }
+                            }}
+                            className="w-full py-3 rounded-[14px] bg-white/15 text-white text-[13px] backdrop-blur disabled:opacity-40"
+                          >
+                            {callGenAppearanceLoading ? '生成中...' : '📸 看看TA现在'}
                           </button>
                         </div>
                       )}
