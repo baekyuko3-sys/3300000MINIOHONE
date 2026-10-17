@@ -7081,7 +7081,8 @@ export function LineConversationView({
                                   setCallAiSpeaking(true);
                                   try {
                                     const lastAi = [...callTranscript].reverse().find(l => l.role === 'ai');
-                                    const text = lastAi?.text || '喂？听得到吗？是我呀。';
+                                    if (!lastAi?.text) { showToast('TA 还没说话，先聊两句吧'); return; }
+                                    const text = lastAi.text;
                                     setCallTranscript(prev => [...prev, { role: 'ai', text }]);
                                     const res = await synthesizeMinimaxVoice(text, { apiKey: minimaxKey, voiceId });
                                     if (res.ok && res.audioBase64) {
