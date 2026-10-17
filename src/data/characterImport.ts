@@ -36,6 +36,8 @@ export interface ImportedCharacter {
   groupId?: string | null;
   sourceFormat: 'json' | 'yaml' | 'png' | 'manual';
   importedAt: string;
+  /** MiniMax 语音预设 ID */
+  voicePresetId?: string;
 }
 
 function cleanString(value: unknown): string {

@@ -26,6 +26,8 @@ export interface SaneNpc {
   avatar?: string;
   /** 主页个性签名 */
   statusMessage?: string;
+  /** MiniMax 语音预设 ID */
+  voicePresetId?: string;
   /** 主页简介 */
   bio?: string;
   /** 兴趣标签 */

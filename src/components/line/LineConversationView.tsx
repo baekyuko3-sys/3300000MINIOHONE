@@ -23,7 +23,8 @@ import {
 import { getLineGroupByName, getLineGroupById, upsertLineGroup } from '../../store/lineGroups';
 import { getGroupPreset, getGroupPresets } from '../../store/groupPresets';
 import { getLineGroups, updateLineGroupMember, addLineGroupMemory, setLineGroupRelationships } from '../../store/lineGroups';
-import { getNpcs } from '../../store/npcs';
+import { getNpcs, updateNpc } from '../../store/npcs';
+import { useVoicePresets } from '../../ai/imageGen';
 import { buildNpcRuntimeContext } from '../../store/npcContext';
 import { considerNpcFriendRequest } from '../../store/npcSocial';
 import {
@@ -1278,7 +1279,8 @@ export function LineConversationView({
 }`);
 
   // 导入角色卡与全局世界书：真正 AI 回复从这里读取角色核心资料。
-  const [storedImportedCharacters] = usePersistentState<ImportedCharacter[]>('phone:characters', []);
+  const [storedImportedCharacters, setStoredImportedCharacters] = usePersistentState<ImportedCharacter[]>('phone:characters', []);
+  const [voicePresets] = useVoicePresets();
   const importedCharacters = Array.isArray(storedImportedCharacters)
     ? storedImportedCharacters.filter((character): character is ImportedCharacter => !!character && typeof character === 'object')
     : [];
@@ -8792,6 +8794,36 @@ export function LineConversationView({
           </div>
 
           <div className="p-4 space-y-4 flex-1 overflow-y-auto text-xs pb-10">
+
+            {/* 语音预设绑定 */}
+            {!isGroup && (npcForChat || boundImportedCharacter) && (
+              <div className="bg-white rounded-[14px] border border-[#f0f0f1] p-3.5">
+                <div className="font-medium text-[#333]">语音预设</div>
+                <div className="text-[10px] text-[#999] mt-0.5 mb-2">AI 发语音消息 / 通话时用的音色</div>
+                <select
+                  value={npcForChat ? (npcForChat.voicePresetId || '') : (boundImportedCharacter?.voicePresetId || '')}
+                  onChange={e => {
+                    const vid = e.target.value;
+                    if (npcForChat) {
+                      updateNpc(npcForChat.id, { voicePresetId: vid || undefined });
+                      showToast(vid ? '已绑定语音预设' : '已取消语音绑定');
+                    } else if (boundImportedCharacter) {
+                      setStoredImportedCharacters(prev => prev.map(ch => ch.id === boundImportedCharacter.id ? { ...ch, voicePresetId: vid || undefined } : ch));
+                      showToast(vid ? '已绑定语音预设' : '已取消语音绑定');
+                    }
+                  }}
+                  className="w-full p-2.5 bg-[#fafafa] border border-[#e8e8e9] rounded-[10px] text-[11px] outline-none"
+                >
+                  <option value="">不使用语音</option>
+                  {voicePresets.map(p => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.voiceId})</option>
+                  ))}
+                </select>
+                {voicePresets.length === 0 && (
+                  <div className="text-[9px] text-[#aaa] mt-1.5">还没有语音预设，去「聊天通用设置 → AI 生图 / MiniMax 语音」里添加</div>
+                )}
+              </div>
+            )}
 
             <details open={false} className="bg-white rounded-[14px] border border-[#f0f0f1] overflow-hidden">
               <summary className="list-none cursor-pointer p-3.5 flex items-center justify-between"><div><div className="font-medium text-[#333]">Generation / API</div><div className="text-[10px] text-[#999]">当前聊天独立 API 与模型</div></div><span className="text-[10px] text-[#aaa]">展开</span></summary>

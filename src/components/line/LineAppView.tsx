@@ -30,6 +30,7 @@ import { markCharacterRead } from '../../store/worldRuntime';
 import { getLineConversationMeta, markLineConversationRead, markLineNotificationsReadForConversation, touchLineConversation } from '../../store/lineRuntime';
 import { reportPersistenceIssue } from '../../store/usePersistentState';
 import { generateCreativeText, listOpenAiCompatibleModels, resolveChannelAiSettings, testAiConnection, type AiSettings } from '../../ai/aiEngine';
+import { useImagePresets, useMinimaxKey, useVoicePresets, type ImagePreset, type VoicePreset } from '../../ai/imageGen';
 import { readAppSettings, saveAppSettings, type ChannelAiSettings } from '../../store/appSettings';
 import { fetchLineWeather, formatLineWeather, type LineWeatherSnapshot } from '../../store/lineReality';
 import {
@@ -608,6 +609,15 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
 
   // 外观三件套：主题换肤 / 聊天背景 / 字体大小（聊天通用设置）
   const [lineTheme, setLineTheme] = usePersistentState<'light' | 'dark' | 'ivory-gold'>('line:theme', 'light');
+  const [minimaxKey, setMinimaxKey] = useMinimaxKey();
+  const [imagePresets, setImagePresets] = useImagePresets();
+  const [voicePresets, setVoicePresets] = useVoicePresets();
+  const [aiMediaOpen, setAiMediaOpen] = useState(false);
+  const [imgPresetOpen, setImgPresetOpen] = useState(false);
+  const [voicePresetOpen, setVoicePresetOpen] = useState(false);
+  const [editingImgPresetId, setEditingImgPresetId] = useState<string | null>(null);
+  const [newVoiceName, setNewVoiceName] = useState('');
+  const [newVoiceId, setNewVoiceId] = useState('');
   const [lineChatBg, setLineChatBg] = usePersistentState<string>('line:chat-bg', 'default');
   const [lineFontSize, setLineFontSize] = usePersistentState<'small' | 'medium' | 'large'>('line:font-size', 'medium');
 
@@ -5807,6 +5817,162 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   <span>小</span><span>中</span><span>大</span>
                 </div>
               </div>
+            </div>
+
+            {/* AI 生图 / MiniMax 语音 */}
+            <div className="rounded-[16px] border border-[#eeeeef] bg-white overflow-hidden">
+              <button onClick={() => setAiMediaOpen(v => !v)} className="w-full p-4 flex items-center justify-between text-left">
+                <div>
+                  <div className="text-[12px] font-bold text-[#333]">AI 生图 / MiniMax 语音</div>
+                  <div className="text-[9px] text-[#aaa] mt-1">MiniMax Key · 生图预设 · 语音预设</div>
+                </div>
+                <span className="text-[#aaa] text-sm">{aiMediaOpen ? '▾' : '▸'}</span>
+              </button>
+              {aiMediaOpen && (
+                <div className="px-4 pb-4 space-y-4">
+                  {/* MiniMax Key */}
+                  <div>
+                    <div className="text-[11px] font-bold text-[#333] mb-1.5">MiniMax API Key</div>
+                    <input
+                      type="password"
+                      value={minimaxKey}
+                      onChange={e => setMinimaxKey(e.target.value)}
+                      placeholder="粘贴 MiniMax 的 API Key"
+                      className="w-full p-2.5 bg-[#fafafa] border border-[#e8e8e9] rounded-[10px] text-[11px] outline-none font-mono"
+                    />
+                    <div className="text-[9px] text-[#aaa] mt-1">语音合成用，存在本地不上传</div>
+                  </div>
+
+                  {/* 生图预设 */}
+                  <div>
+                    <button onClick={() => setImgPresetOpen(v => !v)} className="w-full flex items-center justify-between py-1">
+                      <div className="text-[11px] font-bold text-[#333]">生图预设 · {imagePresets.length} 套</div>
+                      <span className="text-[#aaa] text-xs">{imgPresetOpen ? '▾' : '▸'}</span>
+                    </button>
+                    {imgPresetOpen && (
+                      <div className="space-y-2 mt-2">
+                        {imagePresets.map((p) => (
+                          <div key={p.id} className="rounded-[12px] border border-[#f0f0f1] overflow-hidden">
+                            <button
+                              onClick={() => setEditingImgPresetId(editingImgPresetId === p.id ? null : p.id)}
+                              className="w-full px-3 py-2.5 flex items-center justify-between text-left"
+                            >
+                              <span className="text-[11px] font-medium text-[#333]">{p.name}</span>
+                              <span className="flex items-center gap-2">
+                                {p.useReference && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-[#f0e6e8] text-[#8c5f6b]">锁脸</span>}
+                                <span className="text-[#aaa] text-xs">{editingImgPresetId === p.id ? '▾' : '▸'}</span>
+                              </span>
+                            </button>
+                            {editingImgPresetId === p.id && (
+                              <div className="px-3 pb-3 space-y-2">
+                                <input
+                                  value={p.name}
+                                  onChange={e => setImagePresets(prev => prev.map(x => x.id === p.id ? { ...x, name: e.target.value } : x))}
+                                  placeholder="预设名字"
+                                  className="w-full p-2 bg-[#fafafa] border border-[#e8e8e9] rounded-[8px] text-[11px] outline-none"
+                                />
+                                <div>
+                                  <div className="text-[10px] text-[#888] mb-1">正面提示词</div>
+                                  <textarea
+                                    value={p.positive}
+                                    onChange={e => setImagePresets(prev => prev.map(x => x.id === p.id ? { ...x, positive: e.target.value } : x))}
+                                    rows={2}
+                                    placeholder="positive prompt"
+                                    className="w-full p-2 bg-[#fafafa] border border-[#e8e8e9] rounded-[8px] text-[11px] outline-none resize-none"
+                                  />
+                                </div>
+                                <div>
+                                  <div className="text-[10px] text-[#888] mb-1">负面提示词</div>
+                                  <textarea
+                                    value={p.negative}
+                                    onChange={e => setImagePresets(prev => prev.map(x => x.id === p.id ? { ...x, negative: e.target.value } : x))}
+                                    rows={2}
+                                    placeholder="negative prompt"
+                                    className="w-full p-2 bg-[#fafafa] border border-[#e8e8e9] rounded-[8px] text-[11px] outline-none resize-none"
+                                  />
+                                </div>
+                                <label className="flex items-center gap-2 text-[11px] text-[#555] cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!p.useReference}
+                                    onChange={e => setImagePresets(prev => prev.map(x => x.id === p.id ? { ...x, useReference: e.target.checked } : x))}
+                                  />
+                                  用角色头像做参考图锁脸
+                                </label>
+                                <button
+                                  onClick={() => {
+                                    if (imagePresets.length <= 1) { showToast('至少保留一套预设'); return; }
+                                    setImagePresets(prev => prev.filter(x => x.id !== p.id));
+                                    setEditingImgPresetId(null);
+                                    showToast('已删除预设');
+                                  }}
+                                  className="text-[10px] text-[#e0656e]"
+                                >删除这套预设</button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => {
+                            const id = 'img-' + Date.now();
+                            setImagePresets(prev => [...prev, { id, name: '新预设', positive: '', negative: '', useReference: true }]);
+                            setEditingImgPresetId(id);
+                          }}
+                          className="w-full py-2.5 rounded-[10px] border border-dashed border-[#ddd] text-[11px] text-[#888]"
+                        >+ 新增生图预设</button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 语音预设 */}
+                  <div>
+                    <button onClick={() => setVoicePresetOpen(v => !v)} className="w-full flex items-center justify-between py-1">
+                      <div className="text-[11px] font-bold text-[#333]">语音预设 · {voicePresets.length} 个</div>
+                      <span className="text-[#aaa] text-xs">{voicePresetOpen ? '▾' : '▸'}</span>
+                    </button>
+                    {voicePresetOpen && (
+                      <div className="space-y-2 mt-2">
+                        {voicePresets.map((p) => (
+                          <div key={p.id} className="flex items-center gap-2 px-3 py-2.5 rounded-[12px] border border-[#f0f0f1]">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[11px] font-medium text-[#333] truncate">{p.name}</div>
+                              <div className="text-[9px] text-[#aaa] font-mono truncate">{p.voiceId}</div>
+                            </div>
+                            <button
+                              onClick={() => { setVoicePresets(prev => prev.filter(x => x.id !== p.id)); showToast('已删除'); }}
+                              className="text-[10px] text-[#e0656e] shrink-0"
+                            >删除</button>
+                          </div>
+                        ))}
+                        <div className="rounded-[12px] border border-dashed border-[#ddd] p-3 space-y-2">
+                          <input
+                            value={newVoiceName}
+                            onChange={e => setNewVoiceName(e.target.value)}
+                            placeholder="预设名字（如：程凛-温柔女声）"
+                            className="w-full p-2 bg-[#fafafa] border border-[#e8e8e9] rounded-[8px] text-[11px] outline-none"
+                          />
+                          <input
+                            value={newVoiceId}
+                            onChange={e => setNewVoiceId(e.target.value)}
+                            placeholder="Voice ID（MiniMax 后台复制）"
+                            className="w-full p-2 bg-[#fafafa] border border-[#e8e8e9] rounded-[8px] text-[11px] outline-none font-mono"
+                          />
+                          <button
+                            onClick={() => {
+                              if (!newVoiceName.trim() || !newVoiceId.trim()) { showToast('名字和 Voice ID 都要填'); return; }
+                              setVoicePresets(prev => [...prev, { id: 'voice-' + Date.now(), name: newVoiceName.trim(), voiceId: newVoiceId.trim() }]);
+                              setNewVoiceName(''); setNewVoiceId('');
+                              showToast('已添加语音预设');
+                            }}
+                            className="w-full py-2 rounded-[8px] bg-[#292724] text-white text-[11px]"
+                          >+ 添加语音预设</button>
+                        </div>
+                        <div className="text-[9px] text-[#aaa]">每个角色/NPC 在自己的「聊天设定」里选择用哪个音色</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* AI 润色：聊天/朋友圈 文字图片卡 + 文字视频卡 发送前润色 */}
