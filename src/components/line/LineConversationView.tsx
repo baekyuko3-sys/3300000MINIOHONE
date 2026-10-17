@@ -8294,24 +8294,6 @@ export function LineConversationView({
               </div>
             </details>
 
-            <details className="bg-white rounded-[14px] border border-[#f0f0f1] overflow-hidden">
-              <summary className="list-none cursor-pointer p-3.5 flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
-                <div>
-                  <div className="font-semibold text-[12px] text-[#333]">群聊天风格</div>
-                  <div className="text-[10px] text-[#999] mt-0.5">{getGroupPresets().find(p => p.id === groupPresetId)?.name || '选择预设'}</div>
-                </div>
-                <ChevronDown className="w-4 h-4 text-[#ae7e89] shrink-0" />
-              </summary>
-              <div className="px-3.5 pb-3.5 space-y-3 border-t border-[#f2f2f3] pt-3">
-                {getGroupPresets().filter(p => p.kind === 'online').map(p => (
-                  <button key={p.id} type="button" onClick={() => setGroupPresetId(p.id)} className={'w-full text-left p-3 rounded-[11px] border ' + (groupPresetId === p.id ? 'border-[#d9b8c1] bg-[#fcf5f7]' : 'border-[#eee] bg-[#fafafa]')}>
-                    <div className="flex items-center justify-between"><span className="text-[10px] font-medium text-[#444]">{p.name}</span><span className="text-[8px] text-[#999]">{groupPresetId === p.id ? '已选择' : '选择'}</span></div>
-                    <div className="mt-1 text-[9px] text-[#999]">{p.description}</div>
-                  </button>
-                ))}
-                <label className="block text-[9px] text-[#888]">群聊风格补充<textarea value={groupLorebookActive} onChange={e => setGroupLorebookActive(e.target.value)} placeholder="允许成员插话、接话或潜水；不强制全员回复。" className="w-full mt-1.5 min-h-[70px] p-2.5 rounded-lg bg-[#fafafa] border border-[#e8e8e8] text-[10px] outline-none resize-y" /></label>
-              </div>
-            </details>
 
             <details className="bg-white rounded-[14px] border border-[#f0f0f1] overflow-hidden">
               <summary className="list-none cursor-pointer p-3.5 flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
@@ -8322,10 +8304,17 @@ export function LineConversationView({
                 <ChevronDown className="w-4 h-4 text-[#ae7e89] shrink-0" />
               </summary>
               <div className="px-3.5 pb-3.5 space-y-3 border-t border-[#f2f2f3] pt-3">
+                <div className="text-[10px] font-semibold text-[#555]">群聊天预设</div>
+                {getGroupPresets().filter(p => p.kind === 'online').map(p => (
+                  <button key={p.id} type="button" onClick={() => setGroupPresetId(p.id)} className={'w-full text-left p-3 rounded-[11px] border ' + (groupPresetId === p.id ? 'border-[#d9b8c1] bg-[#fcf5f7]' : 'border-[#eee] bg-[#fafafa]')}>
+                    <div className="flex items-center justify-between"><span className="text-[10px] font-medium text-[#444]">{p.name}</span><span className="text-[8px] text-[#999]">{groupPresetId === p.id ? '已选择' : '选择'}</span></div>
+                    <div className="mt-1 text-[9px] text-[#999]">{p.description}</div>
+                  </button>
+                ))}
+                <label className="block text-[9px] text-[#888]">群聊风格补充<textarea value={groupLorebookActive} onChange={e => setGroupLorebookActive(e.target.value)} placeholder="允许成员插话、接话或潜水；不强制全员回复。" className="w-full mt-1.5 min-h-[70px] p-2.5 rounded-lg bg-[#fafafa] border border-[#e8e8e8] text-[10px] outline-none resize-y" /></label>
                 <div className="flex items-center justify-between"><span className="text-[10px] text-[#444]">生成思考摘要</span><button type="button" onClick={() => setEnableChainOfThought(v => !v)} className={'px-2.5 py-1 rounded-full text-[9px] ' + (enableChainOfThought ? 'bg-[#292724] text-white' : 'bg-[#eee] text-[#888]')}>{enableChainOfThought ? '开启' : '关闭'}</button></div>
                 <div className="flex items-center justify-between"><span className="text-[10px] text-[#444]">显示思考摘要</span><button type="button" onClick={() => setShowChainOfThoughtInChat(v => !v)} className={'px-2.5 py-1 rounded-full text-[9px] ' + (showChainOfThoughtInChat ? 'bg-[#292724] text-white' : 'bg-[#eee] text-[#888]')}>{showChainOfThoughtInChat ? '开启' : '关闭'}</button></div>
                 <div className="flex items-center justify-between"><span className="text-[10px] text-[#444]">动作描写</span><span className="px-2.5 py-1 rounded-full text-[9px] bg-[#eee] text-[#888]">群聊已关闭</span></div>
-                <div className="rounded-lg bg-[#fafafa] p-2.5"><div className="text-[9px] text-[#888]">当前群聊预设流程</div><div className="mt-1 text-[10px] text-[#9d6e7b]">{activeGroupPreset.name}</div></div>
               </div>
             </details>
 
