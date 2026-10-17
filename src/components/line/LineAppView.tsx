@@ -20,7 +20,7 @@ import {
 } from './TextMediaCards';
 import { LineConversationErrorBoundary } from './LineConversationErrorBoundary';
 import { createLineGroup, getLineGroupById } from '../../store/lineGroups';
-import { getWalletBalance, walletTopup } from '../../store/lineWallet';
+import { getWalletBalance, getWalletTransactions } from '../../store/lineWallet';
 import { getNpcs, updateNpc, type SaneNpc } from '../../store/npcs';
 import { getNpcFriendRequests, respondToNpcFriendRequest, setNpcFriendship } from '../../store/npcSocial';
 import { NpcAvatar } from '../NpcAvatar';
@@ -199,6 +199,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   // Tabs: 'chat' | 'friends' | 'moments' | 'me'
   const [activeTab, setActiveTab] = useState<'chat' | 'friends' | 'moments' | 'me'>('chat');
   const [walletBalance, setWalletBalance] = useState(() => getWalletBalance());
+  const [showWalletDetail, setShowWalletDetail] = useState(false);
   useEffect(() => {
     const refresh = () => setWalletBalance(getWalletBalance());
     window.addEventListener('sane333:wallet-updated', refresh);
@@ -2030,18 +2031,18 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
           </div>
 
           {/* LINE Pay 钱包 */}
-          <div className="mx-4 my-3 w-[calc(100%-2rem)] p-4 rounded-[22px] bg-gradient-to-br from-[#2d2d30] to-[#1a1a1c] shadow-sm text-white">
+          <div
+            onClick={() => setShowWalletDetail(true)}
+            className="mx-4 my-3 w-[calc(100%-2rem)] p-4 rounded-[22px] border border-[#eeeeef] bg-white shadow-sm cursor-pointer"
+          >
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-[8px] font-mono tracking-[2px] text-[#999]">LINE PAY</div>
-                <div className="text-[28px] font-bold mt-1">¥{walletBalance.toFixed(2)}</div>
+                <div className="text-[8px] tracking-[2px] text-[#b0b0b0]">LINE PAY · WALLET</div>
+                <div className="text-[24px] mt-1 text-[#2d2d2d]" style={{ fontFamily: '"Cormorant Garamond", Georgia, serif' }}>
+                  ¥{walletBalance.toFixed(2)}
+                </div>
               </div>
-              <button
-                onClick={() => { walletTopup(100); showToast('已充值 ¥100'); }}
-                className="px-4 py-2 rounded-full bg-white/15 text-[11px]"
-              >
-                充值 ¥100
-              </button>
+              <div className="text-[#ccc] text-[16px]">›</div>
             </div>
           </div>
 
@@ -5879,6 +5880,68 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       {toastMsg && (
         <div className="absolute left-1/2 -translate-x-1/2 bottom-20 bg-black/85 text-white px-3.5 py-1.5 rounded-full text-[11px] shadow-lg pointer-events-none z-60 animate-in fade-in">
           {toastMsg}
+        </div>
+      )}
+
+      {/* 钱包明细 - 按天分组 */}
+      {showWalletDetail && (
+        <div className="absolute inset-0 bg-black/40 z-70" onClick={() => setShowWalletDetail(false)}>
+          <div
+            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[24px] max-h-[75%] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="w-8 h-1 bg-[#e0e0e0] rounded-full mx-auto mt-3" />
+            <div className="px-6 pt-4 pb-2">
+              <div className="text-[8px] tracking-[3px] text-[#b0b0b0]">LINE PAY · WALLET</div>
+              <div className="text-[26px] italic text-[#2d2d2d] mt-1" style={{ fontFamily: '"Cormorant Garamond", Georgia, serif' }}>Balance</div>
+              <div className="text-[40px] text-[#2d2d2d] mt-1" style={{ fontFamily: '"Cormorant Garamond", Georgia, serif' }}>
+                ¥{walletBalance.toFixed(2)}
+              </div>
+              <div className="text-[11px] text-[#b0b0b0] mt-1">可用余额</div>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 pb-6">
+              {(() => {
+                const txs = getWalletTransactions();
+                if (txs.length === 0) {
+                  return <div className="text-center text-[#bbb] text-[12px] py-10">暂无交易记录</div>;
+                }
+                // 按天分组
+                const groups: Record<string, typeof txs> = {};
+                txs.forEach(tx => {
+                  const d = new Date(tx.createdAt);
+                  const today = new Date(); today.setHours(0,0,0,0);
+                  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+                  const day = new Date(d); day.setHours(0,0,0,0);
+                  let label: string;
+                  if (day.getTime() === today.getTime()) label = '今天';
+                  else if (day.getTime() === yesterday.getTime()) label = '昨天';
+                  else label = `${d.getMonth()+1}月${d.getDate()}日`;
+                  if (!groups[label]) groups[label] = [];
+                  groups[label].push(tx);
+                });
+                return Object.entries(groups).map(([label, items]) => (
+                  <div key={label}>
+                    <div className="text-[10px] tracking-[2px] text-[#b0b0b0] px-2 pt-4 pb-2">{label}</div>
+                    <div className="bg-[#fafafa] rounded-[16px] px-4">
+                      {items.map((tx, i) => (
+                        <div key={tx.id} className={`flex justify-between items-center py-3 ${i > 0 ? 'border-t border-[#f0f0f0]' : ''}`}>
+                          <div>
+                            <div className="text-[12px] text-[#444]">{tx.desc}</div>
+                            <div className="text-[10px] text-[#bbb] mt-0.5">
+                              {new Date(tx.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          </div>
+                          <div className={`text-[13px] font-bold ${tx.amount > 0 ? 'text-[#7a9a6a]' : 'text-[#2d2d2d]'}`}>
+                            {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
         </div>
       )}
 
