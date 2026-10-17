@@ -6195,62 +6195,54 @@ export function LineConversationView({
                 ) : msg.type === 'transfer' || msg.kind === 'transfer' ? (
                   <div
                     onContextMenu={(e) => { e.preventDefault(); setContextMenuMsg(msg); }}
-                    className={`w-[200px] rounded-[14px] overflow-hidden border ${isMe ? 'border-[#e8d4da] bg-[#faf1f3]' : 'border-[#eee] bg-white'}`}
+                    className="w-[205px] rounded-[12px] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] px-3.5 py-3 flex items-center gap-3"
                   >
-                    <div className="px-3.5 pt-3 pb-2.5 flex items-start gap-2.5">
-                      <div className={`w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0 ${isMe ? 'bg-white/80 text-[#ae7e89]' : 'bg-[#f7f7f8] text-[#666]'}`}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <rect x="3" y="6" width="18" height="12" rx="2.5" />
-                          <path d="M3 10h18" />
-                          <circle cx="16.5" cy="14" r="1.2" />
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: isMe ? '#f7f3ea' : '#f0f4f0' }}>
+                      {isMe ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a88040" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M5 12h14M13 6l6 6-6 6" />
                         </svg>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[10px] text-[#999]">转账</div>
-                        <div className="text-[16px] font-semibold text-[#333] tracking-tight mt-0.5">
-                          ¥{String(msg.transferAmount || msg.metadata?.amount || '0')}
-                        </div>
-                        {(msg.transferNote || msg.metadata?.note) ? (
-                          <div className="text-[10px] text-[#888] mt-0.5 truncate">{String(msg.transferNote || msg.metadata?.note)}</div>
-                        ) : null}
-                      </div>
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6a8a6a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M19 12H5M11 6l-6 6 6 6" />
+                        </svg>
+                      )}
                     </div>
-                    <div className="px-3.5 py-1.5 border-t border-black/5 text-[9px] text-[#aaa]">
-                      {isMe ? '已发送，等待对方确认' : '待确认收款'}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] text-[#999] tracking-[1px]">{isMe ? '转账' : '收到转账'}</div>
+                      <div className="text-[16px] font-semibold mt-0.5">¥{String(msg.transferAmount || msg.metadata?.amount || '0')}</div>
                     </div>
+                    <div className="text-[#d0d0d0] text-[14px]">›</div>
                   </div>
                 ) : msg.type === 'red-packet' || msg.kind === 'red-packet' ? (
                   <button type="button"
                     onClick={() => { setActiveRedPacket(msg); setShowRedPacketModal(true); }}
                     onContextMenu={(e) => { e.preventDefault(); setContextMenuMsg(msg); }}
-                    className="w-[200px] text-left rounded-[14px] overflow-hidden bg-gradient-to-b from-[#e8a0a8] to-[#c96e7d] text-white shadow-sm cursor-pointer active:scale-[0.99]"
+                    className="w-[170px] text-left rounded-[14px] overflow-hidden bg-[#7a1f1f] text-[#f0e0c0] shadow-sm cursor-pointer active:scale-[0.99]"
                   >
-                    <div className="px-3.5 pt-3 pb-2.5 flex items-start gap-2.5">
-                      <div className="w-9 h-9 rounded-[10px] bg-white/20 flex items-center justify-center shrink-0">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <rect x="4" y="7" width="16" height="14" rx="2.5" />
-                          <path d="M4 11h16M12 7V4.5M9 4.5h6M12 11v6M9.5 14h5" />
-                        </svg>
+                    <div className="px-3.5 pt-3 pb-2.5 relative">
+                      <div className="absolute inset-[6px] border border-[#c9a86a]/35 rounded-[9px] pointer-events-none" />
+                      <div className="w-7 h-7 rounded-full border border-[#c9a86a] flex items-center justify-center mx-auto">
+                        <span className="text-[12px] text-[#c9a86a]" style={{ fontFamily: '"Noto Serif SC", serif' }}>福</span>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[10px] text-white/75">红包</div>
-                        <div className="text-[13px] font-medium leading-snug mt-0.5 line-clamp-2">
-                          {String(msg.redPacketBlessing || msg.metadata?.blessing || '恭喜发财')}
-                        </div>
-                        <div className="text-[12px] text-white/90 mt-1">¥{String(msg.redPacketAmount || msg.metadata?.amount || '0')}</div>
+                      <div className="text-[13px] text-center mt-2 tracking-[3px] line-clamp-1" style={{ fontFamily: '"Noto Serif SC", serif' }}>
+                        {String(msg.redPacketBlessing || msg.metadata?.blessing || '恭喜发财')}
+                      </div>
+                      <div className="text-center mt-1 text-[#c9a86a]" style={{ fontFamily: '"Cormorant Garamond", Georgia, serif', fontSize: '22px' }}>
+                        ¥{String(msg.redPacketAmount || msg.metadata?.amount || '0')}
                       </div>
                     </div>
-                    <div className="px-3.5 py-1.5 border-t border-white/15 text-[9px] text-white/70">
-                      {(() => { const packetMeta = msg.metadata && typeof msg.metadata === 'object' ? msg.metadata : {}; const packetClaims = Array.isArray(msg.redPacketClaims) ? msg.redPacketClaims : Array.isArray(packetMeta.claims) ? packetMeta.claims : []; const packetCount = Math.max(1, Number(msg.redPacketCount || packetMeta.count || 1)); const packetStatus = String(msg.redPacketStatus || packetMeta.status || 'sent'); return packetStatus === 'claimed' || packetClaims.length >= packetCount ? `已领完 · ${packetClaims.length}人领取` : packetClaims.length ? `已领取 ${packetClaims.length}/${packetCount} · 点击查看` : isMe ? '已发出 · 点击查看领取情况' : '点击领取'; })()}
+                    <div className="px-3.5 py-1.5 text-[8px] text-[#f0e0c0]/50 text-center">
+                      {(() => { const packetMeta = msg.metadata && typeof msg.metadata === 'object' ? msg.metadata : {}; const packetClaims = Array.isArray(msg.redPacketClaims) ? msg.redPacketClaims : Array.isArray(packetMeta.claims) ? packetMeta.claims : []; const packetCount = Math.max(1, Number(msg.redPacketCount || packetMeta.count || 1)); const packetStatus = String(msg.redPacketStatus || packetMeta.status || 'sent'); return packetStatus === 'claimed' || packetClaims.length >= packetCount ? `已领完 · ${packetClaims.length}人领取` : packetClaims.length ? `已领取 ${packetClaims.length}/${packetCount}` : isMe ? '已发出 · 点击查看' : '点击领取'; })()}
                     </div>
                   </button>
                 ) : msg.type === 'location' || msg.kind === 'location' ? (
                   <div
                     onContextMenu={(e) => { e.preventDefault(); setContextMenuMsg(msg); }}
-                    className="w-[230px] rounded-[18px] overflow-hidden bg-white shadow-[0_8px_28px_rgba(0,0,0,0.12)]"
+                    className="w-[190px] rounded-[16px] overflow-hidden bg-white shadow-[0_6px_20px_rgba(0,0,0,0.1)]"
                   >
                     {/* 米白金虚拟地图 */}
-                    <div className="h-[110px] relative overflow-hidden">
+                    <div className="h-[85px] relative overflow-hidden">
                       <svg width="100%" height="100%" viewBox="0 0 230 110" preserveAspectRatio="xMidYMid slice">
                         <rect width="230" height="110" fill="#f7f3ea"/>
                         <path d="M0,0 L40,0 Q32,35 42,62 Q48,85 38,110 L0,110 Z" fill="#e8eef0"/>
