@@ -368,7 +368,7 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
     const keys: string[] = [];
     for (let i = 0; i < localStorage.length; i += 1) {
       const key = localStorage.key(i);
-      if (key?.startsWith('phone:') || key?.startsWith('line:') || key?.startsWith('sane333:')) keys.push(key);
+      if (key?.startsWith('phone:') || key?.startsWith('line:') || key?.startsWith('sane333:') || key?.startsWith('studio:')) keys.push(key);
     }
     keys.forEach(key => localStorage.removeItem(key));
     setSettingsState(DEFAULT_APP_SETTINGS);

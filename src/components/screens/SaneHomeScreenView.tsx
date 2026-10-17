@@ -46,9 +46,9 @@ export function SaneHomeScreenView({ onNavigate, onOpenSheet, onToggleTheme }: S
     { id: 'app-instagram', x: 104, y: 350 },
     { id: 'app-npc', x: 190, y: 350 },
     { id: 'app-group-presets', x: 190, y: 350 },
-    { id: 'app-spy-phone', x: 276, y: 350 },
     { id: 'app-memory', x: 104, y: 440 },
     { id: 'app-studio', x: 190, y: 440 },
+    // app-spy-phone 已下架（死 UI）
   ];
 
   const [desktopLayouts, setDesktopLayouts] = useState(() => readAppearance().desktopLayouts || { page1: {}, page2: {} });
@@ -583,7 +583,7 @@ export function SaneHomeScreenView({ onNavigate, onOpenSheet, onToggleTheme }: S
               ['instagram','Instagram','instagram','bg-gradient-to-tr from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] text-white','instagram'],
               ['npc','NPC','npc','bg-[#ebe2dc] text-[#5f554f] border border-black/5','npc'],
               ['group-presets','预设','group-presets','bg-[#f0ebe5] text-[#63584f] border border-black/5','group-presets'],
-              ['spy-phone','查手机','spy-phone','bg-[#9b625b] text-white','spy-phone'],
+              // ['spy-phone','查手机','spy-phone','bg-[#9b625b] text-white','spy-phone'], // 死 UI，已下架
               ['memory','Memory','memory','bg-[#292724] text-white','memory'],
               ['studio','STUDIO','studio','bg-[#242220] text-white','project-studio'],
             ].map(([id,label,symbol,iconClass,screen]) => {

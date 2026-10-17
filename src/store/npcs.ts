@@ -80,6 +80,40 @@ export function deleteNpc(id: string): void {
   window.localStorage.setItem(KEY, JSON.stringify(getNpcs().filter(item => item.id !== id)));
 }
 
+/** 删除 NPC 后清理各处引用，避免群聊/好友列表里留下幽灵成员 */
+export function removeNpcReferences(npcId: string): void {
+  if (typeof window === 'undefined' || !npcId) return;
+  try {
+    // 群聊：移除带该 npcId 的成员 + npcMembers 记录
+    const groupsRaw = window.localStorage.getItem('line:groups');
+    if (groupsRaw) {
+      const groups = JSON.parse(groupsRaw) as Array<any>;
+      const next = groups.map(group => {
+        let changed = false;
+        const members = Array.isArray(group.members)
+          ? group.members.filter((m: any) => { const keep = m?.npcId !== npcId; if (!keep) changed = true; return keep; })
+          : group.members;
+        let npcMembers = group.npcMembers;
+        if (npcMembers && typeof npcMembers === 'object') {
+          const entries = Object.entries(npcMembers).filter(([, v]: any) => v?.npcId !== npcId);
+          if (entries.length !== Object.keys(npcMembers).length) { npcMembers = Object.fromEntries(entries); changed = true; }
+        }
+        return changed ? { ...group, members, npcMembers, updatedAt: new Date().toISOString() } : group;
+      });
+      window.localStorage.setItem('line:groups', JSON.stringify(next));
+    }
+    // 好友列表：移除带该 npcId 的好友
+    const friendsRaw = window.localStorage.getItem('line:friends-list');
+    if (friendsRaw) {
+      const friends = JSON.parse(friendsRaw) as Array<any>;
+      const next = friends.filter(f => f?.npcId !== npcId);
+      if (next.length !== friends.length) window.localStorage.setItem('line:friends-list', JSON.stringify(next));
+    }
+  } catch {
+    // 清理失败不影响删除流程
+  }
+}
+
 export function updateNpc(id: string, patch: Partial<SaneNpc>): void {
   const npc = getNpcs().find(item => item.id === id);
   if (!npc) return;

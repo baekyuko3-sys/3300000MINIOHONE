@@ -1,9 +1,15 @@
+import { useEffect } from 'react';
 import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, MapPin } from 'lucide-react';
 import { ScreenType, OfflineEvent } from '../../types';
 import { usePersistentState } from '../../store/usePersistentState';
+import { getOfflineEvents } from '../../store/offlineEvents';
 
 export function CalendarScreenView({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) {
-  const [events] = usePersistentState<OfflineEvent[]>('phone:offline-events-cache', []);
+  // 权威数据在 phone:offline-events（offlineEvents.ts），刷新缓存避免永远空白。
+  const [events, setEvents] = usePersistentState<OfflineEvent[]>('phone:offline-events-cache', getOfflineEvents());
+  useEffect(() => {
+    setEvents(getOfflineEvents());
+  }, [setEvents]);
   const now = new Date();
   const month = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' }).toUpperCase();
 

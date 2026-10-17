@@ -11,6 +11,7 @@ import {
   addTrackToCharacterPlaylist,
   fetchLyric,
   getCharacterPlaylists,
+  getLikedTracks,
   loginWithQr,
   logoutMusic,
   readMusicApiSettings,
@@ -18,6 +19,7 @@ import {
   readMusicCurrent,
   readStrangerSession,
   resolveTrackUrl,
+  saveLikedTracks,
   saveMusicApiSettings,
   saveMusicCurrent,
   saveStrangerSession,
@@ -562,6 +564,9 @@ export function MusicScreenView({ onNavigate }: MusicScreenViewProps) {
   const toggleLiked = (track: MusicTrack) => {
     const exists = likedTracks.some(item => item.id === track.id);
     updateActiveIdentity(identity => ({ ...identity, likedTracks: exists ? identity.likedTracks.filter(item => item.id !== track.id) : [track, ...identity.likedTracks].slice(0, 200) }));
+    // 同步写全局收藏（IG 音乐选择器读的是全局 key），按本次意图显式增删
+    const global = getLikedTracks();
+    saveLikedTracks(exists ? global.filter(item => item.id !== track.id) : [track, ...global.filter(item => item.id !== track.id)]);
     showToast(exists ? '已从喜欢的歌移除' : '已加入喜欢的歌');
   };
 

@@ -10,7 +10,7 @@ import { generateCreativeText, readStoredAiSettings } from '../../ai/aiEngine';
 import { getCharacterMemory } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
 import { buildNpcAllContentContext, serializeNpcAllContentContext } from '../../store/npcContext';
-import { deleteNpc, getNpcs, type SaneNpc, upsertNpc, getActivePersona } from '../../store/npcs';
+import { deleteNpc, getNpcs, removeNpcReferences, type SaneNpc, upsertNpc, getActivePersona } from '../../store/npcs';
 import { NpcAvatar } from '../NpcAvatar';
 import { putMedia } from '../../store/mediaVault';
 
@@ -876,7 +876,9 @@ export function NpcScreenView({ onNavigate }: { onNavigate: (screen: ScreenType)
                     </div>
                     <button
                       onClick={() => {
+                        if (!window.confirm(`确定删除 NPC「${selected.name}」吗？将同时从群聊和好友列表中移除。`)) return;
                         deleteNpc(selected.id);
+                        removeNpcReferences(selected.id);
                         setNpcs(prev => prev.filter(item => item.id !== selected.id));
                         setSelectedId(null);
                         setScreenMode('character-archive');

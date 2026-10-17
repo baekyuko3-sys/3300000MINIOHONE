@@ -37,6 +37,10 @@ export function GalleryScreenView({ onNavigate }: GalleryScreenViewProps) {
 
   const importPhoto = (file?: File) => {
     if (!file || !file.type.startsWith('image/')) return;
+    if (file.size > 5 * 1024 * 1024) {
+      window.alert('图片超过 5MB，请先压缩后再导入');
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const next: GalleryPhoto = {
@@ -45,7 +49,11 @@ export function GalleryScreenView({ onNavigate }: GalleryScreenViewProps) {
         title: file.name.replace(/.[^.]+$/, ''),
         date: new Date().toLocaleDateString('zh-CN'),
       };
-      save([next, ...photos]);
+      try {
+        save([next, ...photos]);
+      } catch {
+        window.alert('相册存储空间不足，导入失败');
+      }
     };
     reader.readAsDataURL(file);
   };
