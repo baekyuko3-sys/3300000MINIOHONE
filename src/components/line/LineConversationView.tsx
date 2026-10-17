@@ -67,6 +67,7 @@ import {
   readStoredLineCardStyle,
 } from '../../store/lineMediaCards';
 import { appendLineMessage, editLineMessage, toggleLineReaction, setLineMessageFavorite, recordLineCall, markLineMessageFailed, clearLineConversation, recallLineMessage, updateLineMessage } from '../../store/lineRuntime';
+import { saveCallRecord, getCallHistory, deleteCallRecord, formatCallDuration, type CallRecord } from '../../store/callHistory';
 import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, searchLineMessages, type LineRuntimeMessage } from '../../store/lineRuntime';
 import { fetchLineWeather, formatLineWeather, type LineWeatherSnapshot } from '../../store/lineReality';
 import { getRecentMomentsForGroup, maybePostGroupMomentAfterRound } from '../../store/momentsAfterChat';
@@ -1028,6 +1029,15 @@ export function LineConversationView({
   const [callBackground, setCallBackground] = useState<string>('');
   const [callGenBgLoading, setCallGenBgLoading] = useState(false);
   const [callGenAppearanceLoading, setCallGenAppearanceLoading] = useState(false);
+  // 通话字幕/记录
+  const [callTranscript, setCallTranscript] = useState<Array<{ role: 'ai' | 'me' | 'action'; text: string }>>([]);
+  const [callDuration, setCallDuration] = useState(0);
+  const [callInputText, setCallInputText] = useState('');
+  const [callMuted, setCallMuted] = useState(false);
+  const [callSpeakerOn, setCallSpeakerOn] = useState(false);
+  const [callActionDesc, setCallActionDesc] = useState(true);
+  const [showCallHistory, setShowCallHistory] = useState(false);
+  const [selectedCallRecord, setSelectedCallRecord] = useState<any>(null);
   const [callAiSpeaking, setCallAiSpeaking] = useState(false);
   const [imageGenPresetId, setImageGenPresetId] = useState<string>('');
   const [imageGenPrompt, setImageGenPrompt] = useState('');
@@ -1341,6 +1351,34 @@ export function LineConversationView({
       } as ImportedCharacter)
     : boundImportedCharacter;
   const characterMemoryForPersona = importedCharacter ? getCharacterMemory(importedCharacter.id, importedCharacter.name, npcForChat ? resolvedPersonaId : undefined) : null;
+
+  // 视频通话接通时自动生成 AI 背景
+  useEffect(() => {
+    if (!showCallModal || callMode !== 'video' || !aiImageEnabled || callBackground || callGenBgLoading) return;
+    const preset = imagePresets[0];
+    if (!preset) return;
+    (async () => {
+      setCallGenBgLoading(true);
+      try {
+        const aiSettings = conversationAiSettings();
+        let refB64: string | undefined;
+        if (preset.useReference) {
+          const avatarUrl = importedCharacter?.avatar || npcForChat?.avatar;
+          refB64 = await resolveImageToDataUrl(avatarUrl);
+        }
+        const result = await generateImage('视频通话背景，温馨的房间内景，柔和灯光', preset, {
+          apiKey: aiSettings.apiKey,
+          baseUrl: aiSettings.apiBaseUrl || 'https://api.openai.com',
+          model: 'gpt-image-1',
+        }, refB64);
+        if (result.ok && result.imageBase64) {
+          setCallBackground(`data:image/png;base64,${result.imageBase64}`);
+        }
+      } catch {} finally {
+        setCallGenBgLoading(false);
+      }
+    })();
+  }, [showCallModal, callMode]);
 
   const [personaLiveWeather, setPersonaLiveWeather] = useState<LineWeatherSnapshot | null>(null);
 
@@ -2672,6 +2710,18 @@ export function LineConversationView({
       if (timer) clearInterval(timer);
     };
   }, [isRecording]);
+
+  // 通话时长计时 (showCallModal)
+  useEffect(() => {
+    let timer: any;
+    if (showCallModal) {
+      setCallDuration(0);
+      setCallTranscript([]);
+      setCallInputText('');
+      timer = setInterval(() => setCallDuration((prev) => prev + 1), 1000);
+    }
+    return () => clearInterval(timer);
+  }, [showCallModal]);
 
   // 语音通话时长计时
   useEffect(() => {
@@ -6948,166 +6998,407 @@ export function LineConversationView({
                     </div>
                   )}
 
-                  {/* 通话弹窗 (语音/视频) */}
+                  {/* 通话弹窗 (语音/视频) · 新版 UI */}
                   {showCallModal && (
-                    <div className="absolute inset-0 z-[90] flex flex-col" style={{
+                    <div className="absolute inset-0 z-[90] flex flex-col overflow-hidden" style={{
                       background: callMode === 'video' && callBackground
                         ? `url(${callBackground}) center/cover`
-                        : callMode === 'video' ? 'linear-gradient(180deg,#2a2a35,#1a1a22)' : 'linear-gradient(180deg,#3a3a45,#1e1e26)',
+                        : callMode === 'video'
+                          ? 'linear-gradient(135deg,#26262e,#121215)'
+                          : 'radial-gradient(120% 90% at 50% 0%, #26262e 0%, #17171c 55%, #121215 100%)',
                     }}>
-                      {/* 顶部信息 */}
-                      <div className="pt-16 text-center text-white">
-                        <div className="w-20 h-20 rounded-full mx-auto overflow-hidden bg-white/10 flex items-center justify-center">
-                          {(importedCharacter?.avatar || npcForChat?.avatar) ? (
-                            <img src={importedCharacter?.avatar || npcForChat?.avatar} className="w-full h-full object-cover" />
-                          ) : (
-                            <span className="text-3xl">👤</span>
+                      {callMode === 'voice' ? (
+                        <>
+                          {/* 语音通话：顶部头像区 */}
+                          <div className="pt-14 px-6 text-center shrink-0">
+                            <div className="relative inline-block">
+                              <div className="w-[88px] h-[88px] rounded-full overflow-hidden mx-auto flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#e8d5b0,#c2a878)', boxShadow: '0 8px 24px rgba(194,168,120,0.25)' }}>
+                                {(importedCharacter?.avatar || npcForChat?.avatar) ? (
+                                  <img src={importedCharacter?.avatar || npcForChat?.avatar} className="w-full h-full object-cover" />
+                                ) : (
+                                  <span className="text-3xl text-white">{(contactName || importedCharacter?.name || npcForChat?.name || '?').slice(0, 1)}</span>
+                                )}
+                              </div>
+                              <div className="absolute -inset-[6px] rounded-full pointer-events-none" style={{ border: '1px solid rgba(194,168,120,0.3)' }} />
+                              <div className="absolute bottom-[2px] right-[2px] w-4 h-4 rounded-full bg-[#4ade80]" style={{ border: '3px solid #1a1a20' }} />
+                            </div>
+                            <div className="text-[#f0ebe0] text-[19px] font-medium mt-3.5" style={{ letterSpacing: '4px' }}>
+                              {contactName || importedCharacter?.name || npcForChat?.name || '未知'}
+                            </div>
+                            <div className="text-[#6a6a72] text-[11px] mt-1.5" style={{ letterSpacing: '2px', fontFamily: 'monospace' }}>
+                              {String(Math.floor(callDuration / 60)).padStart(2, '0')} : {String(callDuration % 60).padStart(2, '0')}
+                            </div>
+                            {/* 金色声波 */}
+                            <div className="flex gap-1 justify-center items-center h-7 mt-4">
+                              {[8, 16, 24, 14, 20, 10].map((h, i) => (
+                                <span key={i} className="w-[2px] rounded-full animate-pulse" style={{ height: h, background: 'linear-gradient(180deg,#c2a878,#8a7a5a)', animationDelay: `${i * 0.15}s` }} />
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* 字幕流 */}
+                          <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-2.5">
+                            {callTranscript.map((line, i) => (
+                              line.role === 'action' ? (
+                                <div key={i} className="self-center text-[#7a6f5a] text-[11px] italic" style={{ letterSpacing: '1px' }}>
+                                  —— {line.text} ——
+                                </div>
+                              ) : (
+                                <div key={i} className={`max-w-[88%] px-3.5 py-2.5 rounded-2xl text-[13px] leading-[1.7] ${
+                                  line.role === 'ai'
+                                    ? 'self-start text-[#d8d8de] border border-white/[0.06]'
+                                    : 'self-end text-[#e8ddd0] border border-[#c2a878]/20'
+                                }`} style={{
+                                  background: line.role === 'ai' ? 'rgba(255,255,255,0.06)' : 'rgba(194,168,120,0.14)',
+                                  borderBottomLeftRadius: line.role === 'ai' ? 4 : undefined,
+                                  borderBottomRightRadius: line.role === 'me' ? 4 : undefined,
+                                  backdropFilter: 'blur(8px)',
+                                }}>
+                                  {line.text}
+                                </div>
+                              )
+                            ))}
+                            {callTranscript.length === 0 && (
+                              <div className="self-center text-[#55555e] text-[11px] mt-8">通话已接通，说点什么吧</div>
+                            )}
+                          </div>
+
+                          {/* AI 说话 */}
+                          {callVoiceEnabled && (
+                            <div className="px-5 mb-2">
+                              <button
+                                disabled={callAiSpeaking}
+                                onClick={async () => {
+                                  const voicePresetId = (importedCharacter as any)?.voicePresetId || (npcForChat as any)?.voicePresetId;
+                                  const minimaxKey = (() => { try { const raw = localStorage.getItem('line:minimax-key'); return raw ? JSON.parse(raw) : ''; } catch { return ''; } })();
+                                  let voiceId = '';
+                                  try {
+                                    const vp = JSON.parse(localStorage.getItem('line:voice-presets') || '[]');
+                                    const found = (Array.isArray(vp) ? vp : []).find((x: any) => x.id === voicePresetId);
+                                    if (found) voiceId = found.voiceId || '';
+                                  } catch {}
+                                  if (!voiceId || !minimaxKey) { showToast('请先绑定语音预设和 MiniMax Key'); return; }
+                                  setCallAiSpeaking(true);
+                                  try {
+                                    const lastAi = [...callTranscript].reverse().find(l => l.role === 'ai');
+                                    const text = lastAi?.text || '喂？听得到吗？是我呀。';
+                                    setCallTranscript(prev => [...prev, { role: 'ai', text }]);
+                                    const res = await synthesizeMinimaxVoice(text, { apiKey: minimaxKey, voiceId });
+                                    if (res.ok && res.audioBase64) {
+                                      const audio = new Audio(`data:audio/mpeg;base64,${res.audioBase64}`);
+                                      audio.play().catch(() => {});
+                                    } else {
+                                      showToast('合成失败：' + (res.error || '未知错误'));
+                                    }
+                                  } finally {
+                                    setCallAiSpeaking(false);
+                                  }
+                                }}
+                                className="w-full py-2.5 rounded-full text-white text-[12px] disabled:opacity-40"
+                                style={{ background: 'rgba(139,92,246,0.3)', border: '1px solid rgba(139,92,246,0.4)' }}
+                              >
+                                {callAiSpeaking ? '说话中...' : '让 TA 说句话'}
+                              </button>
+                            </div>
                           )}
-                        </div>
-                        <div className="text-[18px] font-semibold mt-4">{contactName || importedCharacter?.name || npcForChat?.name || '未知'}</div>
-                        <div className="text-[12px] text-white/60 mt-1">{callMode === 'voice' ? '语音通话' : '视频通话'} · 连接中...</div>
-                      </div>
 
-                      <div className="flex-1" />
+                          {/* 输入框 */}
+                          <div className="mx-4 mb-2 flex items-center gap-2 rounded-full px-4 py-1 border border-white/[0.08]" style={{ background: 'rgba(255,255,255,0.07)', backdropFilter: 'blur(12px)' }}>
+                            <input
+                              value={callInputText}
+                              onChange={(e) => setCallInputText(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && callInputText.trim()) {
+                                  setCallTranscript(prev => [...prev, { role: 'me', text: callInputText.trim() }]);
+                                  setCallInputText('');
+                                }
+                              }}
+                              placeholder="说点什么…"
+                              className="flex-1 bg-transparent border-none outline-none text-[#e0e0e0] text-[13px] py-2.5 placeholder:text-[#55555e]"
+                            />
+                            <button
+                              onClick={() => {
+                                if (!callInputText.trim()) return;
+                                setCallTranscript(prev => [...prev, { role: 'me', text: callInputText.trim() }]);
+                                setCallInputText('');
+                              }}
+                              className="w-9 h-9 rounded-full flex items-center justify-center text-white shrink-0"
+                              style={{ background: 'linear-gradient(135deg,#d4b896,#b8935a)' }}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                            </button>
+                          </div>
 
-                      {/* 视频背景生成按钮 */}
-                      {callMode === 'video' && aiImageEnabled && (
-                        <div className="px-8 mb-4">
-                          <button
-                            disabled={callGenBgLoading}
-                            onClick={async () => {
-                              const preset = imagePresets[0];
-                              if (!preset) { showToast('请先添加生图预设'); return; }
-                              setCallGenBgLoading(true);
-                              try {
-                                const aiSettings = conversationAiSettings();
-                                let refB64: string | undefined;
-                                if (preset.useReference) {
-                                  const avatarUrl = importedCharacter?.avatar || npcForChat?.avatar;
-                                  refB64 = await resolveImageToDataUrl(avatarUrl);
-                                }
-                                const result = await generateImage('视频通话背景，温馨的房间内景，柔和灯光', preset, {
-                                  apiKey: aiSettings.apiKey,
-                                  baseUrl: aiSettings.apiBaseUrl || 'https://api.openai.com',
-                                  model: 'gpt-image-1',
-                                }, refB64);
-                                if (result.ok && result.imageBase64) {
-                                  setCallBackground(`data:image/png;base64,${result.imageBase64}`);
-                                  showToast('背景已生成');
-                                } else {
-                                  showToast('生成失败：' + (result.error || '未知错误'));
-                                }
-                              } finally {
-                                setCallGenBgLoading(false);
-                              }
-                            }}
-                            className="w-full py-3 rounded-[14px] bg-white/15 text-white text-[13px] backdrop-blur disabled:opacity-40"
-                          >
-                            {callGenBgLoading ? '生成中...' : '✨ AI 生成背景'}
-                          </button>
-                        </div>
-                      )}
+                          {/* 控制栏 */}
+                          <div className="mx-4 mb-7 rounded-[28px] p-2.5 flex justify-around border border-white/[0.07]" style={{ background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(12px)' }}>
+                            <button onClick={() => setCallMuted(!callMuted)} className="flex flex-col items-center gap-1">
+                              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${callMuted ? 'bg-[#e05252] text-white' : 'bg-white/10 text-[#ccc]'}`}>
+                                <Mic className="w-5 h-5" />
+                              </div>
+                              <span className="text-[9px] text-[#6a6a72]" style={{ letterSpacing: '1px' }}>静音</span>
+                            </button>
+                            <button onClick={() => {
+                              const charName = contactName || importedCharacter?.name || npcForChat?.name || '未知';
+                              saveCallRecord({
+                                type: 'voice',
+                                characterId: importedCharacter?.id || (npcForChat as any)?.id || '',
+                                characterName: charName,
+                                characterAvatar: importedCharacter?.avatar || npcForChat?.avatar,
+                                duration: callDuration,
+                                transcript: callTranscript,
+                              });
+                              recordLineCall(conversationStorageId, { direction: 'outgoing', kind: 'audio', status: 'ended', duration: callDuration });
+                              setShowCallModal(false);
+                              setCallBackground('');
+                            }} className="flex flex-col items-center gap-1">
+                              <div className="w-12 h-12 rounded-full flex items-center justify-center text-white" style={{ background: 'linear-gradient(135deg,#e0685a,#c2483a)', transform: 'rotate(135deg)', boxShadow: '0 4px 16px rgba(224,82,82,0.35)' }}>
+                                <Phone className="w-5 h-5" />
+                              </div>
+                              <span className="text-[9px] text-[#6a6a72]" style={{ letterSpacing: '1px' }}>挂断</span>
+                            </button>
+                            <button onClick={() => setCallSpeakerOn(!callSpeakerOn)} className="flex flex-col items-center gap-1">
+                              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${callSpeakerOn ? 'text-[#c2a878]' : 'text-[#ccc] bg-white/10'}`} style={callSpeakerOn ? { background: 'rgba(194,168,120,0.2)' } : {}}>
+                                <Volume2 className="w-5 h-5" />
+                              </div>
+                              <span className="text-[9px] text-[#6a6a72]" style={{ letterSpacing: '1px' }}>免提</span>
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {/* 视频通话：全屏 */}
+                          {/* 左上角标签 */}
+                          <div className="absolute top-14 left-3 z-[2] text-white text-[10px] px-2.5 py-1 rounded-[10px]" style={{ background: 'rgba(0,0,0,0.4)' }}>
+                            {contactName || importedCharacter?.name || npcForChat?.name || '未知'} · {String(Math.floor(callDuration / 60)).padStart(2, '0')}:{String(callDuration % 60).padStart(2, '0')}
+                          </div>
+                          {/* 右上角本地小窗 */}
+                          <div className="absolute top-14 right-3 z-[2] w-16 h-[86px] rounded-[10px] bg-black/40 border border-white/20 flex items-center justify-center text-white/50 text-[10px]">
+                            我
+                          </div>
+                          {/* AI 生成标签 */}
+                          {callBackground && (
+                            <div className="absolute top-[104px] left-3 z-[2] text-[#c2a878] text-[10px] px-2.5 py-1 rounded-[10px]" style={{ background: 'rgba(0,0,0,0.4)', letterSpacing: '1px' }}>
+                              ✨ AI 生成背景
+                            </div>
+                          )}
 
-                      {/* 看看TA现在：根据聊天内容生成角色当前样子 */}
-                      {aiImageEnabled && (
-                        <div className="px-8 mb-4">
-                          <button
-                            disabled={callGenAppearanceLoading}
-                            onClick={async () => {
-                              const preset = imagePresets[0];
-                              if (!preset) { showToast('请先添加生图预设'); return; }
-                              setCallGenAppearanceLoading(true);
-                              try {
-                                // 1. 让 AI 根据最近聊天推断角色现在的状态
-                                const recentText = messages.slice(-10).map(m => {
-                                  const who = m.sender === 'me' ? '我' : (m.senderName || 'TA');
-                                  return `${who}: ${m.text || '[媒体]'}`;
-                                }).join('\n');
-                                const { generateCreativeText } = await import('../../ai/aiEngine');
-                                const sceneDesc = await generateCreativeText({
-                                  settings: conversationAiSettings(),
-                                  systemPrompt: '你是场景描述器。根据聊天记录，用一句话描述角色现在的外貌状态、穿着、环境。只输出描述，不要解释。例如："刚洗完澡，头发微湿，穿着宽松睡衣，躺在床上，背景是卧室暖光"。',
-                                  userPrompt: `聊天记录：\n${recentText}\n\n角色名：${importedCharacter?.name || npcForChat?.name || 'TA'}`,
-                                });
-                                // 2. 用推断出的场景 + 预设 + 锁脸生成
-                                const aiSettings = conversationAiSettings();
-                                let refB64: string | undefined;
-                                if (preset.useReference) {
-                                  const avatarUrl = importedCharacter?.avatar || npcForChat?.avatar;
-                                  refB64 = await resolveImageToDataUrl(avatarUrl);
+                          <div className="flex-1" />
+
+                          {/* 字幕条 */}
+                          <div className="px-4 mb-2 z-[2] flex flex-col gap-1.5 max-h-[140px] overflow-y-auto">
+                            {callTranscript.slice(-4).map((line, i) => (
+                              line.role === 'action' ? (
+                                <div key={i} className="self-center text-white/70 text-[11px] italic">—— {line.text} ——</div>
+                              ) : (
+                                <div key={i} className={`max-w-[85%] px-3 py-2 rounded-xl text-[12px] leading-[1.6] ${
+                                  line.role === 'ai' ? 'self-start text-[#f0f0f0]' : 'self-end text-white'
+                                }`} style={{
+                                  background: line.role === 'ai' ? 'rgba(0,0,0,0.5)' : 'rgba(194,168,120,0.3)',
+                                  backdropFilter: 'blur(10px)',
+                                }}>
+                                  {line.text}
+                                </div>
+                              )
+                            ))}
+                          </div>
+
+                          {/* 动作描写开关 */}
+                          <div className="mx-4 mb-2 z-[2] flex items-center justify-between rounded-xl px-3.5 py-2" style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(10px)' }}>
+                            <span className="text-[#ddd] text-[12px]">动作描写</span>
+                            <button onClick={() => setCallActionDesc(!callActionDesc)} className="w-[38px] h-[22px] rounded-full relative transition-colors" style={{ background: callActionDesc ? '#c2a878' : '#555' }}>
+                              <div className="absolute top-[2px] w-[18px] h-[18px] rounded-full bg-white transition-all" style={{ [callActionDesc ? 'right' : 'left']: '2px' }} />
+                            </button>
+                          </div>
+
+                          {/* 输入框 */}
+                          <div className="mx-4 mb-2 z-[2] flex items-center gap-2 rounded-full px-4 py-1 border border-white/10" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)' }}>
+                            <input
+                              value={callInputText}
+                              onChange={(e) => setCallInputText(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && callInputText.trim()) {
+                                  setCallTranscript(prev => [...prev, { role: 'me', text: callInputText.trim() }]);
+                                  setCallInputText('');
                                 }
-                                const result = await generateImage(
-                                  `video call selfie, looking at camera, upper body: ${sceneDesc.trim()}`,
-                                  preset,
-                                  {
+                              }}
+                              placeholder="说点什么…"
+                              className="flex-1 bg-transparent border-none outline-none text-white text-[13px] py-2.5 placeholder:text-white/40"
+                            />
+                            <button
+                              onClick={() => {
+                                if (!callInputText.trim()) return;
+                                setCallTranscript(prev => [...prev, { role: 'me', text: callInputText.trim() }]);
+                                setCallInputText('');
+                              }}
+                              className="w-9 h-9 rounded-full flex items-center justify-center text-white shrink-0"
+                              style={{ background: 'linear-gradient(135deg,#d4b896,#b8935a)' }}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                            </button>
+                          </div>
+
+                          {/* 底部控制栏 */}
+                          <div className="z-[2] px-4 pb-8 pt-3 flex justify-center gap-4" style={{ background: 'linear-gradient(0deg,rgba(0,0,0,0.6),transparent)' }}>
+                            <button onClick={() => setCallMuted(!callMuted)} className={`w-11 h-11 rounded-full flex items-center justify-center ${callMuted ? 'bg-[#e05252]' : 'bg-white/[0.12]'} text-white`}>
+                              <Mic className="w-4 h-4" />
+                            </button>
+                            <button
+                              disabled={callGenBgLoading}
+                              onClick={async () => {
+                                const preset = imagePresets[0];
+                                if (!preset) { showToast('请先添加生图预设'); return; }
+                                setCallGenBgLoading(true);
+                                try {
+                                  const aiSettings = conversationAiSettings();
+                                  let refB64: string | undefined;
+                                  if (preset.useReference) {
+                                    const avatarUrl = importedCharacter?.avatar || npcForChat?.avatar;
+                                    refB64 = await resolveImageToDataUrl(avatarUrl);
+                                  }
+                                  const result = await generateImage('视频通话背景，温馨的房间内景，柔和灯光', preset, {
                                     apiKey: aiSettings.apiKey,
                                     baseUrl: aiSettings.apiBaseUrl || 'https://api.openai.com',
                                     model: 'gpt-image-1',
-                                  },
-                                  refB64
-                                );
-                                if (result.ok && result.imageBase64) {
-                                  setCallBackground(`data:image/png;base64,${result.imageBase64}`);
-                                  showToast('已生成TA现在的样子');
-                                } else {
-                                  showToast('生成失败：' + (result.error || '未知错误'));
+                                  }, refB64);
+                                  if (result.ok && result.imageBase64) {
+                                    setCallBackground(`data:image/png;base64,${result.imageBase64}`);
+                                    showToast('背景已生成');
+                                  } else {
+                                    showToast('生成失败：' + (result.error || '未知错误'));
+                                  }
+                                } finally {
+                                  setCallGenBgLoading(false);
                                 }
-                              } finally {
-                                setCallGenAppearanceLoading(false);
-                              }
-                            }}
-                            className="w-full py-3 rounded-[14px] bg-white/15 text-white text-[13px] backdrop-blur disabled:opacity-40"
-                          >
-                            {callGenAppearanceLoading ? '生成中...' : '📸 看看TA现在'}
-                          </button>
-                        </div>
+                              }}
+                              className="w-11 h-11 rounded-full flex items-center justify-center text-[#e8d5b0] border border-[#c2a878]/40 disabled:opacity-40"
+                              style={{ background: 'rgba(194,168,120,0.25)' }}
+                              title="重新生成背景"
+                            >
+                              {callGenBgLoading ? <span className="text-[10px]">…</span> : <Sparkles className="w-4 h-4" />}
+                            </button>
+                            <button onClick={() => {
+                              const charName = contactName || importedCharacter?.name || npcForChat?.name || '未知';
+                              saveCallRecord({
+                                type: 'video',
+                                characterId: importedCharacter?.id || (npcForChat as any)?.id || '',
+                                characterName: charName,
+                                characterAvatar: importedCharacter?.avatar || npcForChat?.avatar,
+                                duration: callDuration,
+                                transcript: callTranscript,
+                              });
+                              recordLineCall(conversationStorageId, { direction: 'outgoing', kind: 'video', status: 'ended', duration: callDuration });
+                              setShowCallModal(false);
+                              setCallBackground('');
+                            }} className="w-11 h-11 rounded-full bg-[#e05252] flex items-center justify-center text-white" style={{ transform: 'rotate(135deg)' }}>
+                              <Phone className="w-4 h-4" />
+                            </button>
+                            <button className="w-11 h-11 rounded-full bg-white/[0.12] flex items-center justify-center text-white">
+                              <Video className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </>
                       )}
+                    </div>
+                  )}
 
-                      {/* AI 说话按钮 (通话语音合成) */}
-                      {callVoiceEnabled && (
-                        <div className="px-8 mb-4">
-                          <button
-                            disabled={callAiSpeaking}
-                            onClick={async () => {
-                              const voicePresetId = (importedCharacter as any)?.voicePresetId || (npcForChat as any)?.voicePresetId;
-                              const minimaxKey = (() => { try { const raw = localStorage.getItem('line:minimax-key'); return raw ? JSON.parse(raw) : ''; } catch { return ''; } })();
-                              let voiceId = '';
-                              try {
-                                const vp = JSON.parse(localStorage.getItem('line:voice-presets') || '[]');
-                                const found = (Array.isArray(vp) ? vp : []).find((x: any) => x.id === voicePresetId);
-                                if (found) voiceId = found.voiceId || '';
-                              } catch {}
-                              if (!voiceId || !minimaxKey) { showToast('请先绑定语音预设和 MiniMax Key'); return; }
-                              setCallAiSpeaking(true);
-                              try {
-                                const text = '喂？听得到吗？是我呀。';
-                                const res = await synthesizeMinimaxVoice(text, { apiKey: minimaxKey, voiceId });
-                                if (res.ok && res.audioBase64) {
-                                  const audio = new Audio(`data:audio/mpeg;base64,${res.audioBase64}`);
-                                  audio.play().catch(() => {});
-                                  showToast('TA 说话了');
-                                } else {
-                                  showToast('合成失败：' + (res.error || '未知错误'));
-                                }
-                              } finally {
-                                setCallAiSpeaking(false);
-                              }
-                            }}
-                            className="w-full py-3 rounded-[14px] bg-[#8b5cf6] text-white text-[13px] disabled:opacity-40"
-                          >
-                            {callAiSpeaking ? '说话中...' : '🎤 让 TA 说句话'}
-                          </button>
-                        </div>
-                      )}
+                  {/* 通话记录列表 */}
+                  {showCallHistory && !selectedCallRecord && (
+                    <div className="absolute inset-0 z-[95] bg-[#f7f7f8] flex flex-col">
+                      <div className="h-[60px] bg-white border-b border-[#ededee] flex items-center justify-between px-3 shrink-0">
+                        <button onClick={() => setShowCallHistory(false)} className="text-2xl text-[#555] px-2">‹</button>
+                        <span className="font-semibold text-sm text-[#333]">通话记录</span>
+                        <div className="w-8" />
+                      </div>
+                      <div className="flex-1 overflow-y-auto">
+                        {getCallHistory().length === 0 ? (
+                          <div className="text-center text-[#aaa] text-xs mt-16">暂无通话记录</div>
+                        ) : (
+                          getCallHistory().map((rec: CallRecord) => (
+                            <button
+                              key={rec.id}
+                              onClick={() => setSelectedCallRecord(rec)}
+                              className="w-full bg-white border-b border-[#f0f0f1] px-4 py-3 flex items-center gap-3 text-left"
+                            >
+                              <div className="w-11 h-11 rounded-full overflow-hidden bg-[#f0e8d4] flex items-center justify-center shrink-0">
+                                {rec.characterAvatar ? (
+                                  <img src={rec.characterAvatar} className="w-full h-full object-cover" />
+                                ) : (
+                                  <span className="text-[#b8935a] text-lg">{rec.characterName.slice(0, 1)}</span>
+                                )}
+                              </div>
+                              <div className="flex-1">
+                                <div className="text-[13px] font-medium text-[#333]">{rec.characterName}</div>
+                                <div className="text-[11px] text-[#999] mt-0.5">
+                                  {new Date(rec.timestamp).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                  {' · '}{formatCallDuration(rec.duration)}
+                                </div>
+                              </div>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: rec.type === 'video' ? '#e8f0fe' : '#f5efe2', color: rec.type === 'video' ? '#5a7ab0' : '#b8935a' }}>
+                                {rec.type === 'video' ? '视频' : '语音'}
+                              </span>
+                              <span className="text-[#bbb]">›</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
 
-                      {/* 底部按钮 */}
-                      <div className="pb-12 flex items-center justify-center gap-8">
+                  {/* 通话记录详情/回放 */}
+                  {showCallHistory && selectedCallRecord && (
+                    <div className="absolute inset-0 z-[96] bg-[#f7f7f8] flex flex-col">
+                      <div className="h-[60px] bg-white border-b border-[#ededee] flex items-center justify-between px-3 shrink-0">
+                        <button onClick={() => setSelectedCallRecord(null)} className="text-2xl text-[#555] px-2">‹</button>
+                        <span className="font-semibold text-sm text-[#333]">通话详情</span>
                         <button
-                          onClick={() => { setShowCallModal(false); setCallBackground(''); }}
-                          className="w-16 h-16 rounded-full bg-[#e0656e] text-white flex items-center justify-center"
+                          onClick={() => {
+                            if (window.confirm('删除这条通话记录？')) {
+                              deleteCallRecord(selectedCallRecord.id);
+                              setSelectedCallRecord(null);
+                            }
+                          }}
+                          className="text-[12px] text-[#e05252] px-2"
                         >
-                          <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8c1.4 2.8 3.8 5.2 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.3 0 .7-.2 1l-2.3 2.2z" transform="rotate(135 12 12)"/></svg>
+                          删除
                         </button>
+                      </div>
+                      <div className="bg-white px-4 py-3 border-b border-[#f0f0f1]">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-full overflow-hidden bg-[#f0e8d4] flex items-center justify-center">
+                            {selectedCallRecord.characterAvatar ? (
+                              <img src={selectedCallRecord.characterAvatar} className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-[#b8935a] text-xl">{selectedCallRecord.characterName.slice(0, 1)}</span>
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-[14px] font-medium">{selectedCallRecord.characterName}</div>
+                            <div className="text-[11px] text-[#999] mt-0.5">
+                              {selectedCallRecord.type === 'video' ? '视频通话' : '语音通话'}
+                              {' · '}{formatCallDuration(selectedCallRecord.duration)}
+                              {' · '}{new Date(selectedCallRecord.timestamp).toLocaleString('zh-CN')}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-4">
+                        <div className="text-[11px] text-[#999] mb-3 text-center">—— 字幕回放 ——</div>
+                        <div className="flex flex-col gap-2">
+                          {(selectedCallRecord.transcript || []).map((line: any, i: number) => (
+                            line.role === 'action' ? (
+                              <div key={i} className="self-center text-[#a0907a] text-[11px] italic">—— {line.text} ——</div>
+                            ) : (
+                              <div key={i} className={`max-w-[85%] px-3 py-2 rounded-2xl text-[13px] leading-[1.6] ${
+                                line.role === 'ai' ? 'self-start bg-white' : 'self-end bg-[#f7eef0]'
+                              }`} style={{ borderBottomLeftRadius: line.role === 'ai' ? 4 : undefined, borderBottomRightRadius: line.role === 'me' ? 4 : undefined }}>
+                                {line.text}
+                              </div>
+                            )
+                          ))}
+                          {(!selectedCallRecord.transcript || selectedCallRecord.transcript.length === 0) && (
+                            <div className="text-center text-[#bbb] text-[12px] mt-8">无字幕记录</div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -9292,6 +9583,18 @@ export function LineConversationView({
           </div>
 
           <div className="p-4 space-y-4 flex-1 overflow-y-auto text-xs pb-10">
+
+            {/* 通话记录入口 */}
+            <button
+              onClick={() => setShowCallHistory(true)}
+              className="w-full bg-white rounded-[14px] border border-[#f0f0f1] p-3.5 flex items-center justify-between"
+            >
+              <div className="text-left">
+                <div className="font-medium text-[#333]">通话记录</div>
+                <div className="text-[10px] text-[#999] mt-0.5">查看语音/视频通话历史与字幕回放</div>
+              </div>
+              <span className="text-[#bbb] text-lg">›</span>
+            </button>
 
             {/* 语音预设绑定 */}
             {!isGroup && (npcForChat || boundImportedCharacter) && (
