@@ -52,7 +52,7 @@ import { edgePair, isAllowedEdge as isVroomAllowedEdge, isBlockedEdge as isVroom
 import {
   Pin, Bell, BellOff, Bookmark, Heart, MessageCircle, Share2, Plus, Search,
   Check, Trash2, X, Sliders, SlidersHorizontal, ChevronRight, UserCheck, Shield, Volume2,
-  Smartphone, Settings
+  Smartphone, Settings, Wallet
 } from 'lucide-react';
 
 function getCharacterStoryAge(character: any): string {
@@ -1972,7 +1972,13 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       {activeTab === 'me' && (
         <div className="flex-1 overflow-y-auto no-scrollbar pb-20 bg-white">
           {/* Header */}
-          <div className="h-[78px] px-5 pt-4 pb-2.5 bg-white">
+          <div className="h-[78px] px-5 pt-4 pb-2.5 bg-white relative">
+            <button
+              onClick={() => setShowWalletDetail(true)}
+              className="absolute top-5 right-5 w-9 h-9 rounded-full bg-[#faf8f5] border border-[#eeeeef] flex items-center justify-center"
+            >
+              <Wallet size={17} className="text-[#ad7d88]" strokeWidth={1.8} />
+            </button>
             <div
               className="text-[32px] leading-none text-[#202124] italic tracking-[-0.5px]"
               style={{ fontFamily: '"Cormorant Garamond", Georgia, "Noto Serif SC", serif', fontWeight: 600 }}
@@ -2027,22 +2033,6 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               >
                 {tx('编辑主页', 'ホーム編集')}
               </button>
-            </div>
-          </div>
-
-          {/* LINE Pay 钱包 */}
-          <div
-            onClick={() => setShowWalletDetail(true)}
-            className="mx-4 my-3 w-[calc(100%-2rem)] p-4 rounded-[22px] border border-[#eeeeef] bg-white shadow-sm cursor-pointer"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-[8px] tracking-[2px] text-[#b0b0b0]">LINE PAY · WALLET</div>
-                <div className="text-[24px] mt-1 text-[#2d2d2d]" style={{ fontFamily: '"Cormorant Garamond", Georgia, serif' }}>
-                  ¥{walletBalance.toFixed(2)}
-                </div>
-              </div>
-              <div className="text-[#ccc] text-[16px]">›</div>
             </div>
           </div>
 
