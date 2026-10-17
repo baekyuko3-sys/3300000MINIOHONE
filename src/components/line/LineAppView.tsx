@@ -1616,7 +1616,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                     e.preventDefault();
                     setChatContextMenu(item);
                   }}
-                  className={`absolute inset-y-0 left-0 z-10 w-full px-4 flex items-center text-left transition-transform duration-200 touch-pan-y ${item.isPinned ? 'bg-[#f7f3ea]' : 'bg-white'}`}
+                  className={`absolute inset-y-0 left-0 z-10 w-full px-4 flex items-center text-left transition-transform duration-200 touch-pan-y ${item.isPinned ? 'bg-[#f2f2f3]' : 'bg-white'}`}
                   style={{ transform: swipedChatId === item.id ? 'translateX(-76px)' : 'translateX(0)' }}
                 >
                 {/* Default Avatar SVG from template */}
