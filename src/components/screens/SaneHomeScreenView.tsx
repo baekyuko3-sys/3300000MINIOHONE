@@ -43,7 +43,8 @@ export function SaneHomeScreenView({ onNavigate, onOpenSheet, onToggleTheme }: S
   const defaultPage2Layout: DesktopItem[] = [
     { id: 'widget-threads', x: 20, y: 220 },
     { id: 'app-threads', x: 18, y: 350 },
-    { id: 'app-npc', x: 104, y: 350 },
+    { id: 'app-instagram', x: 104, y: 350 },
+    { id: 'app-npc', x: 190, y: 350 },
     { id: 'app-group-presets', x: 190, y: 350 },
     { id: 'app-spy-phone', x: 276, y: 350 },
     { id: 'app-memory', x: 104, y: 440 },
@@ -164,7 +165,7 @@ export function SaneHomeScreenView({ onNavigate, onOpenSheet, onToggleTheme }: S
     saveDesktopLayout(page, next);
   };
 
-  const itemPosition = (page: DesktopPage, id: string) => getLayout(page).find(item => item.id === id) || getDefaultLayout(page).find(item => item.id === id)!;
+  const itemPosition = (page: DesktopPage, id: string) => getLayout(page).find(item => item.id === id) || getDefaultLayout(page).find(item => item.id === id) || { id, x: 18, y: 350 };
   const resetDesktopLayout = (page: DesktopPage) => saveDesktopLayout(page, getDefaultLayout(page));
 
   const hideDesktopItem = (page: DesktopPage, id: string) => {
