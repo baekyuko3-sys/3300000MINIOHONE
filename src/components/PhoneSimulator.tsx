@@ -9,6 +9,7 @@ import { GalleryScreenView } from './screens/GalleryScreenView';
 import { MusicHtmlView } from './screens/MusicHtmlView';
 import { NotesScreenView } from './screens/NotesScreenView';
 import { ThreadsScreenView } from './screens/ThreadsScreenView';
+import { InstagramScreenView } from './screens/InstagramScreenView';
 import { SpyPhoneScreenView } from './screens/SpyPhoneScreenView';
 import { WorldBookScreenView } from './screens/WorldBookScreenView';
 import { SettingsScreenView } from './screens/SettingsScreenView';
@@ -362,6 +363,11 @@ export function PhoneSimulator({
               onNavigate={navigateFromApp}
             />
           )}
+          {currentScreen === 'instagram' && (
+            <InstagramScreenView
+              onNavigate={navigateFromApp}
+            />
+          )}
 
           {currentScreen === 'spy-phone' && (
             <SpyPhoneScreenView
@@ -497,6 +503,7 @@ export function PhoneSimulator({
               {currentScreen === 'world-book' && <WorldBookScreenView onNavigate={navigateFromApp} />}
               {currentScreen === 'spy-phone' && <SpyPhoneScreenView onNavigate={navigateFromApp} />}
               {currentScreen === 'threads' && <ThreadsScreenView onNavigate={navigateFromApp} />}
+              {currentScreen === 'instagram' && <InstagramScreenView onNavigate={navigateFromApp} />}
               {currentScreen === 'offline-story' && <OfflineStoryHtmlView onNavigate={navigateTo} />}
               {currentScreen === 'settings' && <SettingsScreenView onNavigate={navigateFromApp} />}
               {currentScreen === 'project-studio' && <ProjectStudioScreenView onNavigate={navigateFromApp} />}
@@ -590,6 +597,7 @@ export function PhoneSimulator({
               {currentScreen === 'world-book' && <WorldBookScreenView onNavigate={navigateFromApp} />}
               {currentScreen === 'spy-phone' && <SpyPhoneScreenView onNavigate={navigateFromApp} />}
               {currentScreen === 'threads' && <ThreadsScreenView onNavigate={navigateFromApp} />}
+              {currentScreen === 'instagram' && <InstagramScreenView onNavigate={navigateFromApp} />}
               {currentScreen === 'offline-story' && <OfflineStoryHtmlView onNavigate={navigateTo} />}
               {currentScreen === 'settings' && <SettingsScreenView onNavigate={navigateFromApp} />}
               {currentScreen === 'project-studio' && <ProjectStudioScreenView onNavigate={navigateFromApp} />}

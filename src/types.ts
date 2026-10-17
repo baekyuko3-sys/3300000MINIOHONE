@@ -15,6 +15,7 @@ export type ScreenType =
   | 'group-presets'
   | 'world-book'
   | 'threads'
+  | 'instagram'
   | 'spy-phone'
   | 'settings'
   | 'offline-story'
