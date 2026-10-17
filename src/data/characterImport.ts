@@ -38,6 +38,12 @@ export interface ImportedCharacter {
   importedAt: string;
   /** MiniMax 语音预设 ID */
   voicePresetId?: string;
+  /** 在线时段，如 { start: '09:00', end: '23:00' }。不设 = 全天在线 */
+  onlineHours?: { start: string; end: string };
+  /** 隐身模式：true = 强制不在线 */
+  invisible?: boolean;
+  /** 不在线时的自动回复文案。不设 = 用默认文案 */
+  offlineMessage?: string;
 }
 
 function cleanString(value: unknown): string {

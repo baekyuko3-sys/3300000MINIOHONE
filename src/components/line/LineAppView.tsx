@@ -24,6 +24,7 @@ import { getWalletBalance, getWalletTransactions, getFamilyCards, addFamilyCard,
 import { getNpcs, updateNpc, type SaneNpc } from '../../store/npcs';
 import { getNpcFriendRequests, respondToNpcFriendRequest, setNpcFriendship } from '../../store/npcSocial';
 import { NpcAvatar } from '../NpcAvatar';
+import { isCharacterOnline } from '../../store/characterStatus';
 import { VroomImage } from '../VroomImage';
 import { putMedia } from '../../store/mediaVault';
 import { markCharacterRead } from '../../store/worldRuntime';
@@ -1762,7 +1763,12 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   <div className="w-[49px] h-[49px] rounded-full bg-[#f1f1f2] border border-[#e8e8e9] flex items-center justify-center shrink-0 overflow-hidden">
                     <NpcAvatar name={item.name} avatar={resolveChatAvatar(item)} className="w-full h-full" textClassName="text-[18px]" />
                   </div>
-
+                  {(() => {
+                    if (item.isGroup) return null;
+                    const ch = importedCharacters.find(c => c.id === item.characterId) || importedCharacters.find(c => c.name === item.name);
+                    if (!ch || !isCharacterOnline(ch)) return null;
+                    return <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-[#4ade80] border-2 border-white" />;
+                  })()}
                 </div>
 
                 <div className="flex-1 min-w-0 ml-3">

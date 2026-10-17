@@ -123,7 +123,7 @@ function PostMedia({ media, gradient, className = '' }: { media?: string; gradie
   return <MeshImage g={gradient} className={className} />;
 }
 
-function Avatar({ size = 34, ring = 0, avatarUrl, name }: { size?: number; ring?: number; avatarUrl?: string; name?: string }) {
+function Avatar({ size = 34, ring = 0, avatarUrl, name, online }: { size?: number; ring?: number; avatarUrl?: string; name?: string; online?: boolean }) {
   const ringBg = ring === 1
     ? 'linear-gradient(135deg,#dcb3ae,#b4838a 50%,#9dbcae)'
     : ring === 2 ? '#b4838a' : '#cfcfcf';
@@ -137,14 +137,18 @@ function Avatar({ size = 34, ring = 0, avatarUrl, name }: { size?: number; ring?
       </svg>
     </div>
   );
+  const dot = online ? <span className="absolute bottom-0 right-0 rounded-full bg-[#4ade80] border-2 border-white" style={{ width: size * 0.28, height: size * 0.28 }} /> : null;
   if (ring) {
     return (
-      <div style={{ width: size, height: size, borderRadius: '50%', padding: 2.5, background: ringBg, flex: 'none' }}>
-        <div style={{ width: '100%', height: '100%', borderRadius: '50%', background: '#fff', padding: 2 }}>{inner}</div>
+      <div className="relative" style={{ width: size, height: size, flex: 'none' }}>
+        <div style={{ width: size, height: size, borderRadius: '50%', padding: 2.5, background: ringBg }}>
+          <div style={{ width: '100%', height: '100%', borderRadius: '50%', background: '#fff', padding: 2 }}>{inner}</div>
+        </div>
+        {dot}
       </div>
     );
   }
-  return <div style={{ width: size, height: size, flex: 'none' }}>{inner}</div>;
+  return <div className="relative" style={{ width: size, height: size, flex: 'none' }}>{inner}{dot}</div>;
 }
 
 type View = 'home' | 'comments' | 'me' | 'activity' | 'deleted' | 'compose' | 'search' | 'post' | 'dm' | 'chat' | 'edit' | 'story';

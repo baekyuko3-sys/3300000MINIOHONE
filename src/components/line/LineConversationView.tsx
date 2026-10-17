@@ -1303,6 +1303,31 @@ export function LineConversationView({
     ? importedCharacters.find(character => character && character.id === characterId) || null
     : importedCharacters.find(character => character && character.name === contactName) || null;
   const npcForChat = !isGroup && npcId ? getNpcs().find(npc => npc.id === npcId) || null : null;
+
+
+  // 上线后自动回复：每分钟检查一次，角色上线且有待回复消息时触发 AI 回复
+  useEffect(() => {
+    if (isGroup) return;
+    const timer = setInterval(async () => {
+      try {
+        const { isCharacterOnline } = await import('../../store/characterStatus');
+        const targetChar: any = npcForChat || boundImportedCharacter;
+        if (!targetChar || !isCharacterOnline(targetChar)) return;
+        const key = `line:pending-offline-reply:${conversationStorageId}`;
+        const pending = JSON.parse(localStorage.getItem(key) || '[]');
+        if (!pending.length) return;
+        localStorage.removeItem(key);
+        // 触发一条汇总回复
+        const texts = pending.map((p: any) => p.text).join('\n');
+        showToast('对方上线了，正在回复…');
+        // 用最后一条消息触发正常 AI 回复流程
+        setInputText(`[上线回复] 用户在你不在线时发了 ${pending.length} 条消息：${texts}`);
+        setTimeout(() => handleSend(true), 500);
+      } catch { /* best effort */ }
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [isGroup, conversationStorageId, npcForChat?.id, boundImportedCharacter?.id]);
+
   const importedCharacter: ImportedCharacter | null = npcForChat
     ? ({
         ...(boundImportedCharacter || ({} as ImportedCharacter)),
@@ -2798,6 +2823,37 @@ export function LineConversationView({
 
     // Enter/Return only sends the user's message. The paper-plane button passes shouldReply=true.
     if (!shouldReply) return;
+
+    // 不在线自动回复（仅单聊）
+    if (!isGroup) {
+      const { isCharacterOnline, getOfflineMessage } = await import('../../store/characterStatus');
+      const targetChar: any = npcForChat || boundImportedCharacter;
+      if (targetChar && !isCharacterOnline(targetChar)) {
+        const offlineText = getOfflineMessage(targetChar);
+        const offlineMsgId = Date.now() + 1;
+        setMessages((prev) => [...prev, {
+          id: offlineMsgId,
+          sender: 'other',
+          senderName: targetChar.name || characterProfile.nickname,
+          text: offlineText,
+          content: offlineText,
+          time: '刚刚',
+          createdAt: new Date().toISOString(),
+          isRead: false,
+          isOfflineAutoReply: true,
+        }]);
+        // 存下待回复的消息，等上线后自动回复
+        try {
+          const key = `line:pending-offline-reply:${conversationStorageId}`;
+          const pending = JSON.parse(localStorage.getItem(key) || '[]');
+          pending.push({ msgId, text: userText, at: Date.now() });
+          localStorage.setItem(key, JSON.stringify(pending));
+        } catch { /* best effort */ }
+        showToast('对方不在线，已发送自动回复');
+        return;
+      }
+    }
+
     setIsTyping(true);
 
     // LINE read state: once the role starts processing the message, it has been seen.
@@ -9151,6 +9207,71 @@ export function LineConversationView({
                 {voicePresets.length === 0 && (
                   <div className="text-[9px] text-[#aaa] mt-1.5">还没有语音预设，去「聊天通用设置 → AI 生图 / MiniMax 语音」里添加</div>
                 )}
+              </div>
+            )}
+
+            {/* 在线状态 */}
+            {!isGroup && (npcForChat || boundImportedCharacter) && (
+              <div className="bg-white rounded-[14px] border border-[#f0f0f1] p-3.5">
+                <div className="font-medium text-[#333]">在线状态</div>
+                <div className="text-[10px] text-[#999] mt-0.5 mb-2">头像绿点 · 不在线时自动回复</div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[11px] text-[#666]">在线时段</span>
+                  <input
+                    type="time"
+                    value={(npcForChat ? (npcForChat as any).onlineHours?.start : (boundImportedCharacter as any)?.onlineHours?.start) || '09:00'}
+                    onChange={e => {
+                      const v = e.target.value;
+                      if (npcForChat) {
+                        const h = { ...((npcForChat as any).onlineHours || { start: '09:00', end: '23:00' }), start: v };
+                        updateNpc(npcForChat.id, { onlineHours: h } as any);
+                      } else if (boundImportedCharacter) {
+                        const h = { ...((boundImportedCharacter as any).onlineHours || { start: '09:00', end: '23:00' }), start: v };
+                        setStoredImportedCharacters(prev => prev.map(ch => ch.id === boundImportedCharacter.id ? { ...ch, onlineHours: h } : ch));
+                      }
+                    }}
+                    className="p-1.5 bg-[#fafafa] border border-[#e8e8e9] rounded-[8px] text-[11px] outline-none"
+                  />
+                  <span className="text-[11px] text-[#999]">至</span>
+                  <input
+                    type="time"
+                    value={(npcForChat ? (npcForChat as any).onlineHours?.end : (boundImportedCharacter as any)?.onlineHours?.end) || '23:00'}
+                    onChange={e => {
+                      const v = e.target.value;
+                      if (npcForChat) {
+                        const h = { ...((npcForChat as any).onlineHours || { start: '09:00', end: '23:00' }), end: v };
+                        updateNpc(npcForChat.id, { onlineHours: h } as any);
+                      } else if (boundImportedCharacter) {
+                        const h = { ...((boundImportedCharacter as any).onlineHours || { start: '09:00', end: '23:00' }), end: v };
+                        setStoredImportedCharacters(prev => prev.map(ch => ch.id === boundImportedCharacter.id ? { ...ch, onlineHours: h } : ch));
+                      }
+                    }}
+                    className="p-1.5 bg-[#fafafa] border border-[#e8e8e9] rounded-[8px] text-[11px] outline-none"
+                  />
+                </div>
+                <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!(npcForChat ? (npcForChat as any).invisible : (boundImportedCharacter as any)?.invisible)}
+                    onChange={e => {
+                      if (npcForChat) updateNpc(npcForChat.id, { invisible: e.target.checked } as any);
+                      else if (boundImportedCharacter) setStoredImportedCharacters(prev => prev.map(ch => ch.id === boundImportedCharacter.id ? { ...ch, invisible: e.target.checked } : ch));
+                    }}
+                    className="w-3.5 h-3.5 accent-[#d4aab5]"
+                  />
+                  <span className="text-[11px] text-[#666]">隐身（强制不在线）</span>
+                </label>
+                <div className="text-[11px] text-[#666] mb-1">不在线自动回复文案</div>
+                <input
+                  value={(npcForChat ? (npcForChat as any).offlineMessage : (boundImportedCharacter as any)?.offlineMessage) || ''}
+                  placeholder="TA 现在不在线，稍后回复你"
+                  onChange={e => {
+                    const v = e.target.value;
+                    if (npcForChat) updateNpc(npcForChat.id, { offlineMessage: v || undefined } as any);
+                    else if (boundImportedCharacter) setStoredImportedCharacters(prev => prev.map(ch => ch.id === boundImportedCharacter.id ? { ...ch, offlineMessage: v || undefined } : ch));
+                  }}
+                  className="w-full p-2 bg-[#fafafa] border border-[#e8e8e9] rounded-[8px] text-[11px] outline-none"
+                />
               </div>
             )}
 
