@@ -439,6 +439,11 @@ let running = false;
 
 export async function runProactiveCatchup() {
   if (typeof window === 'undefined' || running) return;
+  // 角色主动行为（独立开关，不依赖 backgroundEnabled）
+  try {
+    const { checkProactiveBehaviors } = await import('./proactiveBehaviors');
+    void checkProactiveBehaviors();
+  } catch { /* best-effort */ }
   const settings = readAppSettings();
   if (!settings.backgroundEnabled || !settings.proactiveMessagesEnabled) return;
 

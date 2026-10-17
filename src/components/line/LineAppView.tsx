@@ -599,6 +599,20 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   /** 正文里输入 @ 时的下滑好友列表 */
   const [mentionSuggest, setMentionSuggest] = useState<{ start: number; query: string } | null>(null);
   const postTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // 来电监听
+  useEffect(() => {
+    const sync = () => {
+      try {
+        const raw = window.localStorage.getItem('line:incoming-call');
+        setIncomingCall(raw ? JSON.parse(raw) : null);
+      } catch { setIncomingCall(null); }
+    };
+    sync();
+    const onCall = () => sync();
+    window.addEventListener('sane333:incoming-call', onCall);
+    return () => window.removeEventListener('sane333:incoming-call', onCall);
+  }, []);
+
   // 图片/视频卡片设置（ME → 聊天设置）：LINE 聊天文字图片/视频和朋友圈共用这一套
   const [textCardStyleId, setTextCardStyleId] = usePersistentState<string>(TEXT_CARD_STYLE_KEY, 'a');
   const [videoCardStyleId, setVideoCardStyleId] = usePersistentState<string>(VIDEO_CARD_STYLE_KEY, 'a');
@@ -616,6 +630,12 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   const [aiImageEnabled, setAiImageEnabled] = usePersistentState<boolean>('line:ai-image-enabled', false);
   const [aiVoiceEnabled, setAiVoiceEnabled] = usePersistentState<boolean>('line:ai-voice-enabled', false);
   const [callVoiceEnabled, setCallVoiceEnabled] = usePersistentState<boolean>('line:call-voice-enabled', false);
+  const [proactiveMsgEnabled, setProactiveMsgEnabled] = usePersistentState<boolean>('line:proactive-message', false);
+  const [proactiveVoiceCallEnabled, setProactiveVoiceCallEnabled] = usePersistentState<boolean>('line:proactive-voice-call', false);
+  const [proactiveVideoCallEnabled, setProactiveVideoCallEnabled] = usePersistentState<boolean>('line:proactive-video-call', false);
+  const [proactivePhotoEnabled, setProactivePhotoEnabled] = usePersistentState<boolean>('line:proactive-photo', false);
+  const [proactiveOpen, setProactiveOpen] = useState(false);
+  const [incomingCall, setIncomingCall] = useState<{ characterId: string; characterName: string; avatar?: string; kind: 'voice' | 'video'; conversationId: string; createdAt: number } | null>(null);
   const [imgPresetOpen, setImgPresetOpen] = useState(false);
   const [voicePresetOpen, setVoicePresetOpen] = useState(false);
   const [editingImgPresetId, setEditingImgPresetId] = useState<string | null>(null);
@@ -6002,6 +6022,50 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               )}
             </div>
 
+            {/* 角色主动行为 */}
+            <div className="rounded-[16px] border border-[#eeeeef] bg-white overflow-hidden">
+              <button onClick={() => setProactiveOpen(v => !v)} className="w-full p-4 flex items-center justify-between text-left">
+                <div>
+                  <div className="text-[12px] font-bold text-[#333]">角色主动行为</div>
+                  <div className="text-[9px] text-[#aaa] mt-1">角色在后台主动找你：发消息 / 打电话 / 发照片</div>
+                </div>
+                <span className="text-[#aaa] text-sm">{proactiveOpen ? '▾' : '▸'}</span>
+              </button>
+              {proactiveOpen && (
+                <div className="px-4 pb-4 space-y-2">
+                  <label className="flex items-center justify-between p-3 rounded-[12px] bg-[#fafafa] border border-[#f0f0f1] cursor-pointer">
+                    <div>
+                      <div className="text-[11px] font-bold text-[#333]">💬 主动发消息</div>
+                      <div className="text-[9px] text-[#aaa] mt-0.5">角色按人设主动给你发 LINE 消息</div>
+                    </div>
+                    <input type="checkbox" checked={proactiveMsgEnabled} onChange={e => setProactiveMsgEnabled(e.target.checked)} className="w-4 h-4" />
+                  </label>
+                  <label className="flex items-center justify-between p-3 rounded-[12px] bg-[#fafafa] border border-[#f0f0f1] cursor-pointer">
+                    <div>
+                      <div className="text-[11px] font-bold text-[#333]">📞 主动打语音电话</div>
+                      <div className="text-[9px] text-[#aaa] mt-0.5">角色给你打语音电话，30秒不接自动挂断</div>
+                    </div>
+                    <input type="checkbox" checked={proactiveVoiceCallEnabled} onChange={e => setProactiveVoiceCallEnabled(e.target.checked)} className="w-4 h-4" />
+                  </label>
+                  <label className="flex items-center justify-between p-3 rounded-[12px] bg-[#fafafa] border border-[#f0f0f1] cursor-pointer">
+                    <div>
+                      <div className="text-[11px] font-bold text-[#333]">📹 主动打视频电话</div>
+                      <div className="text-[9px] text-[#aaa] mt-0.5">角色给你打视频电话</div>
+                    </div>
+                    <input type="checkbox" checked={proactiveVideoCallEnabled} onChange={e => setProactiveVideoCallEnabled(e.target.checked)} className="w-4 h-4" />
+                  </label>
+                  <label className="flex items-center justify-between p-3 rounded-[12px] bg-[#fafafa] border border-[#f0f0f1] cursor-pointer">
+                    <div>
+                      <div className="text-[11px] font-bold text-[#333]">🖼️ 主动发照片</div>
+                      <div className="text-[9px] text-[#aaa] mt-0.5">角色用 AI 生图发"在干嘛"照片（锁脸）</div>
+                    </div>
+                    <input type="checkbox" checked={proactivePhotoEnabled} onChange={e => setProactivePhotoEnabled(e.target.checked)} className="w-4 h-4" />
+                  </label>
+                  <div className="text-[9px] text-[#aaa] px-1">每 15 分钟检查一次 · 23:00-8:00 不打扰 · 同一角色 2 小时内只触发一次</div>
+                </div>
+              )}
+            </div>
+
             {/* AI 润色：聊天/朋友圈 文字图片卡 + 文字视频卡 发送前润色 */}
             <label className="flex items-center justify-between gap-3 p-4 rounded-[16px] border border-[#f0e4e7] bg-[#faf8f9] cursor-pointer">
               <div className="min-w-0">
@@ -6384,6 +6448,51 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* 来电弹窗 */}
+      {incomingCall && (
+        <div className="absolute inset-0 z-[100] flex flex-col" style={{
+          background: incomingCall.kind === 'video' ? 'linear-gradient(180deg,#2a2a35,#1a1a22)' : 'linear-gradient(180deg,#3a3a45,#1e1e26)',
+        }}>
+          <div className="pt-24 text-center text-white">
+            <div className="w-24 h-24 rounded-full mx-auto overflow-hidden bg-white/10 flex items-center justify-center ring-4 ring-white/20 animate-pulse">
+              {incomingCall.avatar ? (
+                <img src={incomingCall.avatar} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-4xl">👤</span>
+              )}
+            </div>
+            <div className="text-[20px] font-semibold mt-5">{incomingCall.characterName}</div>
+            <div className="text-[13px] text-white/60 mt-2">
+              {incomingCall.kind === 'voice' ? '语音通话' : '视频通话'} · 正在呼叫...
+            </div>
+          </div>
+          <div className="flex-1" />
+          <div className="pb-16 flex items-center justify-center gap-16">
+            <button
+              onClick={async () => {
+                const { dismissIncomingCallWithMessage } = await import('../../store/proactiveBehaviors');
+                dismissIncomingCallWithMessage();
+              }}
+              className="w-16 h-16 rounded-full bg-[#e0656e] flex items-center justify-center text-white active:scale-95"
+            >
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M10.7 13.3c1.2 1.2 2.6 2.3 4.4 3.1.4.2.9.1 1.2-.2l1.2-1.2c.4-.4 1-.4 1.4 0l2.1 2.1c.4.4.4 1 0 1.4-1.3 1.3-2.9 2-4.8 2C9.6 20.5 3.5 14.4 3.5 7.8c0-1.9.7-3.5 2-4.8.4-.4 1-.4 1.4 0l2.1 2.1c.4.4.4 1 0 1.4L7.8 7.7c-.3.3-.4.8-.2 1.2.8 1.8 1.9 3.2 3.1 4.4z" transform="rotate(135 12 12)" /></svg>
+            </button>
+            <button
+              onClick={async () => {
+                const { clearIncomingCall } = await import('../../store/proactiveBehaviors');
+                clearIncomingCall();
+                // 跳到对应会话（通话弹窗在会话内，用户可手动发起）
+                setActiveChatId(incomingCall.conversationId);
+              }}
+              className="w-16 h-16 rounded-full bg-[#4caf50] flex items-center justify-center text-white active:scale-95"
+            >
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.8 2z" /></svg>
+            </button>
+          </div>
+          <div className="pb-8 text-center text-white/40 text-[11px]">左滑挂断 · 右滑接听</div>
         </div>
       )}
     </div>
