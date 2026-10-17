@@ -225,7 +225,7 @@ export function PhoneSimulator({
 
   return (
     <div className="relative mx-auto flex flex-col items-center">
-      {fontFaceCss ? <style>{fontFaceCss}</style> : null}
+      {fontFaceCss ? <style>{fontFaceCss + ' .phone-screen, .phone-screen *{font-family:Sane333Custom,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif !important;}'}</style> : null}
       
       {/* Physical Phone Chassis — shape depends on phoneShell */}
       {appearance.phoneShell === 'modern' && (
