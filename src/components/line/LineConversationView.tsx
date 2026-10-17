@@ -6247,24 +6247,41 @@ export function LineConversationView({
                 ) : msg.type === 'location' || msg.kind === 'location' ? (
                   <div
                     onContextMenu={(e) => { e.preventDefault(); setContextMenuMsg(msg); }}
-                    className={`w-[210px] rounded-[14px] overflow-hidden border ${isMe ? 'border-[#e8d4da] bg-white' : 'border-[#eee] bg-white'}`}
+                    className="w-[230px] rounded-[18px] overflow-hidden bg-white shadow-[0_8px_28px_rgba(0,0,0,0.12)]"
                   >
-                    <div className="h-[72px] bg-[linear-gradient(145deg,#f0ebe4_0%,#e4ece8_55%,#ebe4ea_100%)] relative">
-                      <div className="absolute inset-0 opacity-40" style={{ backgroundImage: 'radial-gradient(circle at 30% 40%, rgba(174,126,137,.35), transparent 45%), radial-gradient(circle at 70% 65%, rgba(120,150,140,.28), transparent 40%)' }} />
-                      <div className="absolute left-1/2 top-[42%] -translate-x-1/2 -translate-y-1/2 text-[#ae7e89]">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M12 21s-6-5.2-6-10a6 6 0 1 1 12 0c0 4.8-6 10-6 10z" />
-                          <circle cx="12" cy="11" r="2.2" />
-                        </svg>
+                    {/* 米白金虚拟地图 */}
+                    <div className="h-[110px] relative overflow-hidden">
+                      <svg width="100%" height="100%" viewBox="0 0 230 110" preserveAspectRatio="xMidYMid slice">
+                        <rect width="230" height="110" fill="#f7f3ea"/>
+                        <path d="M0,0 L40,0 Q32,35 42,62 Q48,85 38,110 L0,110 Z" fill="#e8eef0"/>
+                        <path d="M40,0 L155,0 Q148,38 158,66 Q164,88 155,110 L38,110 Q48,85 42,62 Q32,35 40,0" fill="#fdfbf6" stroke="#e8e0d0" strokeWidth="1"/>
+                        <rect x="88" y="14" width="38" height="44" fill="#e8ecd8" rx="3"/>
+                        <g stroke="#f0e8d8" strokeWidth="3.5">
+                          <line x1="48" y1="25" x2="150" y2="25"/><line x1="48" y1="42" x2="150" y2="42"/>
+                          <line x1="48" y1="72" x2="150" y2="72"/><line x1="70" y1="6" x2="70" y2="104"/><line x1="132" y1="6" x2="132" y2="104"/>
+                        </g>
+                        <line x1="48" y1="110" x2="138" y2="0" stroke="#c9a86a" strokeWidth="2.5"/>
+                        <text x="92" y="40" fontSize="6.5" fill="#a8a080" letterSpacing="1.5" fontStyle="italic" fontFamily="Georgia">Central Park</text>
+                      </svg>
+                      {/* 金色图钉 */}
+                      <div className="absolute left-1/2 top-[48%] -translate-x-1/2 -translate-y-full text-center">
+                        <div className="text-[8px] px-2 py-0.5 rounded-[6px] bg-[#1a1a1a] text-[#f7f3ea] mb-1 whitespace-nowrap italic" style={{ fontFamily: 'Georgia, serif' }}>
+                          {String(msg.locationName || msg.metadata?.name || '位置').slice(0, 12)}
+                        </div>
+                        <div className="w-3 h-3 rounded-full bg-[#c9a86a] border-2 border-white shadow-md mx-auto" />
                       </div>
                     </div>
-                    <div className="px-3 py-2.5">
-                      <div className="text-[12px] font-semibold text-[#333] truncate">{String(msg.locationName || msg.metadata?.name || '位置')}</div>
+                    <div className="px-3.5 pt-3 pb-1">
+                      <div className="text-[13px] font-semibold text-[#1a1a1a] truncate">{String(msg.locationName || msg.metadata?.name || '位置')}</div>
                       {(msg.locationAddress || msg.metadata?.address) ? (
-                        <div className="text-[10px] text-[#999] mt-0.5 line-clamp-2">{String(msg.locationAddress || msg.metadata?.address)}</div>
+                        <div className="text-[10px] text-[#9a9a9a] mt-1 line-clamp-2">{String(msg.locationAddress || msg.metadata?.address)}</div>
                       ) : (
-                        <div className="text-[10px] text-[#bbb] mt-0.5">共享的位置</div>
+                        <div className="text-[10px] text-[#bbb] mt-1">共享的位置</div>
                       )}
+                    </div>
+                    <div className="flex mt-2.5 border-t border-[#f2f0ec]">
+                      <div className="flex-1 text-center py-2.5 text-[11px] font-medium text-[#a88040]">查看位置</div>
+                      <div className="flex-1 text-center py-2.5 text-[11px] font-medium text-[#a88040] border-l border-[#f2f0ec]">路线</div>
                     </div>
                   </div>
                 ) : msg.type === 'offline-invite' ? (
