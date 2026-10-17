@@ -20,7 +20,7 @@ import {
 } from './TextMediaCards';
 import { LineConversationErrorBoundary } from './LineConversationErrorBoundary';
 import { createLineGroup, getLineGroupById } from '../../store/lineGroups';
-import { getWalletBalance, getWalletTransactions } from '../../store/lineWallet';
+import { getWalletBalance, getWalletTransactions, getFamilyCards, addFamilyCard, removeFamilyCard, walletTopupCustom } from '../../store/lineWallet';
 import { getNpcs, updateNpc, type SaneNpc } from '../../store/npcs';
 import { getNpcFriendRequests, respondToNpcFriendRequest, setNpcFriendship } from '../../store/npcSocial';
 import { NpcAvatar } from '../NpcAvatar';
@@ -200,6 +200,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   const [activeTab, setActiveTab] = useState<'chat' | 'friends' | 'moments' | 'me'>('chat');
   const [walletBalance, setWalletBalance] = useState(() => getWalletBalance());
   const [showWalletDetail, setShowWalletDetail] = useState(false);
+  const [showFamilyCardPicker, setShowFamilyCardPicker] = useState(false);
   useEffect(() => {
     const refresh = () => setWalletBalance(getWalletBalance());
     window.addEventListener('sane333:wallet-updated', refresh);
@@ -1640,6 +1641,42 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
             {sortedChats.length === 0 && (
               <div className="py-16 text-center text-xs text-[#aaa]">
                 未搜到相关记录
+              </div>
+            )}
+            {/* 亲情卡开通选择器 */}
+            {showFamilyCardPicker && (
+              <div className="absolute inset-0 bg-black/40 z-[80] flex items-end" onClick={() => setShowFamilyCardPicker(false)}>
+                <div className="w-full bg-white rounded-t-[24px] p-5 max-h-[70%] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                  <div className="w-8 h-1 bg-[#e0e0e0] rounded-full mx-auto mb-4" />
+                  <div className="text-[14px] font-bold mb-1">给谁开通亲情卡？</div>
+                  <div className="text-[11px] text-[#aaa] mb-4">选择一位成员，设置每月限额</div>
+                  <div className="space-y-2">
+                    {[...importedCharacters.map(ch => ({ name: ch.name, avatar: ch.avatar })), ...getNpcs().map(n => ({ name: n.name, avatar: n.avatar }))].map((p, i) => (
+                      <div key={i} className="flex items-center gap-3 p-2.5 rounded-[14px] border border-[#f0f0f0]">
+                        <div className="w-9 h-9 rounded-full bg-[#faf8f5] overflow-hidden flex items-center justify-center text-[14px]">
+                          {p.avatar ? <img src={p.avatar} className="w-full h-full object-cover" /> : '👤'}
+                        </div>
+                        <div className="flex-1 text-[13px]">{p.name || '未命名'}</div>
+                        <input
+                          type="number" placeholder="限额" defaultValue={200}
+                          id={`fc-limit-${i}`}
+                          className="w-20 px-2 py-1.5 rounded-[10px] border border-[#e8e4de] text-[12px] text-center"
+                        />
+                        <button
+                          onClick={() => {
+                            const el = document.getElementById(`fc-limit-${i}`) as HTMLInputElement;
+                            const limit = parseFloat(el?.value || '200');
+                            addFamilyCard(p.name || '未命名', limit > 0 ? limit : 200, p.avatar);
+                            setShowFamilyCardPicker(false);
+                            showToast(`已为 ${p.name} 开通亲情卡`);
+                          }}
+                          className="px-3 py-1.5 rounded-full bg-[#ad7d88] text-white text-[11px]"
+                        >开通</button>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={() => setShowFamilyCardPicker(false)} className="w-full mt-4 py-3 rounded-[14px] bg-[#f5f5f5] text-[13px]">取消</button>
+                </div>
               </div>
             )}
           </div>
@@ -5873,29 +5910,76 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         </div>
       )}
 
-      {/* 钱包明细 - 按天分组 */}
+      {/* 钱包完整页面 */}
       {showWalletDetail && (
-        <div className="absolute inset-0 bg-black/40 z-70" onClick={() => setShowWalletDetail(false)}>
-          <div
-            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[24px] max-h-[75%] flex flex-col"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="w-8 h-1 bg-[#e0e0e0] rounded-full mx-auto mt-3" />
-            <div className="px-6 pt-4 pb-2">
-              <div className="text-[8px] tracking-[3px] text-[#b0b0b0]">LINE PAY · WALLET</div>
-              <div className="text-[26px] italic text-[#2d2d2d] mt-1" style={{ fontFamily: '"Cormorant Garamond", Georgia, serif' }}>Balance</div>
-              <div className="text-[40px] text-[#2d2d2d] mt-1" style={{ fontFamily: '"Cormorant Garamond", Georgia, serif' }}>
+        <div className="absolute inset-0 z-[70] bg-[#faf8f5] animate-in slide-in-from-right">
+          <div className="h-full overflow-y-auto no-scrollbar pb-10">
+            {/* 顶栏 */}
+            <div className="sticky top-0 bg-[#faf8f5]/95 backdrop-blur px-5 pt-5 pb-3 flex items-center z-10">
+              <button onClick={() => setShowWalletDetail(false)} className="w-8 h-8 rounded-full bg-white border border-[#eeeeef] text-[#555] text-[18px] leading-none">‹</button>
+              <div className="ml-3 text-[8px] tracking-[3px] text-[#b0b0b0]">LINE PAY · WALLET</div>
+            </div>
+            {/* 余额 */}
+            <div className="px-6 pt-2">
+              <div className="text-[26px] italic text-[#2d2d2d]" style={{ fontFamily: '"Cormorant Garamond", Georgia, serif' }}>Balance</div>
+              <div className="text-[48px] text-[#2d2d2d] mt-1" style={{ fontFamily: '"Cormorant Garamond", Georgia, serif' }}>
                 ¥{walletBalance.toFixed(2)}
               </div>
               <div className="text-[11px] text-[#b0b0b0] mt-1">可用余额</div>
+              {/* 自定义充值 */}
+              <div className="flex gap-2 mt-4">
+                <input
+                  type="number" placeholder="输入金额" id="wallet-topup-input"
+                  className="flex-1 px-4 py-2.5 rounded-[14px] border border-[#e8e4de] bg-white text-[13px] outline-none"
+                />
+                <button
+                  onClick={() => {
+                    const el = document.getElementById('wallet-topup-input') as HTMLInputElement;
+                    const v = parseFloat(el?.value || '0');
+                    if (v > 0) { walletTopupCustom(v); el.value = ''; showToast(`已充值 ¥${v.toFixed(2)}`); }
+                  }}
+                  className="px-5 py-2.5 rounded-[14px] bg-[#2d2d2d] text-white text-[13px]"
+                >充值</button>
+              </div>
             </div>
-            <div className="flex-1 overflow-y-auto px-4 pb-6">
+            {/* 亲情卡 */}
+            <div className="px-6 mt-8">
+              <div className="flex items-center justify-between">
+                <div className="text-[13px] font-bold">亲情卡</div>
+                <button
+                  onClick={() => setShowFamilyCardPicker(true)}
+                  className="text-[11px] text-[#ad7d88]"
+                >+ 开通</button>
+              </div>
+              <div className="text-[10px] text-[#bbb] mt-1">为家人/朋友开通，设置每月限额</div>
+              <div className="mt-3 space-y-2">
+                {getFamilyCards().length === 0 ? (
+                  <div className="text-[11px] text-[#ccc] py-4 text-center">还没有亲情卡，点右上角开通一张吧</div>
+                ) : getFamilyCards().map(fc => (
+                  <div key={fc.id} className="bg-white rounded-[16px] p-4 flex items-center border border-[#f0f0f0]">
+                    <div className="w-10 h-10 rounded-full bg-[#faf8f5] flex items-center justify-center text-[16px] overflow-hidden">
+                      {fc.holderAvatar ? <img src={fc.holderAvatar} className="w-full h-full object-cover" /> : '👤'}
+                    </div>
+                    <div className="ml-3 flex-1">
+                      <div className="text-[13px] font-semibold">{fc.holderName}</div>
+                      <div className="text-[10px] text-[#aaa] mt-0.5">
+                        每月限额 ¥{fc.monthlyLimit.toFixed(0)} · 已用 ¥{fc.spentThisMonth.toFixed(0)}
+                      </div>
+                      <div className="h-1 bg-[#f5f5f5] rounded-full mt-1.5 overflow-hidden">
+                        <div className="h-full bg-[#ad7d88] rounded-full" style={{ width: `${Math.min(100, (fc.spentThisMonth / fc.monthlyLimit) * 100)}%` }} />
+                      </div>
+                    </div>
+                    <button onClick={() => { removeFamilyCard(fc.id); showToast('已取消亲情卡'); }} className="text-[10px] text-[#ccc] ml-2">取消</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* 交易明细 */}
+            <div className="px-4 mt-8">
+              <div className="px-2 text-[13px] font-bold">交易明细</div>
               {(() => {
                 const txs = getWalletTransactions();
-                if (txs.length === 0) {
-                  return <div className="text-center text-[#bbb] text-[12px] py-10">暂无交易记录</div>;
-                }
-                // 按天分组
+                if (txs.length === 0) return <div className="text-center text-[#ccc] text-[12px] py-10">暂无交易记录</div>;
                 const groups: Record<string, typeof txs> = {};
                 txs.forEach(tx => {
                   const d = new Date(tx.createdAt);
@@ -5912,9 +5996,9 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 return Object.entries(groups).map(([label, items]) => (
                   <div key={label}>
                     <div className="text-[10px] tracking-[2px] text-[#b0b0b0] px-2 pt-4 pb-2">{label}</div>
-                    <div className="bg-[#fafafa] rounded-[16px] px-4">
+                    <div className="bg-white rounded-[16px] px-4 border border-[#f5f5f5]">
                       {items.map((tx, i) => (
-                        <div key={tx.id} className={`flex justify-between items-center py-3 ${i > 0 ? 'border-t border-[#f0f0f0]' : ''}`}>
+                        <div key={tx.id} className={`flex justify-between items-center py-3 ${i > 0 ? 'border-t border-[#f7f7f7]' : ''}`}>
                           <div>
                             <div className="text-[12px] text-[#444]">{tx.desc}</div>
                             <div className="text-[10px] text-[#bbb] mt-0.5">
@@ -5934,7 +6018,6 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
           </div>
         </div>
       )}
-
     </div>
   );
 }

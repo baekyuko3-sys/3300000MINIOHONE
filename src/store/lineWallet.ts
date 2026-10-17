@@ -80,3 +80,44 @@ export function formatWalletAmount(amount: number): string {
   const sign = amount > 0 ? '+' : '';
   return `${sign}¥${Math.abs(amount).toFixed(2)}`;
 }
+
+export interface FamilyCard {
+  id: string;
+  holderName: string;
+  holderAvatar?: string;
+  monthlyLimit: number;
+  spentThisMonth: number;
+  createdAt: string;
+}
+
+const FAMILY_KEY = 'line:wallet-family-cards';
+
+export function getFamilyCards(): FamilyCard[] {
+  return readPersistentState<FamilyCard[]>(FAMILY_KEY, []);
+}
+
+export function addFamilyCard(holderName: string, monthlyLimit: number, holderAvatar?: string): FamilyCard {
+  const card: FamilyCard = {
+    id: 'fc-' + Date.now().toString(36),
+    holderName,
+    holderAvatar,
+    monthlyLimit,
+    spentThisMonth: 0,
+    createdAt: new Date().toISOString(),
+  };
+  const list = getFamilyCards();
+  writeWalletState(FAMILY_KEY, [...list, card]);
+  window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
+  return card;
+}
+
+export function removeFamilyCard(id: string): void {
+  writeWalletState(FAMILY_KEY, getFamilyCards().filter(c => c.id !== id));
+  window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
+}
+
+// 自定义金额充值
+export function walletTopupCustom(amount: number): void {
+  if (amount <= 0 || !isFinite(amount)) return;
+  walletTopup(Math.round(amount * 100) / 100);
+}
