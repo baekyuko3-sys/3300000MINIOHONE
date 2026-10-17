@@ -1497,7 +1497,11 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   }
 
   return (
-    <div className="relative w-full h-full flex flex-col justify-between bg-white text-[#343538] select-none font-sans overflow-hidden pt-[30px]">
+    <div className="relative w-full h-full flex flex-col justify-between bg-white text-[#343538] select-none font-sans overflow-hidden pt-[30px]"
+      data-line-theme={lineTheme}
+      data-line-chatbg={lineChatBg}
+      data-line-fontsize={lineFontSize}
+    >
       {/* LINE 外观三件套：主题 / 聊天背景 / 字号 —— 作用于 .custom-chat-view（聊天会话区） */}
       <style>{`
         /* —— 暗夜主题 —— */
