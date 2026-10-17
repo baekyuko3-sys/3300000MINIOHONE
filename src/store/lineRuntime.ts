@@ -23,6 +23,10 @@ export interface LineRuntimeMessage {
   recalledAt?: string;
   deletedAt?: string;
   reactions?: Record<string, number>;
+  isRecalled?: boolean;
+  isRecalledByOther?: boolean;
+  recalledOriginalText?: string;
+  recalledByOtherReason?: string;
   favorite?: boolean;
   edited?: boolean;
   error?: string;

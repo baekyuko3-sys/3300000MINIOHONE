@@ -18,7 +18,7 @@ export interface OfflineStyleSettings {
   background: 'paper' | 'white' | 'soft';
 }
 
-const PERSONA_KEY = 'line:personas';
+const PERSONA_KEY = 'line:user-personas';
 const STYLE_KEY = 'offline:style';
 const SESSION_KEY = 'offline:session';
 

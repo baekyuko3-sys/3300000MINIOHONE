@@ -7,6 +7,7 @@ import { generateSpeech, transcribeAudio } from '../../ai/mediaEngine';
 import { readAppSettings } from '../../store/appSettings';
 import type { ChannelAiSettings } from '../../store/appSettings';
 import { getMedia, putMedia } from '../../store/mediaVault';
+import { walletSendRedPacket, walletGrabRedPacket } from '../../store/lineWallet';
 import { VroomImage } from '../VroomImage';
 import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory, updateCharacterMemoryItem, deleteCharacterMemoryItem, clearCharacterMemory } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
@@ -851,6 +852,10 @@ export function LineConversationView({
         editedAt: message.editedAt,
         recalledAt: message.recalledAt,
         deletedAt: message.deletedAt,
+        isRecalled: message.isRecalled,
+        isRecalledByOther: message.isRecalledByOther,
+        recalledOriginalText: message.recalledOriginalText,
+        recalledByOtherReason: message.recalledByOtherReason,
         ...(musicSession ? { musicSession } as any : {}),
         metadata: {
           ...(message.metadata || {}),
@@ -3350,7 +3355,7 @@ export function LineConversationView({
       // AI 语音消息：有概率转为语音 (MiniMax 合成)
       try {
         const voicePresetId = (importedCharacter as any)?.voicePresetId || (npcForChat as any)?.voicePresetId;
-        const minimaxKey = localStorage.getItem('line:minimax-key') || '';
+        const minimaxKey = (() => { try { const raw = localStorage.getItem('line:minimax-key'); return raw ? JSON.parse(raw) : ''; } catch { return ''; } })();
         // 从 voicePresets 找 voiceId (存在 localStorage)
         let voiceId = '';
         try {
@@ -3581,6 +3586,8 @@ export function LineConversationView({
     const memberLimit = isGroup ? Math.max(1, eligibleNpcCount + 1) : 1;
     const count = isGroup ? Math.max(1, Math.min(memberLimit, 99, Number.parseInt(redPacketCount, 10) || 1)) : 1;
     if (isGroup && Number(amount) < 0.01 * count) { showToast('红包总金额至少要能分给每个人 0.01 元'); return; }
+    // 钱包扣款
+    if (!walletSendRedPacket(Number(amount), blessing)) { showToast('钱包余额不足'); return; }
     const newMsg = {
       id: Date.now(), sender: 'me' as const, type: 'red-packet', kind: 'red-packet' as const,
       text: `[红包] ¥${amount} · ${blessing}`, time: '刚刚',
@@ -4426,12 +4433,14 @@ export function LineConversationView({
     setMessages((prev) =>
       prev.map((m) => {
         if (m.id !== msgId) return m;
-        const currentReactions = m.reactions || [];
-        const exists = currentReactions.includes(emoji);
-        const updated = exists
-          ? currentReactions.filter((r: string) => r !== emoji)
-          : [...currentReactions, emoji];
-        return { ...m, reactions: updated };
+        // 统一为对象格式 {emoji: count}，兼容旧数组数据
+        const raw = m.reactions;
+        const current: Record<string, number> = Array.isArray(raw)
+          ? Object.fromEntries(raw.map((e: string) => [e, 1]))
+          : { ...(raw || {}) };
+        if (current[emoji]) delete current[emoji];
+        else current[emoji] = 1;
+        return { ...m, reactions: current };
       })
     );
     setContextMenuMsg(null);
@@ -4915,6 +4924,7 @@ export function LineConversationView({
 
           if (type === 'voice') {
             const appSettings = readAppSettings();
+            let finalTranscript = '';
             if (appSettings.sttEnabled && appSettings.sttProvider !== 'browser') {
               try {
                 const transcript = await transcribeAudio(
@@ -4922,11 +4932,53 @@ export function LineConversationView({
                   file.name,
                   appSettings,
                 );
+                finalTranscript = transcript || '';
                 setMessages(prev => prev.map(message =>
                   message.id === newMsg.id ? { ...message, transcript } : message
                 ));
               } catch {
                 // Voice remains sendable even if STT is unavailable.
+              }
+            }
+            // 语音消息也触发 AI 回复（像图片分支一样）
+            const vSettings = conversationAiSettings();
+            if (vSettings.apiKey.trim()) {
+              setIsTyping(true);
+              try {
+                const result = await generateCharacterReply({
+                  settings: vSettings,
+                  character: importedCharacter,
+                  characterProfile,
+                  persona: activePersona,
+                  worldbooks: activeWorldbooks,
+                  memory: characterMemory,
+                  project: projectManifest,
+                  messages: [
+                    ...messages.map((message: any) => ({ sender: message.sender || 'other', ...message })),
+                    {
+                      sender: 'me',
+                      text: finalTranscript ? `[语音消息转文字] ${finalTranscript}` : '我给你发了一条语音消息，请自然回应。',
+                      createdAt: new Date().toISOString(),
+                    },
+                  ],
+                  userMessage: finalTranscript ? `[语音消息转文字] ${finalTranscript}` : '我给你发了一条语音消息，请自然回应。',
+                  isGroup,
+                  groupName: '',
+                  authorNote: lineConversationRules,
+                });
+                if (result?.text) {
+                  setMessages(prev => [...prev, {
+                    id: Date.now() + 1,
+                    sender: 'other',
+                    text: result.text,
+                    time: '刚刚',
+                    createdAt: new Date().toISOString(),
+                  }]);
+                }
+              } catch {
+                // AI 回复失败不影响已发送的语音
+              } finally {
+                setIsTyping(false);
               }
             }
           }
@@ -6674,13 +6726,19 @@ export function LineConversationView({
                     </div>
 
                     {/* 表情反应小药丸 (Reaction Badge) */}
-                    {msg.reactions && msg.reactions.length > 0 && (
-                      <div className="absolute -bottom-2 right-2 bg-white border border-[#eee] rounded-full px-1.5 py-0.5 shadow-2xs text-[10px] flex items-center gap-0.5 z-5">
-                        {msg.reactions.map((r: string, idx: number) => (
-                          <span key={idx}>{r}</span>
-                        ))}
-                      </div>
-                    )}
+                    {(() => {
+                      const rRaw = msg.reactions as any;
+                      const rEntries: [string, number][] = Array.isArray(rRaw)
+                        ? rRaw.map((e: string) => [e, 1])
+                        : Object.entries(rRaw || {});
+                      return rEntries.length > 0 ? (
+                        <div className="absolute -bottom-2 right-2 bg-white border border-[#eee] rounded-full px-1.5 py-0.5 shadow-2xs text-[10px] flex items-center gap-0.5 z-5">
+                          {rEntries.map(([emoji, count], idx) => (
+                            <span key={idx}>{emoji}{count > 1 ? count : ''}</span>
+                          ))}
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                 )}
 
@@ -6959,7 +7017,7 @@ export function LineConversationView({
                             disabled={callAiSpeaking}
                             onClick={async () => {
                               const voicePresetId = (importedCharacter as any)?.voicePresetId || (npcForChat as any)?.voicePresetId;
-                              const minimaxKey = localStorage.getItem('line:minimax-key') || '';
+                              const minimaxKey = (() => { try { const raw = localStorage.getItem('line:minimax-key'); return raw ? JSON.parse(raw) : ''; } catch { return ''; } })();
                               let voiceId = '';
                               try {
                                 const vp = JSON.parse(localStorage.getItem('line:voice-presets') || '[]');
@@ -7850,6 +7908,8 @@ export function LineConversationView({
           setMessages((prev) => prev.map((item: any) => String(item.id) === String(packet.id) ? updated : item));
           updateLineMessage(conversationStorageId, packet.id, { redPacketClaims: nextClaims, redPacketStatus: updated.redPacketStatus, metadata: updated.metadata } as any);
           setActiveRedPacket(updated);
+          // 钱包加钱
+          walletGrabRedPacket(Number(userClaim.amount), String(packet.senderName || '群成员'));
           if (nextClaims.length >= count) showToast('红包已被领完');
           else showToast(`你领取了 ¥${userClaim.amount}，群成员已自动领取`);
         };
@@ -11617,6 +11677,15 @@ export function LineConversationView({
                   const deleting = contextMenuMsg;
                   const isMusicInvite = isMusicTogetherMessage(deleting);
                   const inviteCard = isMusicInvite ? resolveSongInviteCard(deleting) : null;
+                  // 清理关联媒体
+                  try {
+                    const d: any = deleting;
+                    const mediaRefs: string[] = [];
+                    if (typeof d?.imageData === 'string' && d.imageData.startsWith('media:')) mediaRefs.push(d.imageData.slice(6));
+                    if (typeof d?.mediaUrl === 'string' && d.mediaUrl.startsWith('media:')) mediaRefs.push(d.mediaUrl.slice(6));
+                    if (typeof d?.voiceUrl === 'string' && d.voiceUrl.startsWith('media:')) mediaRefs.push(d.voiceUrl.slice(6));
+                    mediaRefs.forEach(id => { import('../../store/mediaVault').then(({ deleteMedia }) => deleteMedia(id).catch(() => {})); });
+                  } catch { /* ignore */ }
                   setMessages((prev) => prev.filter((m) => String(m.id) !== String(deleting.id)));
                   if (isMusicInvite && inviteCard) {
                     const sessionId = String(inviteCard.session?.id || '');

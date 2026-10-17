@@ -68,6 +68,16 @@ export function PhoneSimulator({
     return () => window.removeEventListener('sane333:open-music-together', onOpenTogether);
   }, [setCurrentScreen]);
 
+  // 通用导航事件（如线下邀约接受后跳转）
+  useEffect(() => {
+    const onNavigate = (e: Event) => {
+      const screen = (e as CustomEvent).detail?.screen as ScreenType | undefined;
+      if (screen) setCurrentScreen(screen);
+    };
+    window.addEventListener('sane333:navigate', onNavigate);
+    return () => window.removeEventListener('sane333:navigate', onNavigate);
+  }, [setCurrentScreen]);
+
   const statusBarTime = statusBarNow.toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',

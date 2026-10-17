@@ -114,7 +114,6 @@ export async function generateImage(
           prompt: fullPrompt + (preset.negative ? ` Avoid: ${preset.negative}` : ''),
           size: '1024x1024',
           n: 1,
-          response_format: 'b64_json',
         }),
       });
     }

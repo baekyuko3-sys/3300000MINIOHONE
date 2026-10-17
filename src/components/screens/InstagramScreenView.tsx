@@ -7,7 +7,7 @@ import { usePersistentState } from '../../store/usePersistentState';
 import { ScreenType } from '../../types';
 import { getNpcs, updateNpc } from '../../store/npcs';
 import { getLikedTracks } from '../../store/music';
-import { getMedia, putMedia } from '../../store/mediaVault';
+import { getMedia, putMedia, deleteMedia } from '../../store/mediaVault';
 
 interface InstagramScreenViewProps {
   onNavigate: (screen: ScreenType) => void;
@@ -422,6 +422,11 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
     showToast('已发布');
   };
   const deletePost = (id: string) => {
+    const post = posts.find(p => p.id === id);
+    // 清理关联媒体
+    if (post?.media?.startsWith('media:')) {
+      void deleteMedia(post.media.slice(6)).catch(() => {});
+    }
     setPosts(prev => prev.map(p => p.id === id ? { ...p, deleted: true, deletedInfo: '刚刚删除' } : p));
     setSheet(null);
     showToast('已移到最近删除');
@@ -430,7 +435,7 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
   // 快拍自动播放
   useEffect(() => {
     if (view !== 'story') return;
-    const storyKeys = ['me', ...people.slice(0, 3).map(p => p.id)];
+    const storyKeys = ['me', ...people.filter(p => follows.includes(p.id)).slice(0, 3).map(p => p.id)];
     const timer = setTimeout(() => {
       const key = storyKeys[storyIndex];
       setSeenStories(prev => ({ ...prev, [key]: true }));
@@ -440,7 +445,7 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
     return () => clearTimeout(timer);
   }, [view, storyIndex, people]);
 
-  const storyKeys = ['me', ...people.slice(0, 3).map(p => p.id)];
+  const storyKeys = ['me', ...people.filter(p => follows.includes(p.id)).slice(0, 3).map(p => p.id)];
   const storyKey = storyKeys[storyIndex];
   const storyName = storyKey === 'me' ? persona.name : resolveName(storyKey);
 
@@ -653,7 +658,7 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
           <>
             {renderTop('活动')}
             <div className="text-[#999] px-[18px] pb-1.5 text-[12px] tracking-[1px]">谁赞了谁，谁在意谁。</div>
-            {people.slice(0, 3).map((p, i) => (
+            {people.filter(p => follows.includes(p.id)).slice(0, 3).map((p, i) => (
               <button key={p.id} onClick={() => visiblePosts[i] && openComments(visiblePosts[i].id)} className="flex items-center gap-3 px-[18px] py-2.5 w-full text-left text-[13px]">
                 <Avatar size={44} avatarUrl={p.avatar} name={p.name} />
                 <div className="flex-1 leading-[1.5]">
@@ -1039,7 +1044,7 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
             {sheet === 'viewers' && (
               <>
                 <div className="flex justify-between px-[18px] pb-1.5"><b className="text-[15px]">观看者 3</b><span className="text-[#999] text-[12px]">23 小时后消失</span></div>
-                {people.slice(0, 3).map((p, i) => (
+                {people.filter(p => follows.includes(p.id)).slice(0, 3).map((p, i) => (
                   <div key={p.id} className="flex items-center gap-3 px-[18px] py-2.5">
                     <Avatar size={44} avatarUrl={p.avatar} name={p.name} />
                     <div className="flex-1 text-[13px]"><b>{p.name}</b><div className="text-[11.5px] text-[#999]">{['看了 2 次', '23:41', '20:15'][i]}</div></div>
