@@ -926,7 +926,7 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
             </div>
             <div className="grid grid-cols-2 gap-2 mb-2">
               <div className="p-3 rounded-xl bg-white/55"><div className="text-lg font-serif font-bold text-[#292724]">{localStats.chatArchives}</div><div className="text-[8px] text-[#8b8782]">有实际消息的聊天存档</div></div>
-              <div className="p-3 rounded-xl bg-white/55"><div className="text-lg font-serif font-bold text-[#292724]">{prettyBytes(localStats.size)}</div><div className="text-[8px] text-[#8b8782]">JSON 数据估算</div></div>
+              <div className="p-3 rounded-xl bg-white/55"><div className="text-lg font-serif font-bold text-[#292724]">{prettyBytes(localStats.size)}</div><div className="text-[8px] text-[#8b8782]">JSON 数据估算</div><div className="mt-1 text-[8px] text-[#8b8782]">含所有设置项，不只是聊天</div></div>
             </div>
             <div className="grid grid-cols-2 gap-2 mb-3">
               <div className="p-3 rounded-xl bg-white/55"><div className="text-base font-serif font-bold text-[#292724]">{mediaStats.count}</div><div className="text-[8px] text-[#8b8782]">IndexedDB 媒体文件</div><div className="mt-1 text-[9px] text-[#8b8782]">{prettyBytes(mediaStats.size)}</div></div>
