@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePersistentState } from '../../store/usePersistentState';
 import { getNpcs } from '../../store/npcs';
+import { getMedia, putMedia } from '../../store/mediaVault';
 import type { ImportedCharacter } from '../../data/characterImport';
 import { ScreenType } from '../../types';
 import {
@@ -29,6 +30,7 @@ interface ThreadPost {
   by: string; // 'me' | `char:${id}` | `npc:${id}`
   tx: string;
   im: number[];
+  mediaList?: string[]; // 'media:xxx' 真实图片/视频引用
   l: number;
   liked?: boolean;
   rp: number;
@@ -68,6 +70,33 @@ const HOT_TOPICS: HotTopic[] = [
 ];
 
 const ROSE = '#b4838a';
+
+function ThreadMedia({ media, className = '' }: { media: string; className?: string }) {
+  const [resolved, setResolved] = useState<string | null>(null);
+  const [isVideo, setIsVideo] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setResolved(null);
+    setIsVideo(false);
+    const value = String(media || '').trim();
+    if (!value) return;
+    if (value.startsWith('media:')) {
+      void getMedia(value.slice(6)).then(url => {
+        if (cancelled || !url) return;
+        setIsVideo(url.startsWith('data:video/'));
+        setResolved(url);
+      }).catch(() => {});
+    } else {
+      setIsVideo(value.startsWith('data:video/'));
+      setResolved(value);
+    }
+    return () => { cancelled = true; };
+  }, [media]);
+  if (!resolved) return <div className={className + ' bg-neutral-100 animate-pulse'} />;
+  return isVideo
+    ? <video src={resolved} className={className} controls playsInline preload="metadata" />
+    : <img src={resolved} className={className + ' object-cover'} alt="" />;
+}
 
 function MeshImage({ g, className = '', style = {} as React.CSSProperties }: { g: number; className?: string; style?: React.CSSProperties }) {
   const [a, b, c] = MESH_COLORS[g % MESH_COLORS.length];
@@ -121,7 +150,53 @@ function renderRichText(text: string, onTopic: (t: string) => void) {
 export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
   const [posts, setPosts] = usePersistentState<ThreadPost[]>('phone:threads-v2', []);
   const [characters] = usePersistentState<ImportedCharacter[]>('phone:characters', []);
-  const [currentUser] = usePersistentState<{ name: string; id: string; desc: string }>('line:current-user', { name: '', id: '', desc: '' });
+  // "我" 联通 LINE 人设：名字/头像从 line:user-personas 来，ID/简介存 Threads sidecar
+  const [linePersonas, setLinePersonas] = usePersistentState<any[]>('line:user-personas', []);
+  const [lineActivePersonaId] = usePersistentState<string | null>('line:active-persona', null);
+  const [threadsExtras, setThreadsExtras] = usePersistentState<Record<string, { handle: string; desc: string }>>('phone:threads-profile-extras', {});
+  const activePersona = (Array.isArray(linePersonas) ? linePersonas : []).find((p: any) => p.id === lineActivePersonaId) || linePersonas[0] || null;
+  const myExtras = (activePersona && threadsExtras[activePersona.id]) || { handle: '', desc: '' };
+
+  // 一次性迁移旧 line:current-user
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('phone:threads-profile-migrated-v1')) return;
+      const raw = localStorage.getItem('line:current-user');
+      if (raw) {
+        const old = JSON.parse(raw);
+        if (old && (old.name || old.id || old.desc)) {
+          const rawLines = localStorage.getItem('line:user-personas');
+          let lines: any[] = [];
+          try { const parsed = rawLines ? JSON.parse(rawLines) : []; if (Array.isArray(parsed)) lines = parsed; } catch { /* ignore */ }
+          let target = lines.find((p: any) => p && old.name && p.name === old.name) || lines[0] || null;
+          if (!target) {
+            target = { id: `p_${Date.now()}`, name: old.name || '我', avatar: '', boundCharacterIds: [] };
+            lines = [target];
+            localStorage.setItem('line:user-personas', JSON.stringify(lines));
+          }
+          let sidecar: Record<string, { handle: string; desc: string }> = {};
+          try { const parsed = JSON.parse(localStorage.getItem('phone:threads-profile-extras') || '{}'); if (parsed && typeof parsed === 'object') sidecar = parsed; } catch { /* ignore */ }
+          sidecar[target.id] = { handle: old.id || '', desc: old.desc || '' };
+          localStorage.setItem('phone:threads-profile-extras', JSON.stringify(sidecar));
+          if (!localStorage.getItem('line:active-persona')) {
+            localStorage.setItem('line:active-persona', JSON.stringify(target.id));
+          }
+          setLinePersonas(lines);
+          setThreadsExtras(sidecar);
+        }
+      }
+      localStorage.setItem('phone:threads-profile-migrated-v1', '1');
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const currentUser = {
+    name: activePersona?.name || '我',
+    avatar: activePersona?.avatar || '',
+    id: myExtras.handle || '',
+    desc: myExtras.desc || '',
+    personaId: activePersona?.id || '',
+  };
   const [follows, setFollows] = usePersistentState<Record<string, boolean>>('phone:threads-follows', {});
   const [topicFollows, setTopicFollows] = usePersistentState<Record<string, boolean>>('phone:threads-topic-follows', {});
 
@@ -137,6 +212,9 @@ export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
   const [commentSort, setCommentSort] = useState<'hot' | 'time'>('hot');
   const [composeText, setComposeText] = useState('');
   const [composeImages, setComposeImages] = useState<number[]>([]);
+  const [composeMedia, setComposeMedia] = useState<string[]>([]);
+  const [composeMediaUploading, setComposeMediaUploading] = useState(false);
+  const composeFileRef = useRef<HTMLInputElement>(null);
   const [composeRt, setComposeRt] = useState<number>(0);
   const [composeAs, setComposeAs] = useState<string>('me');
   const [sheet, setSheet] = useState<null | { kind: 'repost'; id: number } | { kind: 'postmenu'; id: number } | { kind: 'mention' } | { kind: 'edit' }>(null);
@@ -173,6 +251,7 @@ export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
       return {
         name: currentUser.name.trim() || '我',
         handle: currentUser.id.trim() ? '@' + currentUser.id.replace(/^@/, '') : '@me',
+        avatar: currentUser.avatar || undefined,
       };
     }
     if (by.startsWith('char:')) {
@@ -188,7 +267,7 @@ export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
 
   const allAuthors = useMemo(() => {
     const list: { key: string; name: string; avatar?: string; kind: string }[] = [
-      { key: 'me', name: currentUser.name.trim() || '我', kind: '我' },
+      { key: 'me', name: currentUser.name.trim() || '我', avatar: currentUser.avatar || undefined, kind: '我' },
     ];
     (characters || []).forEach(c => list.push({ key: `char:${c.id}`, name: c.name || '未命名', avatar: c.avatar, kind: '角色' }));
     npcs.forEach(n => list.push({ key: `npc:${n.id}`, name: n.name || '未命名', avatar: n.avatar, kind: 'NPC' }));
@@ -220,9 +299,34 @@ export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
     setView('topic');
   };
 
+  const handleComposeFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (e.target) e.target.value = '';
+    if (!files?.length) return;
+    const remain = 3 - composeMedia.length;
+    if (remain <= 0) { showToast('最多 3 张'); return; }
+    setComposeMediaUploading(true);
+    try {
+      const added: string[] = [];
+      for (const file of Array.from(files).slice(0, remain)) {
+        if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) continue;
+        if (file.size > 50 * 1024 * 1024) { showToast('单个文件太大（>50MB）'); continue; }
+        const dataUrl = await new Promise<string>((res, rej) => {
+          const r = new FileReader();
+          r.onerror = () => rej(new Error('读取失败'));
+          r.onload = () => res(typeof r.result === 'string' ? r.result : '');
+          r.readAsDataURL(file);
+        });
+        const id = await putMedia(dataUrl);
+        added.push('media:' + id);
+      }
+      if (added.length) setComposeMedia(prev => [...prev, ...added].slice(0, 3));
+    } catch { showToast('上传失败'); }
+    finally { setComposeMediaUploading(false); }
+  };
   const handlePublish = () => {
     const t = composeText.trim();
-    if (!t && composeImages.length === 0 && !composeRt) { showToast('先写点什么'); return; }
+    if (!t && composeImages.length === 0 && composeMedia.length === 0 && !composeRt) { showToast('先写点什么'); return; }
     if (composeRt) {
       setPosts(prev => prev.map(p => p.id === composeRt ? { ...p, rp: p.rp + 1 } : p));
     }
@@ -231,12 +335,13 @@ export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
       by: composeAs,
       tx: t || (composeRt ? '转发' : ''),
       im: composeImages.slice(),
+      ...(composeMedia.length ? { mediaList: composeMedia.slice() } : {}),
       l: 0, rp: 0, rd: '0', time: '刚刚',
       rt: composeRt || undefined,
       cm: [],
     };
     setPosts(prev => [newPost, ...prev]);
-    setComposeText(''); setComposeImages([]); setComposeRt(0); setComposeAs('me');
+    setComposeText(''); setComposeImages([]); setComposeMedia([]); setComposeRt(0); setComposeAs('me');
     setHomeTab('rec');
     setView(prevView === 'topic' ? 'topic' : 'home');
     showToast('已发布');
@@ -309,22 +414,27 @@ export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
               onClick={(e) => { e.stopPropagation(); openPost(quoted.id); }}
             >
               <span style={{ color: ROSE }}>@{resolveAuthor(quoted.by).name}</span>：{renderRichText(quoted.tx, openTopic)}
-              {quoted.im.length > 0 && (
+              {((quoted.mediaList?.length || 0) > 0 || quoted.im.length > 0) && (
                 <div className="flex gap-1 mt-1.5">
-                  {quoted.im.slice(0, 3).map(g => <MeshImage key={g} g={g} className="w-11 h-11 rounded-md" />)}
+                  {(quoted.mediaList || []).slice(0, 3).map((m, idx) => <ThreadMedia key={'m' + idx} media={m} className="w-11 h-11 rounded-md" />)}
+                  {quoted.im.slice(0, Math.max(0, 3 - (quoted.mediaList?.length || 0))).map(g => <MeshImage key={'g' + g} g={g} className="w-11 h-11 rounded-md" />)}
                 </div>
               )}
             </div>
           )}
-          {p.im.length > 0 && (
+          {((p.mediaList?.length || 0) > 0 || p.im.length > 0) && (
             <div
               className="grid gap-1 mt-2"
-              style={{
-                gridTemplateColumns: `repeat(${p.im.length === 1 ? 1 : p.im.length === 2 || p.im.length === 4 ? 2 : 3}, 1fr)`,
-                width: p.im.length === 1 ? '52%' : p.im.length === 2 || p.im.length === 4 ? '68%' : '100%',
-              }}
+              style={(() => {
+                const n = (p.mediaList?.length || 0) + p.im.length;
+                return {
+                  gridTemplateColumns: `repeat(${n === 1 ? 1 : n === 2 || n === 4 ? 2 : 3}, 1fr)`,
+                  width: n === 1 ? '52%' : n === 2 || n === 4 ? '68%' : '100%',
+                };
+              })()}
             >
-              {p.im.map(g => <MeshImage key={g} g={g} className="rounded-lg aspect-square" />)}
+              {(p.mediaList || []).map((m, idx) => <ThreadMedia key={'m' + idx} media={m} className="rounded-lg aspect-square" />)}
+              {p.im.map(g => <MeshImage key={'g' + g} g={g} className="rounded-lg aspect-square" />)}
             </div>
           )}
           <div className="text-neutral-400 text-xs mt-2">阅读 {p.rd}</div>
@@ -521,7 +631,7 @@ export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
           <div className="text-neutral-400 text-center py-10 text-[13px]">还没有评论，来抢沙发</div>
         )}
         <div className="sticky bottom-0 bg-white border-t border-neutral-100 p-2.5 px-3.5 flex gap-2 items-center mt-auto">
-          <Avatar name={currentUser.name || '我'} size={36} />
+          <Avatar src={currentUser.avatar || undefined} name={currentUser.name || '我'} size={36} />
           <input
             value={commentInput}
             onChange={e => setCommentInput(e.target.value)}
@@ -600,8 +710,23 @@ export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
               className="h-[34px] px-3.5 rounded-full bg-neutral-100 text-[13px]"
             ><span style={{ color: ROSE }}>@ 提及</span></button>
           </div>
-          <div className="text-neutral-400 text-xs my-1.5">配图（最多 3 张）</div>
+          <div className="text-neutral-400 text-xs my-1.5">配图（最多 3 张，可上传真实图片/视频）</div>
+          <input
+            ref={composeFileRef}
+            type="file"
+            accept="image/*,video/*"
+            multiple
+            className="hidden"
+            onChange={handleComposeFile}
+          />
           <div className="grid grid-cols-6 gap-2">
+            <button
+              onClick={() => composeFileRef.current?.click()}
+              disabled={composeMediaUploading || composeMedia.length >= 3}
+              className="aspect-square rounded-[10px] overflow-hidden flex items-center justify-center bg-neutral-100 text-neutral-400 disabled:opacity-50"
+            >
+              {composeMediaUploading ? <span className="text-[10px]">上传中…</span> : <ImageIcon size={20} />}
+            </button>
             {MESH_COLORS.map((_, i) => (
               <button
                 key={i}
@@ -613,6 +738,19 @@ export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
               </button>
             ))}
           </div>
+          {composeMedia.length > 0 && (
+            <div className="flex gap-2 mt-2">
+              {composeMedia.map((m, idx) => (
+                <div key={idx} className="relative w-[72px] h-[72px] rounded-[10px] overflow-hidden">
+                  <ThreadMedia media={m} className="w-full h-full" />
+                  <button
+                    onClick={() => setComposeMedia(prev => prev.filter((_, i) => i !== idx))}
+                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"
+                  ><X size={12} /></button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -645,7 +783,7 @@ export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
             <div className="text-neutral-400 text-xs mt-[3px]">{currentUser.id ? '@' + currentUser.id.replace(/^@/, '') : '@me'}</div>
             {currentUser.desc && <div className="text-[13.5px] leading-relaxed mt-2.5">{currentUser.desc}</div>}
           </div>
-          <Avatar name={currentUser.name || '我'} size={68} />
+          <Avatar src={currentUser.avatar || undefined} name={currentUser.name || '我'} size={68} />
         </div>
         <div className="text-neutral-400 text-xs px-[18px] py-2.5">0 粉丝 · {followCount} 关注</div>
         <div className="flex gap-2 px-[18px] pb-3.5">
@@ -730,12 +868,17 @@ export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
           <button
             onClick={() => {
               if (!editName.trim()) { showToast('昵称不能为空'); return; }
-              try {
-                localStorage.setItem('line:current-user', JSON.stringify({ name: editName.trim(), id: editId.trim(), desc: editDesc.trim() }));
-              } catch { /* ignore */ }
+              const pid = currentUser.personaId;
+              if (pid) {
+                setLinePersonas((prev: any[]) => (Array.isArray(prev) ? prev : []).map((p: any) =>
+                  String(p.id) === String(pid) ? { ...p, name: editName.trim() } : p));
+                setThreadsExtras((prev) => ({
+                  ...prev,
+                  [pid]: { handle: editId.trim(), desc: editDesc.trim() },
+                }));
+              }
               close();
-              showToast('已保存');
-              window.location.reload();
+              showToast('已保存（已同步到 LINE 人设）');
             }}
             className="w-full h-11 rounded-full text-white font-bold text-sm mt-4"
             style={{ background: ROSE }}

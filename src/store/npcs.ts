@@ -28,6 +28,8 @@ export interface SaneNpc {
   statusMessage?: string;
   /** MiniMax 语音预设 ID */
   voicePresetId?: string;
+  /** IG 正在听的音乐 */
+  currentTrack?: { title: string; artist: string } | null;
   /** 主页简介 */
   bio?: string;
   /** 兴趣标签 */

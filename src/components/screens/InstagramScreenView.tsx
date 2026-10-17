@@ -5,7 +5,9 @@ import {
 } from 'lucide-react';
 import { usePersistentState } from '../../store/usePersistentState';
 import { ScreenType } from '../../types';
-import { getNpcs } from '../../store/npcs';
+import { getNpcs, updateNpc } from '../../store/npcs';
+import { getLikedTracks } from '../../store/music';
+import { getMedia, putMedia } from '../../store/mediaVault';
 
 interface InstagramScreenViewProps {
   onNavigate: (screen: ScreenType) => void;
@@ -27,6 +29,7 @@ interface IgPost {
   byAvatar?: string;
   text: string;
   gradient: number;
+  media?: string; // 'media:xxx' 引用，真实图片/视频
   likes: number;
   liked: boolean;
   saved: boolean;
@@ -34,16 +37,34 @@ interface IgPost {
   time: string;
   deleted?: boolean;
   deletedInfo?: string;
+  track?: { title: string; artist: string };
 }
 
 interface IgPersona {
+  id: string;
   name: string;
+  avatar?: string;
+  title: string;
+  job: string;
+  bio: string;
+  theme: string;
+  themeSoft: string;
+  currentTrack?: { title: string; artist: string } | null;
+}
+
+interface IgPersonaExtras {
   title: string;
   job: string;
   bio: string;
   theme: string;
   themeSoft: string;
 }
+
+const DEFAULT_IG_EXTRAS: IgPersonaExtras = {
+  title: '', job: '', bio: '', theme: '#e9c4cb', themeSoft: '#fdeef0',
+};
+
+const IG_MIGRATION_KEY = 'phone:instagram-persona-migrated-v1';
 
 const GRADIENTS: [string, string, string][] = [
   ['#9dbcae', '#dcb3ae', '#eee8df'],
@@ -70,6 +91,35 @@ function MeshImage({ g, className = '' }: { g: number; className?: string }) {
       style={{ background: `radial-gradient(at 18% 12%, ${a} 0, transparent 58%), radial-gradient(at 88% 28%, ${b} 0, transparent 55%), ${c}` }}
     />
   );
+}
+
+function PostMedia({ media, gradient, className = '' }: { media?: string; gradient: number; className?: string }) {
+  const [resolved, setResolved] = useState<string | null>(null);
+  const [isVideo, setIsVideo] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setResolved(null);
+    setIsVideo(false);
+    const value = String(media || '').trim();
+    if (!value) return;
+    if (value.startsWith('media:')) {
+      void getMedia(value.slice(6)).then(url => {
+        if (cancelled || !url) return;
+        setIsVideo(url.startsWith('data:video/'));
+        setResolved(url);
+      }).catch(() => {});
+    } else {
+      setIsVideo(value.startsWith('data:video/'));
+      setResolved(value);
+    }
+    return () => { cancelled = true; };
+  }, [media]);
+  if (resolved) {
+    return isVideo
+      ? <video src={resolved} className={className} controls playsInline preload="metadata" />
+      : <img src={resolved} className={className + ' object-cover'} alt="" />;
+  }
+  return <MeshImage g={gradient} className={className} />;
 }
 
 function Avatar({ size = 34, ring = 0, avatarUrl, name }: { size?: number; ring?: number; avatarUrl?: string; name?: string }) {
@@ -106,6 +156,9 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
   const [commentInput, setCommentInput] = useState('');
   const [composeText, setComposeText] = useState('');
   const [composeGradient, setComposeGradient] = useState(0);
+  const [composeMedia, setComposeMedia] = useState('');
+  const [composeMediaUploading, setComposeMediaUploading] = useState(false);
+  const composeFileRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sheet, setSheet] = useState<null | 'persona' | 'menu' | 'bind' | 'viewers' | { pm: string }>(null);
   const [storyIndex, setStoryIndex] = useState(0);
@@ -117,15 +170,85 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
   const [editingPersona, setEditingPersona] = useState<{ name: string; title: string; job: string; bio: string } | null>(null);
   const [editThemeIdx, setEditThemeIdx] = useState(0);
 
-  const [personas, setPersonas] = usePersistentState<IgPersona[]>('phone:instagram-personas', [
-    { name: '我', title: '', job: '', bio: '', theme: '#e9c4cb', themeSoft: '#fdeef0' },
-  ]);
-  const [activePersonaIdx, setActivePersonaIdx] = usePersistentState<number>('phone:instagram-persona-idx', 0);
-  const persona = personas[activePersonaIdx] || personas[0];
+  // 人设联通 LINE：基础信息（名字/头像）从 line:user-personas 来，IG 特有字段存 sidecar
+  const [linePersonas, setLinePersonas] = usePersistentState<any[]>('line:user-personas', []);
+  const [lineActivePersonaId, setLineActivePersonaId] = usePersistentState<string | null>('line:active-persona', null);
+  const [igExtras, setIgExtras] = usePersistentState<Record<string, IgPersonaExtras>>('phone:instagram-persona-extras', {});
+
+  // 一次性迁移旧 IG 人设
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(IG_MIGRATION_KEY)) return;
+      const rawOld = localStorage.getItem('phone:instagram-personas');
+      const oldList = rawOld ? JSON.parse(rawOld) : [];
+      if (Array.isArray(oldList) && oldList.length > 0) {
+        const oldIdx = Math.min(parseInt(localStorage.getItem('phone:instagram-persona-idx') || '0', 10) || 0, oldList.length - 1);
+        const old = oldList[oldIdx] || oldList[0];
+        const rawLines = localStorage.getItem('line:user-personas');
+        let lines: any[] = [];
+        try { const parsed = rawLines ? JSON.parse(rawLines) : []; if (Array.isArray(parsed)) lines = parsed; } catch { /* ignore */ }
+        let target = lines.find((p: any) => p && p.name === old.name) || lines[0] || null;
+        if (!target) {
+          target = { id: `p_${Date.now()}`, name: old.name || '我', avatar: '', boundCharacterIds: [] };
+          lines = [target];
+        }
+        const extras: IgPersonaExtras = {
+          title: old.title || '', job: old.job || '', bio: old.bio || '',
+          theme: old.theme || DEFAULT_IG_EXTRAS.theme, themeSoft: old.themeSoft || DEFAULT_IG_EXTRAS.themeSoft,
+        };
+        let sidecar: Record<string, IgPersonaExtras> = {};
+        try { const parsed = JSON.parse(localStorage.getItem('phone:instagram-persona-extras') || '{}'); if (parsed && typeof parsed === 'object') sidecar = parsed; } catch { /* ignore */ }
+        sidecar[target.id] = { ...(sidecar[target.id] || DEFAULT_IG_EXTRAS), ...extras };
+        localStorage.setItem('line:user-personas', JSON.stringify(lines));
+        localStorage.setItem('phone:instagram-persona-extras', JSON.stringify(sidecar));
+        localStorage.setItem('line:active-persona', JSON.stringify(target.id));
+        setLinePersonas(lines);
+        setIgExtras(sidecar);
+        setLineActivePersonaId(target.id);
+      }
+      localStorage.setItem(IG_MIGRATION_KEY, '1');
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const personas: IgPersona[] = useMemo(() => (Array.isArray(linePersonas) ? linePersonas : []).map((p: any) => {
+    const ex = (igExtras && igExtras[p.id]) || DEFAULT_IG_EXTRAS;
+    return {
+      id: String(p.id),
+      name: p.name || '未命名',
+      avatar: p.avatar || '',
+      title: ex.title || '',
+      job: ex.job || '',
+      bio: ex.bio || '',
+      theme: ex.theme || DEFAULT_IG_EXTRAS.theme,
+      themeSoft: ex.themeSoft || DEFAULT_IG_EXTRAS.themeSoft,
+      currentTrack: (p.currentTrack as { title: string; artist: string } | null) || null,
+    };
+  }), [linePersonas, igExtras]);
+
+  const activePersonaId = lineActivePersonaId || personas[0]?.id || null;
+  const persona: IgPersona = personas.find(p => p.id === activePersonaId) || personas[0] || {
+    id: '', name: '我', avatar: '', ...DEFAULT_IG_EXTRAS,
+  };
+
+  // IG 里新建人设 → 写回 line:user-personas
+  const createIgPersona = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) { showToast('先给人设起个名字'); return; }
+    const np = { id: `p_${Date.now()}`, name: trimmed, avatar: '', boundCharacterIds: [] };
+    setLinePersonas((prev: any[]) => [...(Array.isArray(prev) ? prev : []), np]);
+    setLineActivePersonaId(np.id);
+    showToast('已创建并切换为 ' + trimmed);
+  };
 
   // 角色和 NPC
-  const [importedCharacters] = usePersistentState<any[]>('phone:characters', []);
-  const npcs = useMemo(() => { try { return getNpcs(); } catch { return []; } }, []);
+  const [importedCharacters, setImportedCharacters] = usePersistentState<any[]>('phone:characters', []);
+  const [npcTick, setNpcTick] = useState(0);
+  const npcs = useMemo(() => { try { return getNpcs(); } catch { return []; } }, [npcTick]);
+  const [composeTrack, setComposeTrack] = useState<{ title: string; artist: string } | null>(null);
+  const [musicTarget, setMusicTarget] = useState<null | 'me' | 'compose' | string>(null);
+  const [manualTitle, setManualTitle] = useState('');
+  const [manualArtist, setManualArtist] = useState('');
   const people = useMemo(() => [
     ...importedCharacters.map((c: any) => ({ id: `char:${c.id || c.name}`, name: c.name || '未命名', avatar: c.avatar, kind: '角色' as const })),
     ...npcs.map((n: any) => ({ id: `npc:${n.id || n.name}`, name: n.name || '未命名', avatar: n.avatar, kind: 'NPC' as const })),
@@ -142,10 +265,12 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
     setPrevView(view === 'comments' || view === 'post' || view === 'compose' ? prevView : view);
     setView(v);
     setSheet(null);
+    setMusicTarget(null);
   };
   const back = () => {
     setView(view === 'chat' ? 'dm' : prevView || 'home');
     setSheet(null);
+    setMusicTarget(null);
   };
 
   const resolveName = (by: string) => {
@@ -154,8 +279,57 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
     return p ? p.name : by;
   };
   const resolveAvatar = (by: string) => {
-    if (by === 'me') return undefined;
+    if (by === 'me') return persona.avatar || undefined;
     return people.find(x => x.id === by)?.avatar;
+  };
+
+  // 音乐状态：persona / 角色 / NPC 都支持，存在各自对象上
+  const setMyTrack = (track: { title: string; artist: string } | null) => {
+    if (!activePersonaId) return;
+    setLinePersonas((prev: any[]) => (Array.isArray(prev) ? prev : []).map((p: any) =>
+      String(p.id) === String(activePersonaId) ? { ...p, currentTrack: track } : p));
+  };
+  const setPersonTrack = (personId: string, track: { title: string; artist: string } | null) => {
+    if (personId === 'me') { setMyTrack(track); return; }
+    if (personId.startsWith('char:')) {
+      const key = personId.slice(5);
+      setImportedCharacters((prev: any[]) => (Array.isArray(prev) ? prev : []).map((x: any) =>
+        String(x.id || x.name) === key ? { ...x, currentTrack: track } : x));
+      return;
+    }
+    if (personId.startsWith('npc:')) {
+      const key = personId.slice(4);
+      const npc = npcs.find((n: any) => String(n.id) === key || String(n.name) === key);
+      if (npc) { updateNpc(npc.id, { currentTrack: track }); setNpcTick(t => t + 1); }
+    }
+  };
+  const getAuthorTrack = (by: string): { title: string; artist: string } | null => {
+    if (by === 'me') return persona.currentTrack || null;
+    if (by.startsWith('char:')) {
+      const ch = importedCharacters.find((x: any) => `char:${x.id || x.name}` === by);
+      return (ch?.currentTrack as { title: string; artist: string } | null) || null;
+    }
+    if (by.startsWith('npc:')) {
+      const n = npcs.find((x: any) => `npc:${x.id || x.name}` === by);
+      return (n?.currentTrack as { title: string; artist: string } | null) || null;
+    }
+    return null;
+  };
+  const likedTracks = useMemo(() => {
+    if (!musicTarget) return [];
+    try { return getLikedTracks(); } catch { return []; }
+  }, [musicTarget]);
+  const applyMusicChoice = (track: { title: string; artist: string }) => {
+    if (musicTarget === 'compose') setComposeTrack(track);
+    else if (musicTarget) setPersonTrack(musicTarget, track);
+    setMusicTarget(null); setManualTitle(''); setManualArtist('');
+    showToast('已设置 🎵 ' + track.title);
+  };
+  const clearMusicChoice = () => {
+    if (musicTarget === 'compose') setComposeTrack(null);
+    else if (musicTarget) setPersonTrack(musicTarget, null);
+    setMusicTarget(null);
+    showToast('已清除音乐状态');
   };
 
   const activePost = posts.find(p => p.id === activePostId);
@@ -197,15 +371,39 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
         : p));
     }, 900);
   };
+  const handleComposeFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (e.target) e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) { showToast('只支持图片/视频'); return; }
+    if (file.size > 50 * 1024 * 1024) { showToast('文件太大（>50MB）'); return; }
+    setComposeMediaUploading(true);
+    try {
+      const dataUrl = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onerror = () => rej(new Error('读取失败'));
+        r.onload = () => res(typeof r.result === 'string' ? r.result : '');
+        r.readAsDataURL(file);
+      });
+      const id = await putMedia(dataUrl);
+      setComposeMedia('media:' + id);
+      showToast('已上传');
+    } catch { showToast('上传失败'); }
+    finally { setComposeMediaUploading(false); }
+  };
   const publishPost = () => {
     const t = composeText.trim() || '我的帖子';
     setPosts(prev => [{
       id: `p${Date.now()}`, by: 'me', byName: persona.name, text: t,
       gradient: composeGradient % GRADIENTS.length, likes: 0, liked: false, saved: false,
       comments: [], time: '刚刚',
+      ...(composeTrack ? { track: composeTrack } : {}),
+      ...(composeMedia ? { media: composeMedia } : {}),
     }, ...prev]);
     setComposeText('');
     setComposeGradient(0);
+    setComposeMedia('');
+    setComposeTrack(null);
     setView('home');
     showToast('已发布');
   };
@@ -262,7 +460,7 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
         <button onClick={() => setSheet({ pm: p.id })} className="text-[#555]"><MoreHorizontal size={22} /></button>
       </div>
       <div className="w-full aspect-square" onDoubleClick={() => { if (!p.liked) { toggleLike(p.id); showToast('已赞'); } }}>
-        <MeshImage g={p.gradient} className="w-full h-full" />
+        <PostMedia media={p.media} gradient={p.gradient} className="w-full h-full" />
       </div>
       <div className="flex items-center gap-4 px-3.5 pt-2.5">
         <button onClick={() => toggleLike(p.id)} style={p.liked ? { color: '#e0556b' } : undefined}>
@@ -276,6 +474,18 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
       </div>
       <p className="px-3.5 pt-1 text-[13px]"><b>{p.likes + (p.liked ? 1 : 0)} 人赞了</b></p>
       <p className="px-3.5 text-[13px] leading-[1.6]"><b>{p.byName}</b> {p.text}</p>
+      {(() => {
+        const pt = p.track || getAuthorTrack(p.by);
+        return pt ? (
+          <div className="px-3.5 pt-1.5">
+            <span className="inline-flex items-center gap-1.5 text-[12px] text-[#6b5459] bg-[#fdeef0] rounded-full px-2.5 py-1 max-w-full">
+              <span>🎵</span>
+              <span className="font-medium truncate">{pt.title}</span>
+              <span className="text-[#999] truncate">{pt.artist}</span>
+            </span>
+          </div>
+        ) : null;
+      })()}
       {inFeed && (
         <button onClick={() => openComments(p.id)} className="px-3.5 text-[#999] text-[13px]">
           查看全部 {p.comments.length} 条评论
@@ -383,7 +593,7 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
             </div>
             <div className="flex gap-4 px-[18px] -mt-10 relative z-[2]">
               <div className="rounded-full bg-white p-[3px] shadow-[0_2px_12px_rgba(40,30,25,.16)]">
-                <Avatar size={88} ring={1} />
+                <Avatar size={88} ring={1} avatarUrl={persona.avatar} name={persona.name} />
               </div>
               <div className="flex-1 flex justify-around text-center pt-[50px]">
                 {[['帖子', myPosts.length], ['粉丝', 0], ['关注', 0]].map(([a, b]) => (
@@ -398,6 +608,14 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
               </div>
               {persona.title && <div className="text-[#999] text-[12px] mt-0.5">{persona.title}</div>}
               {persona.bio && <div className="text-[13px] leading-[1.6] mt-1.5">{persona.bio}</div>}
+              <button onClick={() => { setManualTitle(''); setManualArtist(''); setMusicTarget('me'); }} className="mt-2 flex items-center gap-2 w-full text-left">
+                <span className="text-[15px]">🎵</span>
+                {persona.currentTrack ? (
+                  <span className="text-[13px] truncate"><span className="text-[#999]">正在听</span> <b>{persona.currentTrack.title}</b> <span className="text-[#999]">{persona.currentTrack.artist}</span></span>
+                ) : (
+                  <span className="text-[13px] text-[#999]">设置正在听的音乐</span>
+                )}
+              </button>
             </div>
             <div className="flex gap-2.5 px-[18px] py-3.5">
               <button onClick={() => { setEditingPersona({ name: persona.name, title: persona.title, job: persona.job, bio: persona.bio }); setEditThemeIdx(0); setView('edit'); }} className="flex-1 h-11 rounded-xl bg-[#f3f3f3] text-[13px] font-medium">编辑人设</button>
@@ -409,7 +627,7 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
             <div className="grid grid-cols-3 gap-[2px]">
               {myPosts.map(p => (
                 <button key={p.id} onClick={() => { setActivePostId(p.id); setPrevView('me'); setView('post'); }} className="aspect-square block w-full">
-                  <MeshImage g={p.gradient} className="w-full h-full" />
+                  <PostMedia media={p.media} gradient={p.gradient} className="w-full h-full" />
                 </button>
               ))}
             </div>
@@ -441,7 +659,7 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
             {deletedPosts.length ? deletedPosts.map(p => (
               <div key={p.id} className="flex items-start gap-3 border border-[#ececec] rounded-2xl mx-[18px] mb-3 p-3 w-auto">
                 <div className="flex-none w-[84px] h-[84px] rounded-[10px] overflow-hidden">
-                  <MeshImage g={p.gradient} className="w-full h-full" />
+                  <PostMedia media={p.media} gradient={p.gradient} className="w-full h-full" />
                 </div>
                 <div className="flex-1">
                   <b className="text-[13px]">{p.byName}</b> 的帖子
@@ -472,18 +690,59 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
                 rows={3}
                 className="w-full text-[14px] leading-[1.6] resize-none outline-none"
               />
-              <div className="text-[#999] text-[12px] my-2">选一张配图</div>
+              <div className="text-[#999] text-[12px] my-2">选一张配图（或上传真实图片/视频）</div>
+              <input
+                ref={composeFileRef}
+                type="file"
+                accept="image/*,video/*"
+                className="hidden"
+                onChange={handleComposeFile}
+              />
               <div className="grid grid-cols-6 gap-2">
+                <button
+                  onClick={() => composeFileRef.current?.click()}
+                  disabled={composeMediaUploading}
+                  className="aspect-square rounded-[10px] overflow-hidden flex items-center justify-center bg-[#f3f3f3] text-[#999] disabled:opacity-50"
+                  style={{ outline: composeMedia ? '2px solid #b4838a' : 'none' }}
+                >
+                  {composeMediaUploading ? <span className="text-[11px]">上传中…</span> : <PlusSquare size={22} />}
+                </button>
                 {GRADIENTS.map((_, i) => (
                   <button
                     key={i}
-                    onClick={() => setComposeGradient(i)}
+                    onClick={() => { setComposeGradient(i); setComposeMedia(''); }}
                     className="aspect-square rounded-[10px] overflow-hidden block"
-                    style={{ outline: composeGradient === i ? '2px solid #b4838a' : 'none' }}
+                    style={{ outline: !composeMedia && composeGradient === i ? '2px solid #b4838a' : 'none' }}
                   >
                     <MeshImage g={i} className="w-full h-full" />
                   </button>
                 ))}
+              </div>
+              {composeMedia && (
+                <div className="mt-2 relative rounded-[10px] overflow-hidden">
+                  <PostMedia media={composeMedia} gradient={composeGradient} className="w-full aspect-square" />
+                  <button
+                    onClick={() => setComposeMedia('')}
+                    className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center"
+                  ><X size={14} /></button>
+                </div>
+              )}
+              <div
+                onClick={() => { setManualTitle(''); setManualArtist(''); setMusicTarget('compose'); }}
+                className="mt-3 flex items-center gap-2 w-full border border-[#ececec] rounded-xl px-3 py-2.5 cursor-pointer"
+              >
+                <span className="text-[15px]">🎵</span>
+                {composeTrack ? (
+                  <span className="flex-1 text-[13px] truncate"><b>{composeTrack.title}</b> <span className="text-[#999]">{composeTrack.artist}</span></span>
+                ) : (
+                  <span className="flex-1 text-[13px] text-[#999]">添加音乐</span>
+                )}
+                {composeTrack && (
+                  <span
+                    onClick={(e) => { e.stopPropagation(); setComposeTrack(null); }}
+                    className="text-[#999] px-1"
+                  ><X size={16} /></span>
+                )}
               </div>
             </div>
           </>
@@ -545,7 +804,9 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
         {/* 私信聊天 */}
         {view === 'chat' && dmTarget && (
           <div className="flex flex-col min-h-full">
-            {renderTop(resolveName(dmTarget))}
+            {renderTop(resolveName(dmTarget), true, (
+              <button onClick={() => { setManualTitle(''); setManualArtist(''); setMusicTarget(dmTarget); }} className="text-[16px]" title="设置 TA 正在听的音乐">🎵</button>
+            ))}
             <div className="px-4 py-2.5 flex flex-col gap-2.5 flex-1">
               {(dms[dmTarget] || []).map((m, i) => (
                 <div
@@ -577,11 +838,20 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
           <>
             {renderTop('编辑人设', true, <button onClick={() => {
               if (!editingPersona.name.trim()) { showToast('先给人设起个名字'); return; }
-              setPersonas(prev => prev.map((p, i) => i === activePersonaIdx
-                ? { ...p, ...editingPersona, theme: THEME_COLORS[editThemeIdx][0], themeSoft: THEME_COLORS[editThemeIdx][1] }
-                : p));
+              const pid = persona.id;
+              if (pid) {
+                setLinePersonas((prev: any[]) => (Array.isArray(prev) ? prev : []).map((p: any) =>
+                  String(p.id) === String(pid) ? { ...p, name: editingPersona.name.trim() } : p));
+                setIgExtras((prev) => ({
+                  ...prev,
+                  [pid]: {
+                    title: editingPersona.title, job: editingPersona.job, bio: editingPersona.bio,
+                    theme: THEME_COLORS[editThemeIdx][0], themeSoft: THEME_COLORS[editThemeIdx][1],
+                  },
+                }));
+              }
               setView('me');
-              showToast('已保存');
+              showToast('已保存（已同步到 LINE 人设）');
             }} className="text-[#b4838a] font-bold text-[14px]">保存</button>)}
             <div className="grid place-items-center py-2">
               <Avatar size={88} ring={1} />
@@ -620,7 +890,7 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
               <div className="h-full bg-white story-progress" />
             </div>
             <div className="absolute left-3.5 top-[30px] z-[2] flex items-center gap-2 text-[#222]">
-              <Avatar size={34} avatarUrl={storyKey === 'me' ? undefined : resolveAvatar(storyKey)} name={storyName} />
+              <Avatar size={34} avatarUrl={storyKey === 'me' ? (persona.avatar || undefined) : resolveAvatar(storyKey)} name={storyName} />
               <b className="text-[13px]">{storyName}</b>
             </div>
             <button onClick={() => setView('home')} className="absolute right-3.5 top-[30px] z-[3] text-[#222]"><X size={26} /></button>
@@ -653,20 +923,73 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
       )}
 
       {/* 底部弹窗 */}
-      {sheet && (
-        <div className="absolute inset-0 z-20 bg-[rgba(30,24,20,.4)] flex items-end" onClick={() => setSheet(null)}>
+      {(sheet || musicTarget) && (
+        <div className="absolute inset-0 z-20 bg-[rgba(30,24,20,.4)] flex items-end" onClick={() => { setSheet(null); setMusicTarget(null); }}>
           <div className="w-full bg-white rounded-t-[22px] pt-3 pb-7 max-h-[80%] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <i className="block w-9 h-1 rounded bg-[#ececec] mx-auto mb-3" />
+            {musicTarget && (
+              <>
+                <div className="px-[18px] pb-1.5">
+                  <b className="text-[16px]">🎵 {musicTarget === 'compose' ? '给帖子添加音乐' : '正在听的音乐'}</b>
+                  {typeof musicTarget === 'string' && musicTarget !== 'me' && musicTarget !== 'compose' && (
+                    <div className="text-[#999] text-[12px] mt-0.5">为 {resolveName(musicTarget)} 设置</div>
+                  )}
+                </div>
+                {(() => {
+                  const cur = musicTarget === 'compose' ? composeTrack : musicTarget === 'me' ? (persona.currentTrack || null) : getAuthorTrack(musicTarget);
+                  return cur ? (
+                    <div className="mx-[18px] mb-2 flex items-center gap-2 bg-[#fdeef0] rounded-xl px-3 py-2.5">
+                      <span className="text-[15px]">🎵</span>
+                      <div className="flex-1 text-[13px] truncate"><b>{cur.title}</b><div className="text-[#999] text-[11.5px] truncate">{cur.artist}</div></div>
+                      <button onClick={clearMusicChoice} className="text-[#999] text-[12px] px-1">清除</button>
+                    </div>
+                  ) : null;
+                })()}
+                {likedTracks.length > 0 && (
+                  <>
+                    <div className="px-[18px] pt-1 pb-1 text-[#999] text-[12px]">从我的音乐里选</div>
+                    <div className="max-h-[220px] overflow-y-auto">
+                      {likedTracks.slice(0, 30).map(t => (
+                        <button key={t.id} onClick={() => applyMusicChoice({ title: t.name, artist: t.artist || '未知歌手' })} className="flex items-center gap-3 px-[18px] py-2 w-full text-left">
+                          <span className="text-[15px]">🎵</span>
+                          <div className="flex-1 text-[13px] truncate"><b>{t.name}</b><div className="text-[#999] text-[11.5px] truncate">{t.artist}</div></div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <div className="px-[18px] pt-2">
+                  <div className="text-[#999] text-[12px] mb-1.5">手动输入</div>
+                  <input value={manualTitle} onChange={e => setManualTitle(e.target.value)} placeholder="歌名" className="w-full h-11 border border-[#ececec] rounded-xl px-3 text-[14px] outline-none mb-2" />
+                  <input value={manualArtist} onChange={e => setManualArtist(e.target.value)} placeholder="歌手" className="w-full h-11 border border-[#ececec] rounded-xl px-3 text-[14px] outline-none mb-2" />
+                  <button onClick={() => {
+                    const title = manualTitle.trim();
+                    if (!title) { showToast('先写歌名'); return; }
+                    applyMusicChoice({ title, artist: manualArtist.trim() || '未知歌手' });
+                  }} className="w-full h-11 rounded-xl bg-[#222] text-white text-[13px] font-medium mb-1">确定</button>
+                </div>
+              </>
+            )}
             {sheet === 'persona' && (
               <>
-                <div className="px-[18px] pb-1.5"><b className="text-[16px]">我的人设</b><div className="text-[#999] text-[12px] mt-0.5">点头像圈切换身份，主页和快拍会跟着变</div></div>
+                <div className="px-[18px] pb-1.5"><b className="text-[16px]">我的人设</b><div className="text-[#999] text-[12px] mt-0.5">与 LINE 人设联通，切换会同步到 LINE</div></div>
+                {personas.length === 0 && (
+                  <div className="px-[18px] py-4 text-[13px] text-[#999]">还没有人设，先新建一个吧</div>
+                )}
                 {personas.map((p, i) => (
-                  <button key={i} onClick={() => { setActivePersonaIdx(i); setSheet(null); showToast('已切换为 ' + p.name); }} className="flex items-center gap-3 px-[18px] py-2.5 w-full text-left">
-                    <Avatar size={56} ring={1} />
+                  <button key={p.id} onClick={() => { setLineActivePersonaId(p.id); setSheet(null); showToast('已切换为 ' + p.name); }} className="flex items-center gap-3 px-[18px] py-2.5 w-full text-left">
+                    <Avatar size={56} ring={1} avatarUrl={p.avatar} name={p.name} />
                     <div className="flex-1 text-[13px]"><b>{p.name} · {i ? '小号' : '主号'}</b><div className="text-[#999] text-[11.5px]">{p.job}</div></div>
-                    {activePersonaIdx === i && <span className="text-[#b4838a]"><Check size={22} /></span>}
+                    {activePersonaId === p.id && <span className="text-[#b4838a]"><Check size={22} /></span>}
                   </button>
                 ))}
+                <button
+                  onClick={() => {
+                    const name = window.prompt('新人设名字：', '');
+                    if (name && name.trim()) { createIgPersona(name.trim()); setSheet(null); }
+                  }}
+                  className="mx-[18px] mt-2 mb-1 w-[calc(100%-36px)] h-11 rounded-xl bg-[#f3f3f3] text-[13px] font-medium"
+                >＋ 新建人设</button>
               </>
             )}
             {sheet === 'menu' && (
@@ -687,7 +1010,7 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
                 ))}
               </>
             )}
-            {typeof sheet === 'object' && sheet.pm && (() => {
+            {!!sheet && typeof sheet === 'object' && sheet.pm && (() => {
               const p = posts.find(x => x.id === sheet.pm);
               if (!p) return null;
               const own = p.by === 'me';
