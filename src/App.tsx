@@ -4,7 +4,7 @@ import { PhoneSimulator } from './components/PhoneSimulator';
 import { cleanupOldDemoData } from './store/blankPhoneMigration';
 
 export default function App() {
-  const release = '2026.10.09-preset-studio-v1';
+  const release = '2026.10.17-ig-circle-update-v1';
   const [themeMode, setThemeMode] = useState<ThemeMode>('nordic-light');
   const [currentScreen, setCurrentScreen] = useState<ScreenType>('home');
   const [showUpdate, setShowUpdate] = useState(false);
@@ -55,9 +55,16 @@ export default function App() {
             <button onClick={() => { window.localStorage.setItem('sane333:last-seen-release', release); setShowUpdate(false); }} className="w-8 h-8 rounded-full bg-black/5 flex items-center justify-center"><span className="text-lg">×</span></button>
           </div>
           <div className="mt-5 max-h-[min(52vh,390px)] overflow-y-auto pr-1 space-y-3 text-[11px] leading-5 text-black/65">
-            <div><b className="text-black/80">预设工坊 · 三种独立分类</b><br/>预设 App 现在分别管理线上单聊、线上群聊和线下剧情预设，各分类有独立预设列表。</div>
-            <div><b className="text-black/80">预设工坊 · 酒馆式条目管理</b><br/>可添加、编辑、保存、启用/禁用、删除和调整提示词条目顺序，并设置角色、注入位置、Depth 与 Order。</div>
-            <div><b className="text-black/80">预设工坊 · 导入导出与格式参数</b><br/>支持单个预设或整套预设库导入导出，并可编辑 Temperature、Top P、Penalty、最大输出 tokens、模型前后缀和停止序列。</div>
+            <div><b className="text-black/80">Instagram 全新上线</b><br/>信息流、快拍、发帖、评论、私信，支持真实图片视频上传。人设与 LINE 联通，改一边三边同步。</div>
+            <div><b className="text-black/80">Circle（原 Threads）</b><br/>改名 Circle，发帖支持真图/视频，关注逻辑与 IG 一致。</div>
+            <div><b className="text-black/80">IG 音乐状态</b><br/>个人页"🎵 正在听"，发帖可带音乐，角色/NPC 也能设。</div>
+            <div><b className="text-black/80">AI 生图 + MiniMax 语音</b><br/>正面/负面提示词预设，锁脸生图；每个角色专属语音 ID；全部开关控制。</div>
+            <div><b className="text-black/80">角色主动行为</b><br/>角色可主动发消息、打语音/视频电话、发照片，23:00-8:00 不打扰。</div>
+            <div><b className="text-black/80">视频通话"看看TA现在"</b><br/>AI 根据聊天内容生成角色此刻的画面。</div>
+            <div><b className="text-black/80">LINE Pay 钱包</b><br/>极简白设计，充值/明细/亲情卡。</div>
+            <div><b className="text-black/80">主题三件套</b><br/>LINE 主题/聊天背景/字体大小，聊天内实时生效。</div>
+            <div><b className="text-black/80">评论管理</b><br/>朋友圈评论可删除/重新生成，非好友评论自动过滤。</div>
+            <div><b className="text-black/80">线下邀约联通</b><br/>接受邀约后自动跳转线下 App。</div>
           </div>
           <div className="mt-5 flex items-center justify-between text-[10px] text-black/35">
             <span>release {release}</span>

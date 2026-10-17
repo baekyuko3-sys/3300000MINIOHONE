@@ -3846,7 +3846,11 @@ export function LineConversationView({
     ));
     updateOfflineEvent(`offline-${msgId}`, { status: 'accepted' });
     setStatusData(prev => ({ ...prev, favor: String(Number(prev.favor || 0) + 5) }));
-    showToast('已确认赴约！好感度 +5 💖');
+    showToast('已确认赴约！正在前往线下… 💖');
+    // 跳到线下 App
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('sane333:navigate', { detail: { screen: 'offline-story', eventId: `offline-${msgId}` } }));
+    }, 800);
 
     const invite = messages.find(message => message.id === msgId);
     const settings = conversationAiSettings();
