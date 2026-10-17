@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { compressImageDataUrl } from '../../store/imageCompress';
 import { ArrowLeft, Check, ChevronDown, Copy, Lock, Palette, Plus, Smartphone, Sparkles, Trash2, Type, Wand2 } from 'lucide-react';
 import type { ScreenType, ThemeMode } from '../../types';
 import {
@@ -488,8 +489,9 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                         return;
                       }
                       const reader = new FileReader();
-                      reader.onload = () => {
-                        update('wallpaper', String(reader.result || ''));
+                      reader.onload = async () => {
+                        const raw = String(reader.result || '');
+                        update('wallpaper', await compressImageDataUrl(raw, 1024));
                         notify('桌面壁纸已更新');
                       };
                       reader.onerror = () => notify('壁纸读取失败');
@@ -849,7 +851,7 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                   <div className="font-medium">上传应用背景</div><div className="text-[#aaa] mt-1">图片会保存到这个应用的专属美化设置</div>
                   <input type="file" accept="image/*" className="hidden" onChange={e => {
                     const file=e.target.files?.[0]; if(!file) return;
-                    const reader=new FileReader(); reader.onload=()=>updateAppBeauty({background:String(reader.result||'')}); reader.readAsDataURL(file);
+                    const reader=new FileReader(); reader.onload=async()=>updateAppBeauty({background:await compressImageDataUrl(String(reader.result||''),1024)}); reader.readAsDataURL(file);
                   }} />
                 </label>
                 <div><div className="text-[8px] text-[#999] mb-1.5">强调色</div><div className="flex gap-2">{['#292724','#ae7e89','#71849b','#7d8b72','#9b7d62','#5e6b63'].map(color=><button key={color} onClick={()=>updateAppBeauty({accent:color})} className="w-8 h-8 rounded-full border-2 border-white shadow" style={{background:color}} />)}</div></div>
@@ -940,8 +942,8 @@ function LockWallpaperBlock({ appearance, update, notify }: {
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result || '');
+    reader.onload = async () => {
+      const dataUrl = await compressImageDataUrl(String(reader.result || ''), 1024);
       setWallpaperDraft(dataUrl);
       update('lockWallpaper', dataUrl);
       notify('锁屏壁纸已更换');

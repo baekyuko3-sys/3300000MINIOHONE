@@ -1,5 +1,6 @@
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import { usePersistentState } from '../../store/usePersistentState';
+import { readAndCompressImage } from '../../store/imageCompress';
 import type { ImportedCharacter } from '../../data/characterImport';
 import { getCharacterMemory } from '../../store/characterMemory';
 import { ScreenType } from '../../types';
@@ -261,10 +262,8 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     URL.revokeObjectURL(url);
   };
 
-  const readImageFile = (file: File, onDone: (dataUrl: string) => void) => {
-    const reader = new FileReader();
-    reader.onload = () => onDone(String(reader.result || ''));
-    reader.readAsDataURL(file);
+  const readImageFile = (file: File, onDone: (dataUrl: string) => void, maxDim = 1024) => {
+    readAndCompressImage(file, maxDim).then(onDone).catch(() => {});
   };
 
   const exportMomentsData = () => {
@@ -289,7 +288,6 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   };
 
   const importMomentsData = (file: File) => {
-    readImageFile(file, () => {});
     const reader = new FileReader();
     reader.onload = () => {
       try {
@@ -2639,7 +2637,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 </div>
                 <label className="text-[10px] text-[#777] cursor-pointer">
                   {personaDraft.avatar ? '更换头像' : '上传头像'}
-                  <input type="file" accept="image/*" className="hidden" onChange={e => { const file=e.target.files?.[0]; if(file) readImageFile(file, data => setPersonaDraft((p:any)=>({...p,avatar:data}))); }} />
+                  <input type="file" accept="image/*" className="hidden" onChange={e => { const file=e.target.files?.[0]; if(file) readImageFile(file, data => setPersonaDraft((p:any)=>({...p,avatar:data})), 512); }} />
                 </label>
               </div>
             </div>
@@ -3665,7 +3663,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
             <div className="flex items-center justify-between"><div><div className="text-[8px] font-mono tracking-[1.5px] text-[#aaa]">PROFILE · BEAUTY</div><div className="font-semibold text-[15px] mt-1">个人主页美化</div></div><button onClick={() => setCharacterProfileStyleOpen(false)} className="text-xl text-[#aaa]">×</button></div>
             <label className="block p-3 rounded-2xl border border-dashed border-[#ddd] text-xs cursor-pointer">
               <div className="font-medium">更换头像</div><div className="text-[9px] text-[#aaa] mt-1">图片会用于这个角色的个人主页</div>
-              <input type="file" accept="image/*" className="hidden" onChange={e => { const f=e.target.files?.[0]; if(f) readImageFile(f, data => setCharacterProfileStyles(prev => ({...prev,[character.id]:{...prev[character.id],avatar:data}}))); }} />
+              <input type="file" accept="image/*" className="hidden" onChange={e => { const f=e.target.files?.[0]; if(f) readImageFile(f, data => setCharacterProfileStyles(prev => ({...prev,[character.id]:{...prev[character.id],avatar:data}})), 512); }} />
             </label>
             <label className="block p-3 rounded-2xl border border-dashed border-[#ddd] text-xs cursor-pointer">
               <div className="font-medium">更换背景图</div><div className="text-[9px] text-[#aaa] mt-1">支持任意本地图片</div>
@@ -4225,14 +4223,14 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               <button onClick={() => setShowMyProfilePage(false)} className="absolute top-4 left-4 w-8 h-8 rounded-full bg-white/90 text-[#555] z-10">‹</button>
               <label title="更换封面背景" className="absolute top-4 right-4 px-3 py-1.5 rounded-full bg-white/90 text-[10px] text-[#555] cursor-pointer z-10">
                 {tx('换封面', 'カバー変更')}
-                <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { const bg = String(r.result || ''); const next = { ...currentUser, background: bg }; setCurrentUser(next); localStorage.setItem('line:current-user', JSON.stringify(next)); showToast(tx('封面已更新', 'カバーを更新しました')); }; r.readAsDataURL(f); e.currentTarget.value = ''; }} />
+                <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (!f) return; void (async () => { try { const bg = await readAndCompressImage(f, 1024); const next = { ...currentUser, background: bg }; setCurrentUser(next); localStorage.setItem('line:current-user', JSON.stringify(next)); showToast(tx('封面已更新', 'カバーを更新しました')); } catch { showToast('封面读取失败'); } })(); e.currentTarget.value = ''; }} />
               </label>
             </div>
             {/* 头像：点头像直接换（账号头像） */}
             <div className="px-5 -mt-9 relative z-10 flex items-end gap-3">
               <label title="点头像换一张" className="w-[76px] h-[76px] rounded-full border-[3px] border-white bg-[#f1f1f2] overflow-hidden shadow grid place-items-center shrink-0 cursor-pointer active:scale-95">
                 {currentUser.avatar ? <img src={currentUser.avatar} alt="" className="w-full h-full object-cover" /> : <span className="text-2xl text-[#aaa]">{currentUser.name?.[0] || '·'}</span>}
-                <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { const av = String(r.result || ''); const next = { ...currentUser, avatar: av }; setCurrentUser(next); localStorage.setItem('line:current-user', JSON.stringify(next)); showToast(tx('头像已更新', 'アイコンを更新しました')); }; r.readAsDataURL(f); e.currentTarget.value = ''; }} />
+                <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (!f) return; void (async () => { try { const av = await readAndCompressImage(f, 512); const next = { ...currentUser, avatar: av }; setCurrentUser(next); localStorage.setItem('line:current-user', JSON.stringify(next)); showToast(tx('头像已更新', 'アイコンを更新しました')); } catch { showToast('头像读取失败'); } })(); e.currentTarget.value = ''; }} />
               </label>
             </div>
             <div className="px-5 pt-4 pb-10">
@@ -4300,9 +4298,13 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   onChange={e => {
                     const file = e.target.files?.[0];
                     if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = () => setProfileDraft(prev => ({ ...prev, avatar: String(reader.result || '') }));
-                    reader.readAsDataURL(file);
+                    void (async () => {
+                      try {
+                        const dataUrl = await readAndCompressImage(file, 512);
+                        setProfileDraft(prev => ({ ...prev, avatar: dataUrl }));
+                      } catch { /* 读取失败忽略 */ }
+                    })();
+                    e.currentTarget.value = '';
                   }}
                 />
               </label>

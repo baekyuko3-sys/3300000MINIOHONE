@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePersistentState, useSyncedPersistentState } from '../../store/usePersistentState';
+import { readAndCompressImage, readFileAsDataUrl } from '../../store/imageCompress';
 import { generateCreativeText, readStoredAiSettings } from '../../ai/aiEngine';
 import { getNpcs } from '../../store/npcs';
 import { getMedia, putMedia } from '../../store/mediaVault';
@@ -312,12 +313,10 @@ export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
       for (const file of Array.from(files).slice(0, remain)) {
         if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) continue;
         if (file.size > 50 * 1024 * 1024) { showToast('单个文件太大（>50MB）'); continue; }
-        const dataUrl = await new Promise<string>((res, rej) => {
-          const r = new FileReader();
-          r.onerror = () => rej(new Error('读取失败'));
-          r.onload = () => res(typeof r.result === 'string' ? r.result : '');
-          r.readAsDataURL(file);
-        });
+        // 图片自动压缩，视频保持原样
+        const dataUrl = file.type.startsWith('image/')
+          ? await readAndCompressImage(file, 1024)
+          : await readFileAsDataUrl(file);
         const id = await putMedia(dataUrl);
         added.push('media:' + id);
       }

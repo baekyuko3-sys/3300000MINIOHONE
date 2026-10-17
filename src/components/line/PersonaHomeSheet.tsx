@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { readAndCompressImage } from '../../store/imageCompress';
 
 export const MACARON_COLORS = ['#ffffff', '#fff7f5', '#fef6ec', '#fdf9ef', '#f3f8f2', '#eef6f8', '#f1f2fa', '#f7f0f7', '#fdeef0', '#eef3fd'];
 export const MORANDI_COLORS = ['#e8e3dd', '#d9d3cc', '#c9c2b8', '#b6c4c0', '#a8b5c4', '#b4aebd', '#c4b2a8', '#9aa88f', '#8fa3a8', '#6f7d7c'];
 
 function readImageFile(file: File, cb: (data: string) => void) {
-  const reader = new FileReader();
-  reader.onload = () => cb(String(reader.result || ''));
-  reader.readAsDataURL(file);
+  readAndCompressImage(file, 512).then(cb).catch(() => cb(''));
 }
 
 function characterAvatar(c: any) {

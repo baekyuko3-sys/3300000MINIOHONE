@@ -4,6 +4,7 @@ import {
   ChevronLeft, MoreHorizontal, X, Check, Menu, LayoutGrid, Trash2, RotateCcw,
 } from 'lucide-react';
 import { usePersistentState, useSyncedPersistentState } from '../../store/usePersistentState';
+import { readAndCompressImage, readFileAsDataUrl } from '../../store/imageCompress';
 import { ScreenType } from '../../types';
 import { getNpcs, updateNpc } from '../../store/npcs';
 import { getLikedTracks } from '../../store/music';
@@ -428,12 +429,10 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
     if (file.size > 50 * 1024 * 1024) { showToast('文件太大（>50MB）'); return; }
     setComposeMediaUploading(true);
     try {
-      const dataUrl = await new Promise<string>((res, rej) => {
-        const r = new FileReader();
-        r.onerror = () => rej(new Error('读取失败'));
-        r.onload = () => res(typeof r.result === 'string' ? r.result : '');
-        r.readAsDataURL(file);
-      });
+      // 图片自动压缩，视频保持原样
+      const dataUrl = file.type.startsWith('image/')
+        ? await readAndCompressImage(file, 1024)
+        : await readFileAsDataUrl(file);
       const id = await putMedia(dataUrl);
       setComposeMedia('media:' + id);
       showToast('已上传');

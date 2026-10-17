@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { readAndCompressImage } from '../../store/imageCompress';
 import { ArrowLeft, Film, ImagePlus, Trash2, Settings2, Download, Upload } from 'lucide-react';
 import { ScreenType } from '../../types';
 
@@ -35,17 +36,17 @@ export function GalleryScreenView({ onNavigate }: GalleryScreenViewProps) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   };
 
-  const importPhoto = (file?: File) => {
+  const importPhoto = async (file?: File) => {
     if (!file || !file.type.startsWith('image/')) return;
     if (file.size > 5 * 1024 * 1024) {
       window.alert('图片超过 5MB，请先压缩后再导入');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
+    try {
+      const src = await readAndCompressImage(file, 1024);
       const next: GalleryPhoto = {
         id: 'photo-' + Date.now().toString(36),
-        src: String(reader.result || ''),
+        src,
         title: file.name.replace(/.[^.]+$/, ''),
         date: new Date().toLocaleDateString('zh-CN'),
       };
@@ -54,8 +55,9 @@ export function GalleryScreenView({ onNavigate }: GalleryScreenViewProps) {
       } catch {
         window.alert('相册存储空间不足，导入失败');
       }
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      window.alert('图片读取失败');
+    }
   };
 
   const exportGallery = () => {

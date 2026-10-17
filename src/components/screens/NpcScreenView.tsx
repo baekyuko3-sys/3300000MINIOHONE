@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { readAndCompressImage } from '../../store/imageCompress';
 import {
   ArrowLeft, ChevronRight, Sparkles, Trash2, UserRound, Link2,
   Users, Wand2, FolderOpen, Pause, Play,
@@ -831,18 +832,15 @@ export function NpcScreenView({ onNavigate }: { onNavigate: (screen: ScreenType)
                             const file = event.target.files?.[0];
                             if (!file) return;
                             if (file.size > 8 * 1024 * 1024) { notify('图片太大，请选 8MB 以内的'); event.currentTarget.value = ''; return; }
-                            const reader = new FileReader();
-                            reader.onload = async () => {
+                            void (async () => {
                               try {
-                                const dataUrl = String(reader.result || '');
+                                const dataUrl = await readAndCompressImage(file, 512);
                                 if (!dataUrl) return;
                                 const id = await putMedia(dataUrl);
                                 editSelected({ avatar: 'media:' + id });
                                 notify('头像已更新');
                               } catch { notify('头像保存失败'); }
-                            };
-                            reader.onerror = () => notify('头像读取失败');
-                            reader.readAsDataURL(file);
+                            })();
                             event.currentTarget.value = '';
                           }}
                         />

@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useMemo } from 'react';
+import { readAndCompressImage } from '../../store/imageCompress';
 import { ArrowLeft, Brain, Download, Edit3, FileDown, FilePlus2, Folder, Plus, ShieldCheck, Trash2, UserRound, X, Settings2, Upload } from 'lucide-react';
 import { ScreenType } from '../../types';
 import { usePersistentState } from '../../store/usePersistentState';
@@ -27,12 +28,7 @@ interface CharacterProfileViewProps {
 }
 
 function readImageFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error || new Error('图片读取失败'));
-    reader.readAsDataURL(file);
-  });
+  return readAndCompressImage(file, 512);
 }
 
 async function compressCharacterAvatar(avatar: string): Promise<string> {

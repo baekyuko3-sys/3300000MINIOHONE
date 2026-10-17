@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { readAndCompressImage } from '../../store/imageCompress';
 import {
   ArrowLeft, Play, Pause, SkipBack, SkipForward, Heart, Search, Settings2,
   UsersRound, Shuffle, Music2, UserRound, ChevronRight, Volume2, X, Plus, Pencil, PanelLeftClose, PanelLeftOpen,
@@ -985,9 +986,12 @@ export function MusicScreenView({ onNavigate }: MusicScreenViewProps) {
               <input type="file" accept="image/*" className="hidden" onChange={event => {
                 const file = event.target.files?.[0];
                 if (!file || !activeIdentity) return;
-                const reader = new FileReader();
-                reader.onload = () => updateActiveIdentity(identity => ({ ...identity, avatar: String(reader.result || '') }));
-                reader.readAsDataURL(file);
+                void (async () => {
+                  try {
+                    const dataUrl = await readAndCompressImage(file, 512);
+                    updateActiveIdentity(identity => ({ ...identity, avatar: dataUrl }));
+                  } catch { /* 读取失败忽略 */ }
+                })();
                 event.target.value = '';
               }} />
             </label>

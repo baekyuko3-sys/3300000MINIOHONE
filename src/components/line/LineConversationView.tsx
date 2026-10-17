@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo, type MouseEvent, type PointerEvent } from 'react';
 import { readPersistentState, usePersistentState } from '../../store/usePersistentState';
+import { readAndCompressImage, readFileAsDataUrl } from '../../store/imageCompress';
 import type { ImportedCharacter } from '../../data/characterImport';
 import type { ScreenType, WorldBook } from '../../types';
 import { generateCharacterReply, generateCreativeText, generateHtmlInterlude, readStoredAiSettings, resolveChannelAiSettings, listOpenAiCompatibleModels, testAiConnection, summarizeConversationMemory, mergeRecentMemoryBatch, type AiSettings } from '../../ai/aiEngine';
@@ -173,7 +174,7 @@ function parseMusicInviteDecision(raw: string): { decision: 'accept' | 'decline'
 }
 
 async function readImageFileAsAvatar(file: File): Promise<string> {
-  const raw = await readImageFileAsDataUrl(file);
+  const raw = await readFileAsDataUrl(file);
   try {
     const img = await new Promise<HTMLImageElement>((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = raw; });
     const maxSize = 256;
@@ -219,13 +220,8 @@ function LineAvatarImage({ src, name }: { src: string; name: string }) {
   return <img src={resolvedSrc} alt={name} className="w-full h-full object-cover" referrerPolicy="no-referrer" onError={() => setFailed(true)} />;
 }
 
-function readImageFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error || new Error('图片读取失败'));
-    reader.readAsDataURL(file);
-  });
+function readImageFileAsDataUrl(file: File, maxDim = 1024): Promise<string> {
+  return readAndCompressImage(file, maxDim);
 }
 
 function splitLineChatText(text: string): string[] {
@@ -4913,8 +4909,12 @@ export function LineConversationView({
     if (type === 'image' || type === 'voice') {
       const reader = new FileReader();
       reader.onload = async () => {
-        const mediaUrl = typeof reader.result === 'string' ? reader.result : '';
+        let mediaUrl = typeof reader.result === 'string' ? reader.result : '';
         if (!mediaUrl) return;
+        // 上传的图片自动压缩，避免大图爆 localStorage / mediaVault
+        if (type === 'image' && mediaUrl.startsWith('data:image/')) {
+          try { mediaUrl = await readAndCompressImage(file, 1024); } catch { /* 压缩失败用原图 */ }
+        }
 
         void putMedia(mediaUrl).then(async mediaRef => {
           let voiceDuration = '语音';
@@ -8281,7 +8281,7 @@ export function LineConversationView({
                       <input id={`persona-avatar-${persona.id}`} type="file" accept="image/*" className="hidden" onChange={async e => {
                         const file = e.target.files?.[0]; if (!file) return;
                         try {
-                          const avatar = await readImageFileAsDataUrl(file);
+                          const avatar = await readImageFileAsDataUrl(file, 512);
                           updatePersona({ avatar });
                           showToast(`已更新「${persona.name}」的头像`);
                         } catch { showToast('头像读取失败'); }
@@ -8340,7 +8340,7 @@ export function LineConversationView({
                   const file = e.target.files?.[0];
                   if (!file) return;
                   try {
-                    const avatar = await readImageFileAsDataUrl(file);
+                    const avatar = await readImageFileAsDataUrl(file, 512);
                     setNewPersonaData(prev => ({ ...prev, avatar }));
                   } catch {
                     showToast('头像读取失败');
@@ -8686,7 +8686,7 @@ export function LineConversationView({
                           const file = e.currentTarget.files?.[0];
                           if (!file || !activeGroup) return;
                           try {
-                            const avatar = await readImageFileAsDataUrl(file);
+                            const avatar = await readImageFileAsDataUrl(file, 512);
                             saveGroupUpdate({ ...activeGroup, avatar, updatedAt: new Date().toISOString() });
                             showToast('群头像已保存');
                           } catch {
@@ -11982,7 +11982,7 @@ export function LineConversationView({
                 </div>
                 <input ref={characterProfileAvatarFileRef} type="file" accept="image/*" className="hidden" onChange={async e => {
                   const file = e.target.files?.[0]; if (!file) return;
-                  try { setCharacterProfileAvatar(await readImageFileAsDataUrl(file)); showToast('主页头像已更新'); } catch { showToast('头像读取失败'); }
+                  try { setCharacterProfileAvatar(await readImageFileAsDataUrl(file, 512)); showToast('主页头像已更新'); } catch { showToast('头像读取失败'); }
                   e.currentTarget.value = '';
                 }} />
                 <button onClick={() => characterProfileAvatarFileRef.current?.click()} className="mt-1 ml-2 text-[8px] text-[#ae7e89]">更换头像</button>
