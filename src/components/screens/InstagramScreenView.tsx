@@ -29,6 +29,7 @@ interface IgPost {
   byAvatar?: string;
   text: string;
   gradient: number;
+  visibility?: 'public' | 'friends' | 'private';
   media?: string; // 'media:xxx' 引用，真实图片/视频
   likes: number;
   liked: boolean;
@@ -152,6 +153,8 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
   const [posts, setPosts] = usePersistentState<IgPost[]>('phone:instagram', []);
   const [view, setView] = useState<View>('home');
   const [prevView, setPrevView] = useState<View>('home');
+  const [follows, setFollows] = usePersistentState<string[]>('phone:instagram-follows', []);
+  const [composeVisibility, setComposeVisibility] = useState<'public' | 'friends' | 'private'>('public');
   const [activePostId, setActivePostId] = useState<string>('');
   const [commentInput, setCommentInput] = useState('');
   const [composeText, setComposeText] = useState('');
@@ -333,7 +336,14 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
   };
 
   const activePost = posts.find(p => p.id === activePostId);
-  const visiblePosts = posts.filter(p => !p.deleted);
+  const visiblePosts = posts.filter(p => {
+    if (p.deleted) return false;
+    if (p.by === 'me') return true;
+    if (p.visibility === 'private') return false;
+    if (p.visibility === 'friends' && !follows.includes(p.by)) return false;
+    // public 或未设置：只显示关注的人
+    return follows.includes(p.by);
+  });
   const myPosts = posts.filter(p => p.by === 'me' && !p.deleted);
   const deletedPosts = posts.filter(p => p.deleted);
 
@@ -396,7 +406,7 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
     setPosts(prev => [{
       id: `p${Date.now()}`, by: 'me', byName: persona.name, text: t,
       gradient: composeGradient % GRADIENTS.length, likes: 0, liked: false, saved: false,
-      comments: [], time: '刚刚',
+      comments: [], time: '刚刚', visibility: composeVisibility,
       ...(composeTrack ? { track: composeTrack } : {}),
       ...(composeMedia ? { media: composeMedia } : {}),
     }, ...prev]);
@@ -506,7 +516,7 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
   );
 
   return (
-    <div className="w-full h-full bg-white text-[#222] flex flex-col relative overflow-hidden select-none" style={{ fontFamily: "'Noto Sans SC',-apple-system,'PingFang SC',sans-serif" }}>
+    <div className="w-full h-full bg-white text-[#222] flex flex-col relative overflow-hidden select-none" style={{ fontFamily: "'Noto Sans SC',-apple-system,'PingFang SC',sans-serif", paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
         {/* 首页 */}
         {view === 'home' && (
@@ -529,7 +539,7 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
                 </div>
                 <small className="block text-[11px] mt-1 text-[#999] truncate">我的快拍</small>
               </button>
-              {people.slice(0, 3).map((p, i) => (
+              {people.filter(p => follows.includes(p.id)).slice(0, 10).map((p, i) => (
                 <button key={p.id} onClick={() => { setStoryIndex(i + 1); setView('story'); }} className="flex-none w-[66px] text-center">
                   <Avatar size={66} ring={seenStories[p.id] ? 0 : 2} avatarUrl={p.avatar} name={p.name} />
                   <small className="block text-[11px] mt-1 text-[#999] truncate">{p.name}</small>
@@ -690,6 +700,17 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
                 rows={3}
                 className="w-full text-[14px] leading-[1.6] resize-none outline-none"
               />
+              <div className="flex gap-2 my-3">
+                {([['public', '公开'], ['friends', '好友'], ['private', '私密']] as const).map(([v, label]) => (
+                  <button
+                    key={v}
+                    onClick={() => setComposeVisibility(v)}
+                    className={`px-3.5 py-1.5 rounded-full text-[12px] ${composeVisibility === v ? 'bg-[#222] text-white' : 'bg-[#f3f3f3] text-[#666]'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <div className="text-[#999] text-[12px] my-2">选一张配图（或上传真实图片/视频）</div>
               <input
                 ref={composeFileRef}
@@ -762,12 +783,24 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
                 />
               </div>
             </div>
-            {searchResults.map(p => (
-              <button key={p.id} onClick={() => showToast(`${p.name} 的主页`)} className="flex items-center gap-3 px-[18px] py-2.5 w-full text-left">
-                <Avatar size={48} ring={p.kind === 'NPC' ? 1 : 2} avatarUrl={p.avatar} name={p.name} />
-                <div className="flex-1 text-[13px]"><b>{p.name}</b><div className="text-[#999] text-[11.5px]">{p.kind === 'NPC' ? 'NPC' : '角色 · 亲密好友'}</div></div>
-              </button>
-            ))}
+            {searchResults.map(p => {
+              const isFollowing = follows.includes(p.id);
+              return (
+                <div key={p.id} className="flex items-center gap-3 px-[18px] py-2.5">
+                  <Avatar size={48} ring={p.kind === 'NPC' ? 1 : 2} avatarUrl={p.avatar} name={p.name} />
+                  <div className="flex-1 text-[13px]"><b>{p.name}</b><div className="text-[#999] text-[11.5px]">{p.kind === 'NPC' ? 'NPC' : '角色 · 亲密好友'}</div></div>
+                  <button
+                    onClick={() => {
+                      setFollows(prev => isFollowing ? prev.filter(id => id !== p.id) : [...prev, p.id]);
+                      showToast(isFollowing ? `已取关 ${p.name}` : `已关注 ${p.name}`);
+                    }}
+                    className={`px-4 py-1.5 rounded-full text-[12px] font-medium ${isFollowing ? 'bg-[#f3f3f3] text-[#666]' : 'bg-[#b4838a] text-white'}`}
+                  >
+                    {isFollowing ? '已关注' : '关注'}
+                  </button>
+                </div>
+              );
+            })}
             {searchQuery.trim() && searchResults.length === 0 && (
               <div className="text-[#999] text-center p-[50px] text-[13px]">没有找到</div>
             )}

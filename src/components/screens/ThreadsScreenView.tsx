@@ -953,7 +953,7 @@ export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
         <button onClick={() => onNavigate('home')} className="w-8 h-8 grid place-items-center text-neutral-800 -ml-2">
           <ChevronLeft className="w-6 h-6" />
         </button>
-        <b className="text-[17px] ml-1">Threads</b>
+        <b className="text-[17px] ml-1">Circle</b>
       </div>
 
       {/* 内容 */}

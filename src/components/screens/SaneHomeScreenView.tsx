@@ -579,7 +579,7 @@ export function SaneHomeScreenView({ onNavigate, onOpenSheet, onToggleTheme }: S
 
           <section className="absolute z-10 inset-0 pointer-events-none">
             {[
-              ['threads','Threads','threads','bg-[#1a1a1a] text-white','threads'],
+              ['threads','Circle','threads','bg-[#1a1a1a] text-white','threads'],
               ['instagram','Instagram','instagram','bg-gradient-to-tr from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] text-white','instagram'],
               ['npc','NPC','npc','bg-[#ebe2dc] text-[#5f554f] border border-black/5','npc'],
               ['group-presets','预设','group-presets','bg-[#f0ebe5] text-[#63584f] border border-black/5','group-presets'],
