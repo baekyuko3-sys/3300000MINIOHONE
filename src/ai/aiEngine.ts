@@ -1695,7 +1695,7 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
       const action = input.settings.streaming ? 'streamGenerateContent' : 'generateContent';
       const suffix = input.settings.streaming ? '?alt=sse' : '';
       const endpoint = base + '/models/' + encodeURIComponent(input.settings.model.trim()) + ':' + action + suffix;
-      const response = await fetch(endpoint, {
+      const response = await fetchWithTimeout(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': input.settings.apiKey.trim() },
         body: JSON.stringify({
@@ -1706,7 +1706,7 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
           ],
           generationConfig: { temperature, maxOutputTokens: 2200 },
         }),
-      });
+      }, input.timeoutMs ?? 30000);
       if (!response.ok) throw new Error('AI_GEMINI_' + response.status + ': ' + await readError(response));
       if (input.settings.streaming) return parseSseResponse(response, extractGeminiText, input.onDelta);
       const data = await response.json();

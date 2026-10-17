@@ -7,7 +7,7 @@ import { generateSpeech, transcribeAudio } from '../../ai/mediaEngine';
 import { readAppSettings } from '../../store/appSettings';
 import type { ChannelAiSettings } from '../../store/appSettings';
 import { getMedia, putMedia } from '../../store/mediaVault';
-import { walletSendRedPacket, walletGrabRedPacket } from '../../store/lineWallet';
+import { walletSendRedPacket, walletGrabRedPacket, spendFamilyCard } from '../../store/lineWallet';
 import { VroomImage } from '../VroomImage';
 import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory, updateCharacterMemoryItem, deleteCharacterMemoryItem, clearCharacterMemory } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
@@ -25,7 +25,7 @@ import { getLineGroupByName, getLineGroupById, upsertLineGroup } from '../../sto
 import { getGroupPreset, getGroupPresets } from '../../store/groupPresets';
 import { getLineGroups, updateLineGroupMember, addLineGroupMemory, setLineGroupRelationships } from '../../store/lineGroups';
 import { getNpcs, updateNpc } from '../../store/npcs';
-import { useVoicePresets, useImagePresets, generateImage } from '../../ai/imageGen';
+import { useVoicePresets, useImagePresets, generateImage, resolveImageToDataUrl } from '../../ai/imageGen';
 import { synthesizeMinimaxVoice } from '../../ai/minimaxVoice';
 import { buildNpcRuntimeContext } from '../../store/npcContext';
 import { considerNpcFriendRequest } from '../../store/npcSocial';
@@ -1322,12 +1322,10 @@ export function LineConversationView({
         const pending = JSON.parse(localStorage.getItem(key) || '[]');
         if (!pending.length) return;
         localStorage.removeItem(key);
-        // 触发一条汇总回复
+        // 触发一条汇总回复（override 模式：不碰输入框）
         const texts = pending.map((p: any) => p.text).join('\n');
         showToast('对方上线了，正在回复…');
-        // 用最后一条消息触发正常 AI 回复流程
-        setInputText(`[上线回复] 用户在你不在线时发了 ${pending.length} 条消息：${texts}`);
-        setTimeout(() => handleSend(true), 500);
+        void handleSend(true, `[上线回复] 用户在你不在线时发了 ${pending.length} 条消息：${texts}`);
       } catch { /* best effort */ }
     }, 60000);
     return () => clearInterval(timer);
@@ -2752,8 +2750,8 @@ export function LineConversationView({
     }
   };
 
-  const handleSend = async (shouldReply = true) => {
-    const userText = inputText.trim();
+  const handleSend = async (shouldReply = true, overrideText?: string) => {
+    const userText = (overrideText !== undefined ? overrideText : inputText).trim();
     if (!userText) return;
     // 上一轮还在生成时直接 return 会让用户觉得"点了发送没反应"——给个提示，
     // 且输入框内容保留，等这轮结束再发。
@@ -2777,7 +2775,7 @@ export function LineConversationView({
       isRead: false,
     };
 
-    if (replyingToMsg) {
+    if (replyingToMsg && overrideText === undefined) {
       newMsg.quote = {
         sender: replyingToMsg.sender === 'me' ? '我' : (replyingToMsg.senderName || characterProfile.nickname),
         text: lineCardPreview(replyingToMsg) || replyingToMsg.text || replyingToMsg.desc || '多媒体内容',
@@ -2786,7 +2784,8 @@ export function LineConversationView({
     }
 
     setMessages((prev) => [...prev, newMsg]);
-    setInputText('');
+    // override 模式（上线自动回复等系统触发）不碰输入框，保留用户正在打的字
+    if (overrideText === undefined) setInputText('');
     // In group role-simulation mode, the user writes and sends as the selected member; never call AI.
     if (activeSimulatedSpeaker) return;
 
@@ -2896,7 +2895,12 @@ export function LineConversationView({
           }
         }
         const availableMembers = groupAiMembers.filter(({ member }) => !member.muted && member.online !== false);
-        const mentioned = availableMembers.filter(({ member }) => userText.includes('@' + member.name) || userText.includes('@' + (member.nickname || '')));
+        const mentioned = availableMembers.filter(({ member }) => {
+          const nick = String(member.nickname || '').trim();
+          // 昵称为空时跳过：'@' + '' 会退化成 '@'，误匹配任何带 @ 的消息
+          if (!nick) return false;
+          return userText.includes('@' + member.name) || userText.includes('@' + nick);
+        });
         const pool = mentioned.length ? mentioned : availableMembers;
 
         // 主发言者：@ 模式只选被 @ 的；否则选"最后发言 NPC 的下一位"
@@ -3572,6 +3576,13 @@ export function LineConversationView({
     };
     setMessages((prev) => [...prev, newMsg]);
     appendLineMessage(conversationStorageId, newMsg);
+    // 亲情卡：计入持卡人月限额（仅单聊）
+    if (!isGroup) {
+      const holder = importedCharacter?.name || '';
+      if (holder && !spendFamilyCard(holder, Number(amount))) {
+        showToast('已超出该亲情卡本月限额（转账仍已发送）');
+      }
+    }
     setMoneySheetType(null);
     setTransferAmount('');
     setTransferNote('');
@@ -3588,6 +3599,13 @@ export function LineConversationView({
     if (isGroup && Number(amount) < 0.01 * count) { showToast('红包总金额至少要能分给每个人 0.01 元'); return; }
     // 钱包扣款
     if (!walletSendRedPacket(Number(amount), blessing)) { showToast('钱包余额不足'); return; }
+    // 亲情卡：计入持卡人月限额（仅单聊）
+    if (!isGroup) {
+      const holder = importedCharacter?.name || '';
+      if (holder && !spendFamilyCard(holder, Number(amount))) {
+        showToast('已超出该亲情卡本月限额（红包仍已发送）');
+      }
+    }
     const newMsg = {
       id: Date.now(), sender: 'me' as const, type: 'red-packet', kind: 'red-packet' as const,
       text: `[红包] ¥${amount} · ${blessing}`, time: '刚刚',
@@ -4882,6 +4900,12 @@ export function LineConversationView({
       voice: '真实语音',
     };
 
+    // 并发保护：和文字发送一致，图片/语音会触发 AI 回复，上一轮还在生成时不开启新一轮
+    if ((type === 'image' || type === 'voice') && isTyping) {
+      showToast('上一轮回复还在生成中，稍等一下再发');
+      return;
+    }
+
     if (type === 'image' || type === 'voice') {
       const reader = new FileReader();
       reader.onload = async () => {
@@ -5119,16 +5143,26 @@ export function LineConversationView({
       return;
     }
 
-    setMessages(prev => [...prev, {
-      id: Date.now(),
-      sender: 'me',
-      type: 'real-media',
-      mediaType: type,
-      fileName: file.name,
-      time: '刚刚',
-    }]);
-    setSubSheetType(null);
-    showToast(`${typeLabels[type]}已发送：${file.name}`);
+    // video / file：同样存入 mediaVault，拿到 mediaRef 后再发，保证可播放/可下载
+    const reader = new FileReader();
+    reader.onload = () => {
+      const mediaUrl = typeof reader.result === 'string' ? reader.result : '';
+      if (!mediaUrl) return;
+      void putMedia(mediaUrl).then(mediaRef => {
+        setMessages(prev => [...prev, {
+          id: Date.now(),
+          sender: 'me',
+          type: 'real-media',
+          mediaType: type,
+          fileName: file.name,
+          mediaRef,
+          time: '刚刚',
+        }]);
+        setSubSheetType(null);
+        showToast(`${typeLabels[type]}已发送：${file.name}`);
+      }).catch(() => showToast('媒体保存失败，请重试'));
+    };
+    reader.readAsDataURL(file);
   };
 
   // 保存当前聊天的完整设定快照；各项设定仍沿用原有的独立持久化键。
@@ -6650,7 +6684,17 @@ export function LineConversationView({
                     }}
                     className="p-3 rounded-[14px] bg-[#fafafa] border border-[#e8e8e9] space-y-1 text-xs"
                   >
-                    {(msg.mediaType === 'image' && (msg.mediaUrl || (msg.mediaRef && mediaCache[msg.mediaRef]))) ? (
+                    {(msg.mediaType === 'video' && msg.mediaRef && mediaCache[msg.mediaRef]) ? (
+                      <div className="space-y-1.5">
+                        <video
+                          src={mediaCache[msg.mediaRef]}
+                          controls
+                          playsInline
+                          className="max-w-full max-h-[260px] rounded-[11px] bg-black"
+                        />
+                        <div className="text-[10px] text-[#999]">{msg.fileName}</div>
+                      </div>
+                    ) : (msg.mediaType === 'image' && (msg.mediaUrl || (msg.mediaRef && mediaCache[msg.mediaRef]))) ? (
                       <div className="space-y-1.5">
                         <img
                           src={msg.mediaUrl || mediaCache[msg.mediaRef]}
@@ -6854,9 +6898,7 @@ export function LineConversationView({
                               let refB64: string | undefined;
                               if (preset.useReference) {
                                 const avatarUrl = importedCharacter?.avatar || npcForChat?.avatar;
-                                if (avatarUrl && avatarUrl.startsWith('data:')) {
-                                  refB64 = avatarUrl;
-                                }
+                                refB64 = await resolveImageToDataUrl(avatarUrl);
                               }
                               const result = await generateImage(imageGenPrompt, preset, {
                                 apiKey: aiSettings.apiKey,
@@ -6931,7 +6973,7 @@ export function LineConversationView({
                                 let refB64: string | undefined;
                                 if (preset.useReference) {
                                   const avatarUrl = importedCharacter?.avatar || npcForChat?.avatar;
-                                  if (avatarUrl && avatarUrl.startsWith('data:')) refB64 = avatarUrl;
+                                  refB64 = await resolveImageToDataUrl(avatarUrl);
                                 }
                                 const result = await generateImage('视频通话背景，温馨的房间内景，柔和灯光', preset, {
                                   apiKey: aiSettings.apiKey,
@@ -6981,7 +7023,7 @@ export function LineConversationView({
                                 let refB64: string | undefined;
                                 if (preset.useReference) {
                                   const avatarUrl = importedCharacter?.avatar || npcForChat?.avatar;
-                                  if (avatarUrl && avatarUrl.startsWith('data:')) refB64 = avatarUrl;
+                                  refB64 = await resolveImageToDataUrl(avatarUrl);
                                 }
                                 const result = await generateImage(
                                   `video call selfie, looking at camera, upper body: ${sceneDesc.trim()}`,

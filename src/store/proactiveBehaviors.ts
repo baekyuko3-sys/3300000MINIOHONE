@@ -203,11 +203,11 @@ export async function checkProactiveBehaviors() {
       const presets = readLocal<Array<{ id: string; name: string; positive: string; negative: string; useReference: boolean }>>('line:image-presets', []);
       const preset = presets[0];
       if (!preset) return;
-      const { generateImage } = await import('../ai/imageGen');
+      const { generateImage, resolveImageToDataUrl } = await import('../ai/imageGen');
       const aiSettings = readStoredAiSettings();
       let refB64: string | undefined;
-      if (preset.useReference && person.avatar?.startsWith('data:')) {
-        refB64 = person.avatar;
+      if (preset.useReference) {
+        refB64 = await resolveImageToDataUrl(person.avatar);
       }
       // 让 AI 描述此刻在干嘛
       const doing = await generateCreativeText({

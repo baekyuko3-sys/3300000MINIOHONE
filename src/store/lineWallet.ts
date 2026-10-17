@@ -116,6 +116,22 @@ export function removeFamilyCard(id: string): void {
   window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
 }
 
+// 亲情卡消费：把给持卡人的钱计入月限额（发红包/转账时调用）
+// 没有亲情卡 → 返回 true（不限制）；超限额 → 返回 false（仍然记录，显示为超支）
+export function spendFamilyCard(holderName: string, amount: number): boolean {
+  if (!holderName || !(amount > 0)) return true;
+  const list = getFamilyCards();
+  const idx = list.findIndex(c => c.holderName === holderName);
+  if (idx < 0) return true;
+  const card = list[idx];
+  const spent = Math.round((card.spentThisMonth + amount) * 100) / 100;
+  const next = [...list];
+  next[idx] = { ...card, spentThisMonth: spent };
+  writeWalletState(FAMILY_KEY, next);
+  window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
+  return spent <= card.monthlyLimit;
+}
+
 // 自定义金额充值
 export function walletTopupCustom(amount: number): void {
   if (amount <= 0 || !isFinite(amount)) return;

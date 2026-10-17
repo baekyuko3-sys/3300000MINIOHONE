@@ -78,10 +78,49 @@ export function usePersistentState<T>(
     if (typeof window === 'undefined') return;
     try {
       window.localStorage.setItem(key, JSON.stringify(value));
+      // 广播：同页其他组件可同步（storage 事件只跨 tab，不跨同页组件）
+      window.dispatchEvent(new CustomEvent('sane333:storage-changed', { detail: { key } }));
     } catch (error) {
       reportPersistenceIssue('write:' + key, '本地数据写入失败；当前更改可能尚未保存', error);
     }
   }, [key, value]);
+
+  return [value, setValue];
+}
+
+/**
+ * 跨组件同步版 usePersistentState。
+ * 同页其他组件改了同一个 key，本组件自动跟进（用 JSON 深比较防循环）。
+ */
+export function useSyncedPersistentState<T>(
+  key: string,
+  initialValue: InitialValue<T>,
+): [T, Dispatch<SetStateAction<T>>] {
+  const [value, setValue] = usePersistentState<T>(key, initialValue);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { key?: string } | undefined;
+      if (!detail || detail.key !== key) return;
+      let fresh: T;
+      try {
+        const raw = window.localStorage.getItem(key);
+        fresh = raw === null
+          ? (typeof initialValue === 'function' ? (initialValue as () => T)() : initialValue)
+          : JSON.parse(raw) as T;
+      } catch { return; }
+      setValue((prev) => {
+        try {
+          return JSON.stringify(prev) === JSON.stringify(fresh) ? prev : fresh;
+        } catch {
+          return fresh;
+        }
+      });
+    };
+    window.addEventListener('sane333:storage-changed', onChange);
+    return () => window.removeEventListener('sane333:storage-changed', onChange);
+  }, [key]);
 
   return [value, setValue];
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { usePersistentState } from '../../store/usePersistentState';
+import { usePersistentState, useSyncedPersistentState } from '../../store/usePersistentState';
+import { generateCreativeText, readStoredAiSettings } from '../../ai/aiEngine';
 import { getNpcs } from '../../store/npcs';
 import { getMedia, putMedia } from '../../store/mediaVault';
 import type { ImportedCharacter } from '../../data/characterImport';
@@ -151,8 +152,8 @@ export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
   const [posts, setPosts] = usePersistentState<ThreadPost[]>('phone:threads-v2', []);
   const [characters] = usePersistentState<ImportedCharacter[]>('phone:characters', []);
   // "我" 联通 LINE 人设：名字/头像从 line:user-personas 来，ID/简介存 Threads sidecar
-  const [linePersonas, setLinePersonas] = usePersistentState<any[]>('line:user-personas', []);
-  const [lineActivePersonaId] = usePersistentState<string | null>('line:active-persona', null);
+  const [linePersonas, setLinePersonas] = useSyncedPersistentState<any[]>('line:user-personas', []);
+  const [lineActivePersonaId] = useSyncedPersistentState<string | null>('line:active-persona', null);
   const [threadsExtras, setThreadsExtras] = usePersistentState<Record<string, { handle: string; desc: string }>>('phone:threads-profile-extras', {});
   const activePersona = (Array.isArray(linePersonas) ? linePersonas : []).find((p: any) => p.id === lineActivePersonaId) || linePersonas[0] || null;
   const myExtras = (activePersona && threadsExtras[activePersona.id]) || { handle: '', desc: '' };
@@ -355,11 +356,28 @@ export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
   };
 
   const inviteNpcComment = () => {
-    showToast('路人正在输入…');
     const id = currentPostId;
-    setTimeout(() => {
-      setPosts(prev => prev.map(p => p.id === id ? { ...p, cm: [...p.cm, { by: 'npc:passerby', t: '路过帮顶！', l: 0, rep: [] }] } : p));
-    }, 900);
+    const post = posts.find(p => p.id === id);
+    if (!post) return;
+    showToast('路人正在输入…');
+    void (async () => {
+      let text = '路过帮顶！';
+      try {
+        const settings = readStoredAiSettings();
+        if (settings.apiKey?.trim()) {
+          const gen = await generateCreativeText({
+            settings,
+            systemPrompt: '你是一个在 Circle（类 Threads 社交 App）上闲逛的路人，刷到一条帖子。用路人的口吻写一条简短随意的评论（1句话，20字以内），可以幽默、捧场或吐槽，像真人随手评论。不要输出多余解释。',
+            userPrompt: `帖子作者：${resolveAuthor(post.by).name}
+帖子内容：${post.tx}
+
+请写评论：`,
+          });
+          if (gen.trim()) text = gen.trim();
+        }
+      } catch { /* 失败就用默认 */ }
+      setPosts(prev => prev.map(p => p.id === id ? { ...p, cm: [...p.cm, { by: 'npc:passerby', t: text, l: 0, rep: [] }] } : p));
+    })();
   };
 
   /* ---------- 帖子卡片 ---------- */

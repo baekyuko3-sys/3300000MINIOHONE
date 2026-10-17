@@ -3,11 +3,12 @@ import {
   Heart, MessageCircle, Send, Bookmark, Home, Search, PlusSquare, Film,
   ChevronLeft, MoreHorizontal, X, Check, Menu, LayoutGrid, Trash2, RotateCcw,
 } from 'lucide-react';
-import { usePersistentState } from '../../store/usePersistentState';
+import { usePersistentState, useSyncedPersistentState } from '../../store/usePersistentState';
 import { ScreenType } from '../../types';
 import { getNpcs, updateNpc } from '../../store/npcs';
 import { getLikedTracks } from '../../store/music';
 import { getMedia, putMedia, deleteMedia } from '../../store/mediaVault';
+import { generateCreativeText, readStoredAiSettings } from '../../ai/aiEngine';
 
 interface InstagramScreenViewProps {
   onNavigate: (screen: ScreenType) => void;
@@ -171,6 +172,7 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
   const [storyIndex, setStoryIndex] = useState(0);
   const [seenStories, setSeenStories] = useState<Record<string, boolean>>({});
   const [dmTarget, setDmTarget] = useState('');
+  const [dmTyping, setDmTyping] = useState<Record<string, boolean>>({});
   const [dmInput, setDmInput] = useState('');
   const [dms, setDms] = usePersistentState<Record<string, { me?: boolean; text: string }[]>>('phone:instagram-dm', {});
   const [toast, setToast] = useState('');
@@ -178,8 +180,8 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
   const [editThemeIdx, setEditThemeIdx] = useState(0);
 
   // 人设联通 LINE：基础信息（名字/头像）从 line:user-personas 来，IG 特有字段存 sidecar
-  const [linePersonas, setLinePersonas] = usePersistentState<any[]>('line:user-personas', []);
-  const [lineActivePersonaId, setLineActivePersonaId] = usePersistentState<string | null>('line:active-persona', null);
+  const [linePersonas, setLinePersonas] = useSyncedPersistentState<any[]>('line:user-personas', []);
+  const [lineActivePersonaId, setLineActivePersonaId] = useSyncedPersistentState<string | null>('line:active-persona', null);
   const [igExtras, setIgExtras] = usePersistentState<Record<string, IgPersonaExtras>>('phone:instagram-persona-extras', {});
 
   // 一次性迁移旧 IG 人设
@@ -376,14 +378,47 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
     setCommentInput('');
   };
   const inviteNpcComment = () => {
-    showToast('NPC 正在输入…');
     const id = activePostId;
-    setTimeout(() => {
-      const npc = npcs[0];
-      setPosts(prev => prev.map(p => p.id === id
-        ? { ...p, comments: [...p.comments, { id: `c${Date.now()}`, by: npc ? `npc:${npc.id || npc.name}` : 'npc', byName: npc?.name || 'NPC', text: '好好看！', isNpc: true }] }
-        : p));
-    }, 900);
+    const post = posts.find(p => p.id === id);
+    if (!post) return;
+    showToast('NPC 正在输入…');
+    void (async () => {
+      try {
+        // 按帖子内容选 NPC：帖子提到谁就选谁，否则随机选一个关注的 NPC
+        const allNpcs = npcs as any[];
+        let picked = allNpcs.find(n => n?.name && post.text.includes(n.name));
+        if (!picked) {
+          const followedNpcs = allNpcs.filter(n => follows.includes(`npc:${n.id || n.name}`));
+          const pool = followedNpcs.length ? followedNpcs : allNpcs;
+          picked = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+        }
+        const npcName = picked?.name || 'NPC';
+        const npcKey = picked ? `npc:${picked.id || picked.name}` : 'npc';
+        const settings = readStoredAiSettings();
+        let text = '好好看！';
+        if (settings.apiKey?.trim()) {
+          const profileBits = [
+            picked?.personality ? `性格：${picked.personality}` : '',
+            picked?.identity ? `身份：${picked.identity}` : '',
+            picked?.relationship ? `和用户的关系：${picked.relationship}` : '',
+          ].filter(Boolean).join('；');
+          const gen = await generateCreativeText({
+            settings,
+            systemPrompt: `你是${npcName}，正在刷 Instagram 看到一条帖子。${profileBits ? '【人设】' + profileBits : ''}用${npcName}的口吻写一条简短自然的评论（1句话，20字以内），像真人刷到帖子随手评论。不要输出多余解释。`,
+            userPrompt: `帖子作者：${post.byName}
+帖子内容：${post.text}
+
+请写评论：`,
+          });
+          if (gen.trim()) text = gen.trim();
+        }
+        setPosts(prev => prev.map(p => p.id === id
+          ? { ...p, comments: [...p.comments, { id: `c${Date.now()}`, by: npcKey, byName: npcName, text, isNpc: true }] }
+          : p));
+      } catch {
+        showToast('NPC 评论失败');
+      }
+    })();
   };
   const handleComposeFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -459,9 +494,39 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
     setDms(prev => ({ ...prev, [dmTarget]: [...(prev[dmTarget] || []), { me: true, text: v }] }));
     setDmInput('');
     const targetName = resolveName(dmTarget);
-    setTimeout(() => {
-      setDms(prev => ({ ...prev, [dmTarget]: [...(prev[dmTarget] || []), { text: `${targetName} 的回复` }] }));
-    }, 900);
+    const targetId = dmTarget;
+    setDmTyping(prev => ({ ...prev, [targetId]: true }));
+    void (async () => {
+      try {
+        const settings = readStoredAiSettings();
+        if (!settings.apiKey?.trim()) throw new Error('no api key');
+        // 找对方的人设资料，让回复有角色感
+        const charProfile = (importedCharacters as any[]).find((ch: any) => `char:${ch.id || ch.name}` === targetId);
+        const npcProfile = (npcs as any[]).find((n: any) => `npc:${n.id || n.name}` === targetId);
+        const profileBits = [
+          charProfile?.personality ? `性格：${charProfile.personality}` : '',
+          charProfile?.identity ? `身份：${charProfile.identity}` : '',
+          npcProfile?.personality ? `性格：${npcProfile.personality}` : '',
+          npcProfile?.identity ? `身份：${npcProfile.identity}` : '',
+        ].filter(Boolean).join('；');
+        const history = (dms[targetId] || []).slice(-6).map(m => ({
+          role: (m.me ? 'user' : 'assistant') as 'user' | 'assistant',
+          content: m.text,
+        }));
+        const reply = await generateCreativeText({
+          settings,
+          systemPrompt: `你是${targetName}，正在 Instagram 私信里和用户"${persona.name}"聊天。${profileBits ? '【人设】' + profileBits : ''}用${targetName}的口吻简短回复（1-2句话），自然随意，像真人聊天，不要输出多余解释，不要用括号描述动作。`,
+          userPrompt: `用户说：${v}`,
+          history,
+        });
+        const text = reply.trim() || '哈哈';
+        setDms(prev => ({ ...prev, [targetId]: [...(prev[targetId] || []), { text }] }));
+      } catch {
+        showToast('AI 回复失败（检查 API 设置）');
+      } finally {
+        setDmTyping(prev => ({ ...prev, [targetId]: false }));
+      }
+    })();
   };
 
   const tabs: { id: View; icon: React.ReactNode; activeIcon: React.ReactNode }[] = [
@@ -861,6 +926,9 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
                   {m.text}
                 </div>
               ))}
+              {dmTyping[dmTarget] && (
+                <div className="self-start bg-[#f3f3f3] px-4 py-3 rounded-[18px] text-[13px] text-[#999]">正在输入…</div>
+              )}
             </div>
             <div className="sticky bottom-0 bg-white border-t border-[#ececec] px-3.5 py-2.5 flex gap-2 items-center">
               <input

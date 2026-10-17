@@ -24,6 +24,21 @@ export interface MinimaxVoiceResult {
 
 const MINIMAX_TTS_URL = 'https://api.minimax.chat/v1/t2a_v2';
 
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 30000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new Error(`MiniMax 语音请求超时（${Math.round(timeoutMs / 1000)}s），请重试`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function synthesizeMinimaxVoice(
   text: string,
   settings: MinimaxVoiceSettings
@@ -39,7 +54,7 @@ export async function synthesizeMinimaxVoice(
   }
 
   try {
-    const resp = await fetch(MINIMAX_TTS_URL, {
+    const resp = await fetchWithTimeout(MINIMAX_TTS_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
