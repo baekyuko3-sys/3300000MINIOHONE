@@ -613,6 +613,9 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   const [imagePresets, setImagePresets] = useImagePresets();
   const [voicePresets, setVoicePresets] = useVoicePresets();
   const [aiMediaOpen, setAiMediaOpen] = useState(false);
+  const [aiImageEnabled, setAiImageEnabled] = usePersistentState<boolean>('line:ai-image-enabled', false);
+  const [aiVoiceEnabled, setAiVoiceEnabled] = usePersistentState<boolean>('line:ai-voice-enabled', false);
+  const [callVoiceEnabled, setCallVoiceEnabled] = usePersistentState<boolean>('line:call-voice-enabled', false);
   const [imgPresetOpen, setImgPresetOpen] = useState(false);
   const [voicePresetOpen, setVoicePresetOpen] = useState(false);
   const [editingImgPresetId, setEditingImgPresetId] = useState<string | null>(null);
@@ -5830,6 +5833,30 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               </button>
               {aiMediaOpen && (
                 <div className="px-4 pb-4 space-y-4">
+                  {/* 三个功能开关 */}
+                  <div className="space-y-2">
+                    <label className="flex items-center justify-between p-3 rounded-[12px] bg-[#fafafa] border border-[#f0f0f1] cursor-pointer">
+                      <div>
+                        <div className="text-[11px] font-bold text-[#333]">AI 生图</div>
+                        <div className="text-[9px] text-[#aaa] mt-0.5">+ 菜单显示"AI 生图"按钮</div>
+                      </div>
+                      <input type="checkbox" checked={aiImageEnabled} onChange={e => setAiImageEnabled(e.target.checked)} className="w-4 h-4" />
+                    </label>
+                    <label className="flex items-center justify-between p-3 rounded-[12px] bg-[#fafafa] border border-[#f0f0f1] cursor-pointer">
+                      <div>
+                        <div className="text-[11px] font-bold text-[#333]">AI 语音消息</div>
+                        <div className="text-[9px] text-[#aaa] mt-0.5">AI 有概率发语音（用角色音色）</div>
+                      </div>
+                      <input type="checkbox" checked={aiVoiceEnabled} onChange={e => setAiVoiceEnabled(e.target.checked)} className="w-4 h-4" />
+                    </label>
+                    <label className="flex items-center justify-between p-3 rounded-[12px] bg-[#fafafa] border border-[#f0f0f1] cursor-pointer">
+                      <div>
+                        <div className="text-[11px] font-bold text-[#333]">通话语音合成</div>
+                        <div className="text-[9px] text-[#aaa] mt-0.5">语音/视频通话时 AI 用 MiniMax 说话</div>
+                      </div>
+                      <input type="checkbox" checked={callVoiceEnabled} onChange={e => setCallVoiceEnabled(e.target.checked)} className="w-4 h-4" />
+                    </label>
+                  </div>
                   {/* MiniMax Key */}
                   <div>
                     <div className="text-[11px] font-bold text-[#333] mb-1.5">MiniMax API Key</div>

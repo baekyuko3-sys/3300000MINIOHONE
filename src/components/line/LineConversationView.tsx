@@ -24,7 +24,8 @@ import { getLineGroupByName, getLineGroupById, upsertLineGroup } from '../../sto
 import { getGroupPreset, getGroupPresets } from '../../store/groupPresets';
 import { getLineGroups, updateLineGroupMember, addLineGroupMemory, setLineGroupRelationships } from '../../store/lineGroups';
 import { getNpcs, updateNpc } from '../../store/npcs';
-import { useVoicePresets } from '../../ai/imageGen';
+import { useVoicePresets, useImagePresets, generateImage } from '../../ai/imageGen';
+import { synthesizeMinimaxVoice } from '../../ai/minimaxVoice';
 import { buildNpcRuntimeContext } from '../../store/npcContext';
 import { considerNpcFriendRequest } from '../../store/npcSocial';
 import {
@@ -1016,6 +1017,19 @@ export function LineConversationView({
   // 消息操作菜单 (长按/右键菜单 Context Menu & 引用回复)
   const [contextMenuMsg, setContextMenuMsg] = useState<any | null>(null);
   const [showContactPicker, setShowContactPicker] = useState(false);
+  const [aiImageEnabled] = usePersistentState<boolean>('line:ai-image-enabled', false);
+  const [aiVoiceEnabled] = usePersistentState<boolean>('line:ai-voice-enabled', false);
+  const [callVoiceEnabled] = usePersistentState<boolean>('line:call-voice-enabled', false);
+  const [imagePresets] = useImagePresets();
+  const [showImageGenModal, setShowImageGenModal] = useState(false);
+  const [showCallModal, setShowCallModal] = useState(false);
+  const [callMode, setCallMode] = useState<'voice' | 'video'>('voice');
+  const [callBackground, setCallBackground] = useState<string>('');
+  const [callGenBgLoading, setCallGenBgLoading] = useState(false);
+  const [callAiSpeaking, setCallAiSpeaking] = useState(false);
+  const [imageGenPresetId, setImageGenPresetId] = useState<string>('');
+  const [imageGenPrompt, setImageGenPrompt] = useState('');
+  const [imageGenLoading, setImageGenLoading] = useState(false);
   const [replyingToMsg, setReplyingToMsg] = useState<any | null>(null);
   const [showGroupMembers, setShowGroupMembers] = useState(false);
   const [unreadAnchorId, setUnreadAnchorId] = useState<number | string | null>(null);
@@ -3276,6 +3290,32 @@ export function LineConversationView({
         spliceExpandedLineReply(prev, replyMsgId, replyExpanded).map((m) => m.id === msgId ? { ...m, isRead: true } : m)
       );
 
+      // AI 语音消息：有概率转为语音 (MiniMax 合成)
+      try {
+        const voicePresetId = (importedCharacter as any)?.voicePresetId || (npcForChat as any)?.voicePresetId;
+        const minimaxKey = localStorage.getItem('line:minimax-key') || '';
+        // 从 voicePresets 找 voiceId (存在 localStorage)
+        let voiceId = '';
+        try {
+          const vp = JSON.parse(localStorage.getItem('line:voice-presets') || '[]');
+          const found = (Array.isArray(vp) ? vp : []).find((x: any) => x.id === voicePresetId);
+          if (found) voiceId = found.voiceId || '';
+        } catch {}
+        if (aiVoiceEnabled && voicePresetId && voiceId && minimaxKey && Math.random() < 0.25 && finalReplyText.length > 0 && finalReplyText.length < 500) {
+          // 异步合成，不阻塞
+          synthesizeMinimaxVoice(finalReplyText, { apiKey: minimaxKey, voiceId }).then((res: any) => {
+            if (res.ok && res.audioBase64) {
+              const audioUrl = `data:audio/mpeg;base64,${res.audioBase64}`;
+              setMessages(prev => prev.map(m =>
+                m.id === replyMsgId
+                  ? { ...m, type: 'voice' as const, transcript: finalReplyText, audioUrl, duration: Math.max(1, Math.round(finalReplyText.length / 5)) }
+                  : m
+              ));
+            }
+          }).catch(() => {});
+        }
+      } catch {}
+
       // NPC 私聊也可以根据真实对话判断是否自然地产生好友申请；冷却与关系检查由 npcSocial 统一处理。
       if (npcForChat && activePersona?.id) {
         void considerNpcFriendRequest({
@@ -5344,9 +5384,9 @@ export function LineConversationView({
                 </button>
                 {showGroupHeaderActions && (
                   <div className="absolute right-0 top-10 z-40 w-40 rounded-[14px] border border-[#ededee] bg-white p-1.5 shadow-lg">
-                    <button onClick={() => { setShowGroupHeaderActions(false); showToast(tx('语音通话 · 未开发', '音声通話 · 未開発')); }} className="w-full flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-xs text-[#444] hover:bg-[#faf1f3]"><Phone className="w-4 h-4 text-[#777]" />语音通话</button>
+                    <button onClick={() => { setShowGroupHeaderActions(false); setCallMode('voice'); setShowCallModal(true); }} className="w-full flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-xs text-[#444] hover:bg-[#faf1f3]"><Phone className="w-4 h-4 text-[#777]" />语音通话</button>
                     <button onClick={() => { setShowGroupHeaderActions(false); setShowTogetherMusic(true); }} className="w-full flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-xs text-[#444] hover:bg-[#faf1f3]"><Music2 className="w-4 h-4 text-[#8b7560]" />一起听歌</button>
-                    <button onClick={() => { setShowGroupHeaderActions(false); showToast(tx('视频通话 · 未开发', 'ビデオ通話 · 未開発')); }} className="w-full flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-xs text-[#444] hover:bg-[#faf1f3]"><Video className="w-4 h-4 text-[#777]" />视频通话</button>
+                    <button onClick={() => { setShowGroupHeaderActions(false); setCallMode('video'); setShowCallModal(true); }} className="w-full flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-xs text-[#444] hover:bg-[#faf1f3]"><Video className="w-4 h-4 text-[#777]" />视频通话</button>
                   </div>
                 )}
               </div>
@@ -5354,7 +5394,7 @@ export function LineConversationView({
               <div className="flex items-center gap-1">
                 <button onClick={() => showToast(tx('语音通话 · 未开发', '音声通話 · 未開発'))} className="w-8 h-8 rounded-full hover:bg-neutral-50 flex items-center justify-center text-[#303033]" title={tx('语音通话 · 未开发', '音声通話 · 未開発')}><Phone className="w-4 h-4 stroke-[1.7]" /></button>
                 <button onClick={() => setShowTogetherMusic(true)} className="w-8 h-8 rounded-full hover:bg-neutral-50 flex items-center justify-center text-[#8b7560]" title={tx('一起听歌', '一緒に音楽を聴く')}><Music2 className="w-4 h-4 stroke-[1.7]" /></button>
-                <button onClick={() => showToast(tx('视频通话 · 未开发', 'ビデオ通話 · 未開発'))} className="w-8 h-8 rounded-full hover:bg-neutral-50 flex items-center justify-center text-[#303033]" title={tx('视频通话 · 未开发', 'ビデオ通話 · 未開発')}><Video className="w-4 h-4 stroke-[1.7]" /></button>
+                <button onClick={() => { setCallMode('video'); setShowCallModal(true); }} className="w-8 h-8 rounded-full hover:bg-neutral-50 flex items-center justify-center text-[#303033]" title={tx('视频通话 · 未开发', 'ビデオ通話 · 未開発')}><Video className="w-4 h-4 stroke-[1.7]" /></button>
                 <button onClick={() => setShowSettings(true)} className="w-8 h-8 rounded-full hover:bg-neutral-50 flex items-center justify-center text-[#303033]" title={tx('聊天设置与酒馆设定', 'チャット設定')}><Settings className="w-4 h-4 stroke-[1.7]" /></button>
               </div>
             )}
@@ -6644,6 +6684,194 @@ export function LineConversationView({
                     </div>
                   )}
 
+                  {/* AI 生图弹窗 */}
+                  {showImageGenModal && (
+                    <div className="absolute inset-0 bg-black/40 z-[80] flex items-end" onClick={() => setShowImageGenModal(false)}>
+                      <div className="w-full bg-white rounded-t-[24px] p-5 max-h-[70%] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                        <div className="w-8 h-1 bg-[#e0e0e0] rounded-full mx-auto mb-4" />
+                        <div className="text-[14px] font-bold mb-4">AI 生图</div>
+                        <div className="text-[11px] text-[#888] mb-1.5">选择预设</div>
+                        <div className="flex gap-2 flex-wrap mb-4">
+                          {imagePresets.map((p: any) => (
+                            <button
+                              key={p.id}
+                              onClick={() => setImageGenPresetId(p.id)}
+                              className={`px-3 py-2 rounded-[12px] text-[11px] ${imageGenPresetId === p.id ? 'bg-[#8b5cf6] text-white' : 'bg-[#f5f5f5] text-[#555]'}`}
+                            >
+                              {p.name}{p.useReference ? ' ·锁脸' : ''}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="text-[11px] text-[#888] mb-1.5">描述画面</div>
+                        <textarea
+                          value={imageGenPrompt}
+                          onChange={e => setImageGenPrompt(e.target.value)}
+                          rows={3}
+                          placeholder="比如：在咖啡馆看书，午后阳光"
+                          className="w-full p-3 bg-[#fafafa] border border-[#e8e8e9] rounded-[12px] text-[12px] outline-none resize-none mb-4"
+                        />
+                        <button
+                          disabled={imageGenLoading || !imageGenPrompt.trim()}
+                          onClick={async () => {
+                            const preset = imagePresets.find(p => p.id === imageGenPresetId) || imagePresets[0];
+                            if (!preset) { showToast('请先添加生图预设'); return; }
+                            setImageGenLoading(true);
+                            try {
+                              const aiSettings = conversationAiSettings();
+                              // 参考图：用角色头像锁脸
+                              let refB64: string | undefined;
+                              if (preset.useReference) {
+                                const avatarUrl = importedCharacter?.avatar || npcForChat?.avatar;
+                                if (avatarUrl && avatarUrl.startsWith('data:')) {
+                                  refB64 = avatarUrl;
+                                }
+                              }
+                              const result = await generateImage(imageGenPrompt, preset, {
+                                apiKey: aiSettings.apiKey,
+                                baseUrl: aiSettings.apiBaseUrl || 'https://api.openai.com',
+                                model: 'gpt-image-1',
+                              }, refB64);
+                              if (!result.ok || !result.imageBase64) {
+                                showToast('生图失败：' + (result.error || '未知错误'));
+                                return;
+                              }
+                              const newMsg = {
+                                id: Date.now(),
+                                sender: 'me' as const,
+                                type: 'real-media' as const,
+                                kind: 'real-media' as any,
+                                text: `[AI 生图] ${imageGenPrompt.slice(0, 30)}`,
+                                time: '刚刚',
+                                imageData: `data:image/png;base64,${result.imageBase64}`,
+                                mediaType: 'image' as const,
+                              };
+                              setMessages(prev => [...prev, newMsg as any]);
+                              appendLineMessage(conversationStorageId, newMsg as any);
+                              setShowImageGenModal(false);
+                              setImageGenPrompt('');
+                              showToast('图片已发送');
+                            } finally {
+                              setImageGenLoading(false);
+                            }
+                          }}
+                          className="w-full py-3 rounded-[14px] bg-[#8b5cf6] text-white text-[13px] font-medium disabled:opacity-40"
+                        >
+                          {imageGenLoading ? '生成中...' : '生成并发送'}
+                        </button>
+                        <button onClick={() => setShowImageGenModal(false)} className="w-full mt-2 py-3 rounded-[14px] bg-[#f5f5f5] text-[13px]">取消</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 通话弹窗 (语音/视频) */}
+                  {showCallModal && (
+                    <div className="absolute inset-0 z-[90] flex flex-col" style={{
+                      background: callMode === 'video' && callBackground
+                        ? `url(${callBackground}) center/cover`
+                        : callMode === 'video' ? 'linear-gradient(180deg,#2a2a35,#1a1a22)' : 'linear-gradient(180deg,#3a3a45,#1e1e26)',
+                    }}>
+                      {/* 顶部信息 */}
+                      <div className="pt-16 text-center text-white">
+                        <div className="w-20 h-20 rounded-full mx-auto overflow-hidden bg-white/10 flex items-center justify-center">
+                          {(importedCharacter?.avatar || npcForChat?.avatar) ? (
+                            <img src={importedCharacter?.avatar || npcForChat?.avatar} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-3xl">👤</span>
+                          )}
+                        </div>
+                        <div className="text-[18px] font-semibold mt-4">{contactName || importedCharacter?.name || npcForChat?.name || '未知'}</div>
+                        <div className="text-[12px] text-white/60 mt-1">{callMode === 'voice' ? '语音通话' : '视频通话'} · 连接中...</div>
+                      </div>
+
+                      <div className="flex-1" />
+
+                      {/* 视频背景生成按钮 */}
+                      {callMode === 'video' && aiImageEnabled && (
+                        <div className="px-8 mb-4">
+                          <button
+                            disabled={callGenBgLoading}
+                            onClick={async () => {
+                              const preset = imagePresets[0];
+                              if (!preset) { showToast('请先添加生图预设'); return; }
+                              setCallGenBgLoading(true);
+                              try {
+                                const aiSettings = conversationAiSettings();
+                                let refB64: string | undefined;
+                                if (preset.useReference) {
+                                  const avatarUrl = importedCharacter?.avatar || npcForChat?.avatar;
+                                  if (avatarUrl && avatarUrl.startsWith('data:')) refB64 = avatarUrl;
+                                }
+                                const result = await generateImage('视频通话背景，温馨的房间内景，柔和灯光', preset, {
+                                  apiKey: aiSettings.apiKey,
+                                  baseUrl: aiSettings.apiBaseUrl || 'https://api.openai.com',
+                                  model: 'gpt-image-1',
+                                }, refB64);
+                                if (result.ok && result.imageBase64) {
+                                  setCallBackground(`data:image/png;base64,${result.imageBase64}`);
+                                  showToast('背景已生成');
+                                } else {
+                                  showToast('生成失败：' + (result.error || '未知错误'));
+                                }
+                              } finally {
+                                setCallGenBgLoading(false);
+                              }
+                            }}
+                            className="w-full py-3 rounded-[14px] bg-white/15 text-white text-[13px] backdrop-blur disabled:opacity-40"
+                          >
+                            {callGenBgLoading ? '生成中...' : '✨ AI 生成背景'}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* AI 说话按钮 (通话语音合成) */}
+                      {callVoiceEnabled && (
+                        <div className="px-8 mb-4">
+                          <button
+                            disabled={callAiSpeaking}
+                            onClick={async () => {
+                              const voicePresetId = (importedCharacter as any)?.voicePresetId || (npcForChat as any)?.voicePresetId;
+                              const minimaxKey = localStorage.getItem('line:minimax-key') || '';
+                              let voiceId = '';
+                              try {
+                                const vp = JSON.parse(localStorage.getItem('line:voice-presets') || '[]');
+                                const found = (Array.isArray(vp) ? vp : []).find((x: any) => x.id === voicePresetId);
+                                if (found) voiceId = found.voiceId || '';
+                              } catch {}
+                              if (!voiceId || !minimaxKey) { showToast('请先绑定语音预设和 MiniMax Key'); return; }
+                              setCallAiSpeaking(true);
+                              try {
+                                const text = '喂？听得到吗？是我呀。';
+                                const res = await synthesizeMinimaxVoice(text, { apiKey: minimaxKey, voiceId });
+                                if (res.ok && res.audioBase64) {
+                                  const audio = new Audio(`data:audio/mpeg;base64,${res.audioBase64}`);
+                                  audio.play().catch(() => {});
+                                  showToast('TA 说话了');
+                                } else {
+                                  showToast('合成失败：' + (res.error || '未知错误'));
+                                }
+                              } finally {
+                                setCallAiSpeaking(false);
+                              }
+                            }}
+                            className="w-full py-3 rounded-[14px] bg-[#8b5cf6] text-white text-[13px] disabled:opacity-40"
+                          >
+                            {callAiSpeaking ? '说话中...' : '🎤 让 TA 说句话'}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* 底部按钮 */}
+                      <div className="pb-12 flex items-center justify-center gap-8">
+                        <button
+                          onClick={() => { setShowCallModal(false); setCallBackground(''); }}
+                          className="w-16 h-16 rounded-full bg-[#e0656e] text-white flex items-center justify-center"
+                        >
+                          <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8c1.4 2.8 3.8 5.2 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.3 0 .7-.2 1l-2.3 2.2z" transform="rotate(135 12 12)"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* 单条消息操作通过左右滑动触发：左滑编辑，右滑引用。这里不再常驻按钮，保持气泡紧凑。 */}
                 </div>
 
@@ -7143,6 +7371,20 @@ export function LineConversationView({
                     </div>
                     <span>名片</span>
                   </button>
+                  {aiImageEnabled && (
+                    <button
+                      type="button"
+                      onClick={() => { setShowPlusSheet(false); setPlusSheetPage(0); setImageGenPresetId(imagePresets[0]?.id || ''); setShowImageGenModal(true); }}
+                      className="flex flex-col items-center gap-1.5 cursor-pointer"
+                    >
+                      <div className="w-12 h-12 rounded-[14px] bg-[#f0e6ff] flex items-center justify-center text-[#8b5cf6] hover:bg-[#e8dcff]">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
+                        </svg>
+                      </div>
+                      <span>AI 生图</span>
+                    </button>
+                  )}
                 </div>
                 <button onClick={() => setPlusSheetPage(0)} className="w-full py-2.5 rounded-[12px] bg-[#f7f7f7] text-[#777] text-xs font-medium cursor-pointer">‹ 返回常用功能</button>
               </>
@@ -7188,6 +7430,20 @@ export function LineConversationView({
                     </div>
                     <span>名片</span>
                   </button>
+                  {aiImageEnabled && (
+                    <button
+                      type="button"
+                      onClick={() => { setShowPlusSheet(false); setPlusSheetPage(0); setImageGenPresetId(imagePresets[0]?.id || ''); setShowImageGenModal(true); }}
+                      className="flex flex-col items-center gap-1.5 cursor-pointer"
+                    >
+                      <div className="w-12 h-12 rounded-[14px] bg-[#f0e6ff] flex items-center justify-center text-[#8b5cf6] hover:bg-[#e8dcff]">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
+                        </svg>
+                      </div>
+                      <span>AI 生图</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => { setShowPlusSheet(false); setPlusSheetPage(0); setMoneySheetType('location'); }}
