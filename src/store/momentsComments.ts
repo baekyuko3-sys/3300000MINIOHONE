@@ -164,6 +164,61 @@ export function appendMomentComment(
   return found ? next : [...list, comment];
 }
 
+/** 递归删除评论（按 ID，含其所有回复） */
+export function removeMomentComment(list: MomentComment[], commentId: string): MomentComment[] {
+  return list
+    .filter(c => c.id !== commentId)
+    .map(c => ({ ...c, replies: c.replies ? removeMomentComment(c.replies, commentId) : [] }));
+}
+
+/** 递归更新评论正文（按 ID） */
+export function updateMomentCommentText(list: MomentComment[], commentId: string, newText: string): MomentComment[] {
+  return list.map(c => {
+    if (c.id === commentId) return { ...c, text: newText, time: '刚刚' };
+    if (c.replies?.length) return { ...c, replies: updateMomentCommentText(c.replies, commentId, newText) };
+    return c;
+  });
+}
+
+/** 为指定评论者重新生成一条评论正文（用于"重新生成"） */
+export async function regenerateOneComment(opts: {
+  comment: MomentComment;
+  postAuthor: string;
+  postText: string;
+  meName: string;
+}): Promise<string | null> {
+  const { comment, postAuthor, postText, meName } = opts;
+  let commenter: Commenter | null = null;
+  if (comment.characterId) {
+    const character = readImportedCharacters().find(c => c.id === comment.characterId);
+    if (character) commenter = { kind: 'character', character };
+  } else if (comment.npcId) {
+    const npc = getNpcs().find(n => n.id === comment.npcId);
+    if (npc) commenter = { kind: 'npc', npc };
+  } else if (comment.kind === 'character' || comment.kind === 'npc') {
+    // legacy: 按名字匹配
+    const byChar = readImportedCharacters().find(c => c.name === comment.user);
+    if (byChar) commenter = { kind: 'character', character: byChar };
+    else {
+      const byNpc = getNpcs().find(n => n.name === comment.user);
+      if (byNpc) commenter = { kind: 'npc', npc: byNpc };
+    }
+  }
+  if (!commenter) return null;
+  try {
+    const text = await generateOneCommentText({
+      commenter,
+      postAuthor,
+      postText,
+      meName,
+      allowMentionMe: true,
+    });
+    return text || null;
+  } catch {
+    return null;
+  }
+}
+
 type Commenter =
   | { kind: 'character'; character: ImportedCharacter }
   | { kind: 'npc'; npc: SaneNpc };

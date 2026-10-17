@@ -42,7 +42,10 @@ import {
   generateCommentsForPost,
   listPostableNpcs,
   normalizeMomentComments,
+  regenerateOneComment,
+  removeMomentComment,
   spawnBatchCommentsForPost,
+  updateMomentCommentText,
   spawnInstantReply,
   tryAutonomousMomentComment,
   type MomentComment,
@@ -455,6 +458,51 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     }
   };
 
+  /** Bug 2: 删除评论 */
+  const handleDeleteMomentComment = (postId: string, commentId: string) => {
+    setMomentsPosts(prev =>
+      prev.map(p => {
+        if (String(p.id) !== String(postId)) return p;
+        const tree = normalizeMomentComments(p.commentsList);
+        return { ...p, commentsList: removeMomentComment(tree, commentId) };
+      }),
+    );
+    setCommentActionTarget(null);
+    showToast('评论已删除');
+  };
+
+  /** Bug 2: 重新生成评论（仅 AI 评论） */
+  const handleRegenerateMomentComment = async (post: Record<string, any>, comment: MomentComment) => {
+    if (regeneratingCommentId) return;
+    setRegeneratingCommentId(String(comment.id));
+    showToast('正在重新生成…');
+    try {
+      const newText = await regenerateOneComment({
+        comment,
+        postAuthor: String(post.name || '朋友'),
+        postText: String(post.text || ''),
+        meName: meNameForMoments(),
+      });
+      if (newText) {
+        setMomentsPosts(prev =>
+          prev.map(p => {
+            if (String(p.id) !== String(post.id)) return p;
+            const tree = normalizeMomentComments(p.commentsList);
+            return { ...p, commentsList: updateMomentCommentText(tree, String(comment.id), newText) };
+          }),
+        );
+        showToast('已重新生成');
+      } else {
+        showToast('重新生成失败');
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '重新生成失败');
+    } finally {
+      setRegeneratingCommentId(null);
+      setCommentActionTarget(null);
+    }
+  };
+
   const fetchChannelModels = async (channel: 'chat' | 'moments') => {
     const s = channelSettings[channel];
     if (!s.apiBaseUrl.trim() || !s.apiKey.trim()) { showToast('请先填写 API 地址和 API Key'); return; }
@@ -658,6 +706,8 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   const [isRefreshingMoments, setIsRefreshingMoments] = useState(false);
   const [isRefreshingComments, setIsRefreshingComments] = useState(false);
   const [generatingCommentsPostId, setGeneratingCommentsPostId] = useState<string | null>(null);
+  const [commentActionTarget, setCommentActionTarget] = useState<{ postId: string; comment: MomentComment } | null>(null);
+  const [regeneratingCommentId, setRegeneratingCommentId] = useState<string | null>(null);
 
   const handleRefreshComments = async () => {
     if (isRefreshingComments) return;
@@ -1306,6 +1356,27 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     return true;
   });
   const myMoments = visibleMoments.filter(isOwnMoment);
+
+  /** Bug 1 修复：评论者必须是好友，否则过滤掉（与帖子可见性逻辑一致） */
+  const isCommenterFriend = (comment: { npcId?: string; characterId?: string; user?: string; kind?: string }): boolean => {
+    // 用户自己的评论始终显示
+    if (comment.kind === 'user') return true;
+    if (comment.npcId) {
+      return friendsList.some(f => !f.deleted && f.npcId === comment.npcId && (!f.personaId || f.personaId === effectivePersonaId));
+    }
+    return friendsList.some(f =>
+      !f.deleted && !f.npcId &&
+      ((comment.characterId && f.characterId === comment.characterId) ||
+       (comment.user && f.name === comment.user))
+    );
+  };
+
+  /** 递归过滤评论树：非好友的评论（及其回复）不显示 */
+  const filterVisibleComments = (comments: Array<{ npcId?: string; characterId?: string; user?: string; kind?: string; replies?: any[] }>): any[] => {
+    return comments
+      .filter(isCommenterFriend)
+      .map(c => ({ ...c, replies: c.replies ? filterVisibleComments(c.replies) : [] }));
+  };
 
   /** 兼容旧帖：单 textCard 时正文在 post.text；新帖 caption / 卡片正文分开 */
   const getPostCaption = (post: Record<string, any>) => {
@@ -2005,7 +2076,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   const meName = (activePersona?.name || currentUser.name || '').trim() || '我';
                   const { list, count } = momentLikerNames(post, meName);
                   const likerLine = formatMomentLikers(list, count);
-                  const comments = flattenMomentComments(normalizeMomentComments(post.commentsList));
+                  const comments = flattenMomentComments(filterVisibleComments(normalizeMomentComments(post.commentsList)));
                   return (
                     <>
                       <div className="ml-[59px] mt-3 flex items-center gap-[18px] text-[#999] text-[11px]">
@@ -2057,11 +2128,18 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                       {comments.length > 0 && (
                         <div className="ml-[59px] mt-2.5 bg-[#f8f8f9] rounded-[9px] p-2.5 space-y-1.5 text-[11px]">
                           {comments.map((c, idx) => (
-                            <div key={c.id || idx} className="leading-snug">
-                              <span className="font-semibold text-[#555]">{c.user}</span>
-                              {c.replyTo ? <span className="font-semibold text-[#ae7e89]"> 回复 @{c.replyTo}</span> : null}
-                              <span className="font-semibold text-[#555]">: </span>
-                              <span className="text-[#444]">{c.text}</span>
+                            <div key={c.id || idx} className="leading-snug flex items-start gap-1 group">
+                              <div className="flex-1 min-w-0">
+                                <span className="font-semibold text-[#555]">{c.user}</span>
+                                {c.replyTo ? <span className="font-semibold text-[#ae7e89]"> 回复 @{c.replyTo}</span> : null}
+                                <span className="font-semibold text-[#555]">: </span>
+                                <span className="text-[#444]">{c.text}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setCommentActionTarget({ postId: String(post.id), comment: c }); }}
+                                className="shrink-0 text-[#ccc] hover:text-[#999] text-[12px] leading-none px-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                              >···</button>
                             </div>
                           ))}
                         </div>
@@ -3860,7 +3938,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                     ) : (
                       <div className="space-y-6">
                         {posts.map(post => {
-                          const comments = flattenMomentComments(normalizeMomentComments(post.commentsList));
+                          const comments = flattenMomentComments(filterVisibleComments(normalizeMomentComments(post.commentsList)));
                           return (
                             <article key={post.id} className="pb-6 border-b border-[#f0f0f1]">
                               <div className="flex items-center gap-2.5">
@@ -3902,11 +3980,18 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                                     {comments.length > 0 && (
                                       <div className="ml-[50px] mt-2.5 bg-[#f8f8f9] rounded-[9px] p-2.5 space-y-1.5 text-[11px]">
                                         {comments.map((comment, index) => (
-                                          <div key={comment.id || post.id + '-comment-' + index} className="leading-snug">
-                                            <span className="font-semibold text-[#555]">{comment.user || '朋友'}</span>
-                                            {comment.replyTo ? <span className="font-semibold text-[#ae7e89]"> 回复 @{comment.replyTo}</span> : null}
-                                            <span className="font-semibold text-[#555]">: </span>
-                                            <span className="text-[#444]">{comment.text}</span>
+                                          <div key={comment.id || post.id + '-comment-' + index} className="leading-snug flex items-start gap-1 group">
+                                            <div className="flex-1 min-w-0">
+                                              <span className="font-semibold text-[#555]">{comment.user || '朋友'}</span>
+                                              {comment.replyTo ? <span className="font-semibold text-[#ae7e89]"> 回复 @{comment.replyTo}</span> : null}
+                                              <span className="font-semibold text-[#555]">: </span>
+                                              <span className="text-[#444]">{comment.text}</span>
+                                            </div>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => { e.stopPropagation(); setCommentActionTarget({ postId: String(post.id), comment }); }}
+                                              className="shrink-0 text-[#ccc] hover:text-[#999] text-[12px] leading-none px-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >···</button>
                                           </div>
                                         ))}
                                       </div>
@@ -3932,7 +4017,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         const live = momentsPosts.find(p => p.id === postDetail.id) || postDetail;
         const { list, count } = momentLikerNames(live, meName);
         const likerLine = formatMomentLikers(list, count);
-        const comments = normalizeMomentComments(live.commentsList);
+        const comments = filterVisibleComments(normalizeMomentComments(live.commentsList));
         const totalComments = countMomentComments(comments);
 
         const openReply = (target: { id: string; user: string } | null) => {
@@ -5316,6 +5401,55 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
           </div>
         </div>
       )}
+
+      {/* =====================================================
+           MODAL 4.4: MOMENT COMMENT ACTION MENU (评论操作菜单)
+      ===================================================== */}
+      {commentActionTarget && (() => {
+        const targetPost = momentsPosts.find(p => String(p.id) === String(commentActionTarget.postId));
+        const comment = commentActionTarget.comment;
+        const isAiComment = comment.kind === 'character' || comment.kind === 'npc';
+        return (
+          <div
+            onClick={() => setCommentActionTarget(null)}
+            className="absolute inset-0 bg-black/25 z-[70] flex items-end"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full bg-white rounded-t-[20px] p-4 pb-6 space-y-1"
+            >
+              <div className="w-8 h-1 bg-[#ddd] rounded-full mx-auto mb-3" />
+              <div className="px-2 pb-2 text-[11px] text-[#999] truncate">
+                {comment.user}: {String(comment.text).slice(0, 40)}
+              </div>
+              {isAiComment && (
+                <button
+                  type="button"
+                  disabled={regeneratingCommentId === comment.id}
+                  onClick={() => { if (targetPost) void handleRegenerateMomentComment(targetPost, comment); }}
+                  className="w-full py-3 px-2 text-left text-[13px] text-[#333] hover:bg-neutral-50 rounded-[10px] disabled:opacity-50"
+                >
+                  {regeneratingCommentId === comment.id ? '重新生成中…' : '🔄 重新生成这条评论'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => handleDeleteMomentComment(String(commentActionTarget.postId), String(comment.id))}
+                className="w-full py-3 px-2 text-left text-[13px] text-[#e0656e] hover:bg-neutral-50 rounded-[10px]"
+              >
+                🗑 删除这条评论
+              </button>
+              <button
+                type="button"
+                onClick={() => setCommentActionTarget(null)}
+                className="w-full py-3 px-2 text-center text-[13px] text-[#999] hover:bg-neutral-50 rounded-[10px]"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* =====================================================
            MODAL 4.5: MOMENTS COMMENT INPUT DRAWER (评论抽屉)

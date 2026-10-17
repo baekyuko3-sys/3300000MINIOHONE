@@ -4895,9 +4895,22 @@ export function LineConversationView({
                 ...messages.map((message: any) => ({ sender: message.sender || 'other', ...message })),
                 {
                   sender: 'me',
-                  text: '我给你发了一张图片，请看看这张图片并自然回应。',
+                  text: '我给你发了一张图片，请仔细看这张图片的内容，然后自然回应。不要猜测图片内容，如果看不清就说看不清。',
                   createdAt: new Date().toISOString(),
-                  imageData: mediaUrl,
+                  imageData: await (async () => {
+                    try {
+                      // 压缩图片到最大 1024px，避免 base64 太大被 API 截断
+                      const img = new Image();
+                      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = mediaUrl; });
+                      const maxDim = 1024;
+                      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+                      const canvas = document.createElement('canvas');
+                      canvas.width = Math.round(img.width * scale);
+                      canvas.height = Math.round(img.height * scale);
+                      canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
+                      return canvas.toDataURL('image/jpeg', 0.8);
+                    } catch { return mediaUrl; }
+                  })(),
                 },
               ],
               userMessage: '我给你发了一张图片，请看看这张图片并自然回应。',
