@@ -43,6 +43,7 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
   const [selectedApp, setSelectedApp] = useState('line');
   const [appBeauty, setAppBeauty] = useState(() => readAppearance().appBeauty || {});
   const [islandOpen, setIslandOpen] = useState(false);
+  const [lockAppearanceOpen, setLockAppearanceOpen] = useState(false);
   const appItems = [
     ['line', 'LINE / 聊天'], ['moments', 'VROOM / 朋友圈'], ['character-profile', '角色档案'], ['offline-story', '线下剧情'],
     ['world-book', '世界书'], ['gallery', '相册'], ['music', '音乐'], ['memory', 'Memory'], ['npc', 'NPC'],
@@ -393,6 +394,29 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                       <span className="text-[8px] text-white/45">顶部干净 · 无灵动岛</span>
                     )}
                   </div>
+                </div>
+              )}
+            </div>
+            {/* 锁屏外观（折叠）：壁纸设定 */}
+            <div className="rounded-2xl bg-white/65 border border-black/5 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setLockAppearanceOpen((value) => !value)}
+                className="w-full p-3 flex items-center gap-2 text-left"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">LOCK SCREEN</div>
+                  <div className="mt-1 text-[11px] font-semibold">锁屏外观</div>
+                  <div className="mt-0.5 text-[8px] text-[#777069] truncate">
+                    {appearance.lockWallpaper ? '已设置独立锁屏壁纸' : '跟随主屏幕壁纸'}
+                  </div>
+                </div>
+                <ChevronDown className={`w-4 h-4 text-[#8b8782] transition-transform ${lockAppearanceOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {lockAppearanceOpen && (
+                <div className="px-3 pb-3 space-y-3 border-t border-black/5 pt-3">
+                  <LockWallpaperBlock appearance={appearance} update={update} notify={notify} />
                 </div>
               )}
             </div>
@@ -895,28 +919,18 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
 
 // ========== 锁屏设置 Section ==========
 
-function LockScreenSection({ appearance, update, notify }: {
+// ========== 锁屏壁纸设定（可复用：主题页折叠卡片 + 锁屏 tab 共用） ==========
+
+function LockWallpaperBlock({ appearance, update, notify }: {
   appearance: ReturnType<typeof readAppearance>;
   update: <K extends keyof ReturnType<typeof readAppearance>>(key: K, value: ReturnType<typeof readAppearance>[K]) => void;
   notify: (text: string) => void;
 }) {
-  const [passcodeDraft, setPasscodeDraft] = useState(appearance.lockPasscode || '');
   const [wallpaperDraft, setWallpaperDraft] = useState(appearance.lockWallpaper || '');
 
   useEffect(() => {
-    setPasscodeDraft(appearance.lockPasscode || '');
     setWallpaperDraft(appearance.lockWallpaper || '');
-  }, [appearance.lockPasscode, appearance.lockWallpaper]);
-
-  const toggleMethod = (method: 'swipe' | 'passcode' | 'fingerprint') => {
-    const current = appearance.lockMethods;
-    const next = current.includes(method)
-      ? current.filter(item => item !== method)
-      : [...current, method];
-    // 至少保留一种
-    const safe = next.length ? next : ['swipe' as const];
-    update('lockMethods', safe);
-  };
+  }, [appearance.lockWallpaper]);
 
   const handleWallpaperFile = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -948,6 +962,67 @@ function LockScreenSection({ appearance, update, notify }: {
     notify('锁屏壁纸已清除');
   };
 
+  const presetWallpapers = [
+    'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800',
+    'https://images.unsplash.com/photo-1518837695005-2083093ee35b?w=800',
+    'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=800',
+    'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800',
+  ];
+
+  return (
+    <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
+      <div className="text-[8px] font-mono tracking-[1.5px] text-[#8b8782]">锁屏壁纸</div>
+      {wallpaperDraft ? (
+        <div className="relative h-28 w-full overflow-hidden rounded-xl border border-black/5">
+          <img src={wallpaperDraft} alt="锁屏壁纸" className="absolute inset-0 h-full w-full object-cover" />
+          <button onClick={clearWallpaper} className="absolute right-1.5 top-1.5 px-2 py-0.5 rounded-full bg-black/60 text-white text-[8px]">移除</button>
+        </div>
+      ) : (
+        <div className="h-20 w-full rounded-xl border border-dashed border-black/15 grid place-items-center text-[9px] text-[#999]">未设置锁屏壁纸（用主屏幕）</div>
+      )}
+      <div className="flex gap-1.5">
+        <label className="flex-1 py-2 rounded-xl bg-white border border-black/5 text-[9px] text-center cursor-pointer">
+          上传图片
+          <input type="file" accept="image/*" className="hidden" onChange={handleWallpaperFile} />
+        </label>
+        <button onClick={useMainWallpaper} className="flex-1 py-2 rounded-xl bg-white border border-black/5 text-[9px]">同步主屏</button>
+      </div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {presetWallpapers.map(url => (
+          <button
+            key={url}
+            onClick={() => { setWallpaperDraft(url); update('lockWallpaper', url); notify('锁屏壁纸已应用'); }}
+            className="aspect-[9/16] rounded-lg overflow-hidden border border-black/5"
+          >
+            <img src={url} alt="preset" className="h-full w-full object-cover" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LockScreenSection({ appearance, update, notify }: {
+  appearance: ReturnType<typeof readAppearance>;
+  update: <K extends keyof ReturnType<typeof readAppearance>>(key: K, value: ReturnType<typeof readAppearance>[K]) => void;
+  notify: (text: string) => void;
+}) {
+  const [passcodeDraft, setPasscodeDraft] = useState(appearance.lockPasscode || '');
+
+  useEffect(() => {
+    setPasscodeDraft(appearance.lockPasscode || '');
+  }, [appearance.lockPasscode]);
+
+  const toggleMethod = (method: 'swipe' | 'passcode' | 'fingerprint') => {
+    const current = appearance.lockMethods;
+    const next = current.includes(method)
+      ? current.filter(item => item !== method)
+      : [...current, method];
+    // 至少保留一种
+    const safe = next.length ? next : ['swipe' as const];
+    update('lockMethods', safe);
+  };
+
   const savePasscode = () => {
     const cleaned = passcodeDraft.replace(/\D/g, '').slice(0, 6);
     if (cleaned.length < 4) {
@@ -968,13 +1043,6 @@ function LockScreenSection({ appearance, update, notify }: {
     update('lockMethods', appearance.lockMethods.filter(item => item !== 'passcode'));
     notify('锁屏密码已清除');
   };
-
-  const presetWallpapers = [
-    'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800',
-    'https://images.unsplash.com/photo-1518837695005-2083093ee35b?w=800',
-    'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=800',
-    'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800',
-  ];
 
   return (
     <>
@@ -1007,35 +1075,7 @@ function LockScreenSection({ appearance, update, notify }: {
       </div>
 
       {/* 锁屏壁纸 */}
-      <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
-        <div className="text-[8px] font-mono tracking-[1.5px] text-[#8b8782]">锁屏壁纸</div>
-        {wallpaperDraft ? (
-          <div className="relative h-28 w-full overflow-hidden rounded-xl border border-black/5">
-            <img src={wallpaperDraft} alt="锁屏壁纸" className="absolute inset-0 h-full w-full object-cover" />
-            <button onClick={clearWallpaper} className="absolute right-1.5 top-1.5 px-2 py-0.5 rounded-full bg-black/60 text-white text-[8px]">移除</button>
-          </div>
-        ) : (
-          <div className="h-20 w-full rounded-xl border border-dashed border-black/15 grid place-items-center text-[9px] text-[#999]">未设置锁屏壁纸（用主屏幕）</div>
-        )}
-        <div className="flex gap-1.5">
-          <label className="flex-1 py-2 rounded-xl bg-white border border-black/5 text-[9px] text-center cursor-pointer">
-            上传图片
-            <input type="file" accept="image/*" className="hidden" onChange={handleWallpaperFile} />
-          </label>
-          <button onClick={useMainWallpaper} className="flex-1 py-2 rounded-xl bg-white border border-black/5 text-[9px]">同步主屏</button>
-        </div>
-        <div className="grid grid-cols-4 gap-1.5">
-          {presetWallpapers.map(url => (
-            <button
-              key={url}
-              onClick={() => { setWallpaperDraft(url); update('lockWallpaper', url); notify('锁屏壁纸已应用'); }}
-              className="aspect-[9/16] rounded-lg overflow-hidden border border-black/5"
-            >
-              <img src={url} alt="preset" className="h-full w-full object-cover" />
-            </button>
-          ))}
-        </div>
-      </div>
+      <LockWallpaperBlock appearance={appearance} update={update} notify={notify} />
 
       {/* 解锁方式 */}
       <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">

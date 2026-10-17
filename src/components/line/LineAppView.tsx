@@ -20,6 +20,7 @@ import {
 } from './TextMediaCards';
 import { LineConversationErrorBoundary } from './LineConversationErrorBoundary';
 import { createLineGroup, getLineGroupById } from '../../store/lineGroups';
+import { getWalletBalance, walletTopup } from '../../store/lineWallet';
 import { getNpcs, updateNpc, type SaneNpc } from '../../store/npcs';
 import { getNpcFriendRequests, respondToNpcFriendRequest, setNpcFriendship } from '../../store/npcSocial';
 import { NpcAvatar } from '../NpcAvatar';
@@ -197,6 +198,12 @@ function toggleMomentLike(post: Record<string, any>, meName: string) {
 export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewProps) {
   // Tabs: 'chat' | 'friends' | 'moments' | 'me'
   const [activeTab, setActiveTab] = useState<'chat' | 'friends' | 'moments' | 'me'>('chat');
+  const [walletBalance, setWalletBalance] = useState(() => getWalletBalance());
+  useEffect(() => {
+    const refresh = () => setWalletBalance(getWalletBalance());
+    window.addEventListener('sane333:wallet-updated', refresh);
+    return () => window.removeEventListener('sane333:wallet-updated', refresh);
+  }, []);
   const [lineLocale, setLineLocale] = usePersistentState<'zh-CN' | 'ja-JP'>('line:locale', 'zh-CN');
   const ja = lineLocale === 'ja-JP';
   const tx = (zh: string, jp: string) => ja ? jp : zh;
@@ -2018,6 +2025,22 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 500 }}
               >
                 {tx('编辑主页', 'ホーム編集')}
+              </button>
+            </div>
+          </div>
+
+          {/* LINE Pay 钱包 */}
+          <div className="mx-4 my-3 w-[calc(100%-2rem)] p-4 rounded-[22px] bg-gradient-to-br from-[#2d2d30] to-[#1a1a1c] shadow-sm text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[8px] font-mono tracking-[2px] text-[#999]">LINE PAY</div>
+                <div className="text-[28px] font-bold mt-1">¥{walletBalance.toFixed(2)}</div>
+              </div>
+              <button
+                onClick={() => { walletTopup(100); showToast('已充值 ¥100'); }}
+                className="px-4 py-2 rounded-full bg-white/15 text-[11px]"
+              >
+                充值 ¥100
               </button>
             </div>
           </div>

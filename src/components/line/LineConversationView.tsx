@@ -494,6 +494,17 @@ function formatReplyReasonStatus(message: any): { icon: string; label: string; t
 
 type LineTimeDisplayLocale = 'zh-CN' | 'en-US';
 
+// @ 高亮：把文本中的 @名字 包成蓝色高亮。
+function renderTextWithMentions(text: string): React.ReactNode {
+  if (!text || !text.includes('@')) return text;
+  const parts = text.split(/(@[^\s@]+)/g);
+  return parts.map((part, i) =>
+    part.startsWith('@') && part.length > 1
+      ? <span key={i} className="text-[#576b95] font-medium">{part}</span>
+      : <span key={i}>{part}</span>
+  );
+}
+
 function formatLineMessageClock(message: any, timezone: string, displayLocale: LineTimeDisplayLocale = 'zh-CN'): string {
   const raw = message?.createdAt || message?.timestamp;
   const date = raw ? new Date(raw) : null;
@@ -2857,6 +2868,7 @@ export function LineConversationView({
           // 自由发言：不设最低人数。谁说话完全看人设、关系和话题——关系好的自然接话，被cue的自然回应，
           // 性格内向或事不关己的就潜水。不要为了"热闹"硬凑人数，也不要长期只让同一个人包办。
           '\n【群聊自由发言】谁开口、开几条、谁潜水，全部由成员的人设、成员之间的关系、当前话题决定。不设人数下限也不设上限：可以一个人说，也可以好几个人插话，甚至所有人都潜水只回 [PASS]。关键是每个人的发言必须符合他/她自己的人设和语气，不许所有人一个腔调。' +
+          '\n【偶发真实行为】极小概率（约5%）可以让某个成员撤回一条刚发的消息（输出格式："[撤回]成员名"单独一行），然后发一句"发错了"之类的。不要滥用，一轮最多一次。' +
           // 用户刚刚主动发了消息，[PASS] 会让用户觉得"发出去没人理"。只允许在消息明显
           // 不是说给群里任何人听的极少数情况下输出 [PASS]。
           '\n【不要冷场】用户刚刚主动发了消息，几乎总是有人愿意接话；不要轻易输出 [PASS]，只有当这条消息明显不是说给群里任何人听时才可以。';
@@ -2998,13 +3010,25 @@ export function LineConversationView({
         }
 
         const parts = splitGroupMultiSpeaker(finalText, primary.member.name, candidateNames, candidateNicknames);
-        if (!parts.length) {
+        // 处理 [撤回]成员名：找到该成员上一条消息并撤回。
+        const recallParts = parts.filter(p => p.rawSpeaker === '[撤回]' || String(p.text || '').startsWith('[撤回]'));
+        const normalParts = parts.filter(p => !(p.rawSpeaker === '[撤回]' || String(p.text || '').startsWith('[撤回]')));
+        if (recallParts.length) {
+          const recallName = String(recallParts[0].text || '').replace('[撤回]', '').trim() || recallParts[0].rawSpeaker.replace('[撤回]', '').trim();
+          setMessages(prev => {
+            const target = [...prev].reverse().find(m => m.sender !== 'me' && m.type !== 'system-nudge' && String(m.senderName || '').includes(recallName));
+            if (!target) return prev;
+            return prev.map(m => m.id === target.id ? { ...m, isRecalledByOther: true, recalledByOtherReason: '（对方撤回了一条消息）', text: '对方撤回了一条消息' } : m);
+          });
+        }
+        const filteredParts = normalParts.length ? normalParts : parts;
+        if (!filteredParts.length) {
           setMessages(prev => prev.map(m => String(m.id).startsWith(String(placeholderId)) ? { ...m, status: 'failed', error: 'AI 输出无法解析为群聊消息', text: '回复失败：输出无法解析为群聊消息（可点击下方按钮删除）' } : m));
           setIsTyping(false);
           return;
         }
 
-        const finalMessages = parts.map((part, idx) => {
+        const finalMessages = filteredParts.map((part, idx) => {
           const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
           if (memberIdx < 0 && !part.primary) return null;
           if (memberIdx >= 0 && (groupAiMembers[memberIdx]?.member.muted || groupAiMembers[memberIdx]?.member.online === false)) return null;
@@ -3041,8 +3065,8 @@ export function LineConversationView({
         setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isRead: true } : m));
 
         const friendRequestCheckedNpcIds = new Set<string>();
-        for (let i = 0; i < parts.length; i += 1) {
-          const part = parts[i];
+        for (let i = 0; i < filteredParts.length; i += 1) {
+          const part = filteredParts[i];
           const memberIdx = resolveSpeakerIndex(part.rawSpeaker, candidateNames, candidateNicknames);
           if (memberIdx < 0 && !part.primary) continue;
           if (memberIdx >= 0 && (groupAiMembers[memberIdx]?.member.muted || groupAiMembers[memberIdx]?.member.online === false)) continue;
@@ -5477,6 +5501,14 @@ export function LineConversationView({
           const showPeriodSeparator = Boolean(currentDateIsValid && previousDateIsValid
             && currentDay === previousDay
             && getLineMessageDayPeriod(currentDate as Date, chatTimezone) !== getLineMessageDayPeriod(previousDate as Date, chatTimezone));
+          // 10分钟以上的时间差：显示"——x分钟后——"（同一天内才显示，跨天用日期分割线）。
+          const gapMinutes = currentDateIsValid && previousDateIsValid && currentDay === previousDay
+            ? Math.floor(((currentDate as Date).getTime() - (previousDate as Date).getTime()) / 60000)
+            : 0;
+          const showGapHint = gapMinutes >= 10 && !showDaySeparator;
+          const gapLabel = gapMinutes >= 60
+            ? `—— ${Math.floor(gapMinutes / 60)}小时${gapMinutes % 60 ? gapMinutes % 60 + '分钟' : ''}后 ——`
+            : `—— ${gapMinutes}分钟后 ——`;
           const dayLabel = currentDateIsValid
             ? formatLineMessageDayLabel(currentDate as Date, chatTimezone, lineTimeDisplayLocale)
             : '';
@@ -5921,6 +5953,11 @@ export function LineConversationView({
                   >
                     {formatLineMessageClock(msg, chatTimezone, lineTimeDisplayLocale)}
                   </span>
+                </div>
+              )}
+              {showGapHint && (
+                <div className="flex justify-center py-1">
+                  <span className="text-[10px] text-[#c4c4c8]">{gapLabel}</span>
                 </div>
               )}
               {unreadAnchorId !== null && String(msg.id) === String(unreadAnchorId) && showUnreadJump && (
@@ -6481,7 +6518,7 @@ export function LineConversationView({
                               : 'bubble-other bg-[#f5f5f6] text-[#303034]'
                           }`}
                         >
-                          {part}
+                          {renderTextWithMentions(part)}
                           {showBilingualTranslation && bilingualDisplayStyle !== 'D' && partIndex === messageBubbleParts.length - 1 && (
                             <div className={(bilingualDisplayStyle === 'A' ? 'mt-2 pt-2 border-t border-[#e9e9eb] ' : 'mt-1.5 ') + 'text-[11px] leading-[1.5] text-[#858b96] whitespace-pre-wrap'}>
                               {bilingualTranslationText}
@@ -6568,14 +6605,17 @@ export function LineConversationView({
                   className={`mt-0.5 flex min-h-[12px] items-center gap-1 px-1 text-[9px] leading-[1.2] text-[#a6a6aa] ${isMe ? 'justify-end' : 'justify-start'}`}
                 >
                   {isMe ? (() => {
-                    // 群聊里不显示已读/未读（成员多时语义含混），只留时间；单聊保持原逻辑。
-                    if (isGroup) return null;
                     const msgIndex = messages.findIndex((candidate) => String(candidate.id) === String(msg.id));
                     const hasRoleReply = msgIndex >= 0 && messages.slice(msgIndex + 1).some((candidate) =>
                       candidate.sender !== 'me' && candidate.type !== 'system-nudge'
                     );
-                    const readLabel = hasRoleReply || msg.isRead ? '已读' : '未读';
-                    return <span className={msg.isRead || hasRoleReply ? "text-[#ae7e89] font-medium" : "text-[#b8b8bb] font-medium"}>{readLabel}</span>;
+                    const isRead = hasRoleReply || msg.isRead;
+                    // 群聊：单灰勾=已发送，双绿勾=有人回复；单聊：保持已读/未读文字。
+                    if (isGroup) {
+                      return <span className={isRead ? "text-[#7bc47f] font-medium" : "text-[#b8b8bb] font-medium"} style={{ letterSpacing: '-2px', fontSize: '11px' }}>{isRead ? '✓✓' : '✓'}</span>;
+                    }
+                    const readLabel = isRead ? '已读' : '未读';
+                    return <span className={isRead ? "text-[#ae7e89] font-medium" : "text-[#b8b8bb] font-medium"}>{readLabel}</span>;
                   })() : (
                     // 群聊里他人的消息不显示"已读"（无意义），只留时间；单聊保持原样。
                     isGroup ? null : <span className="text-[#ae7e89] font-medium">已读</span>
