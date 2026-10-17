@@ -49,6 +49,8 @@ export function getBackgroundHeartbeat(): BackgroundHeartbeat | null {
 
 export function startBackgroundRuntime() {
   if (typeof window === 'undefined' || timer !== null) return;
+  // 注意：以下事件监听器在模块生命周期内只注册一次（由上面的 timer !== null 单例保护），
+  // 不需要移除；startBackgroundRuntime 重复调用会直接 return，不会重复注册。
 
   const tick = () => {
     persistHeartbeat();

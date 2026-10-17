@@ -6522,7 +6522,17 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 <div className="px-6 text-[11px] tracking-[2px] text-[#bbb]">RECENT</div>
                 {(() => {
                   const txs = getWalletTransactions();
-                  if (txs.length === 0) return <div className="text-center text-[#ccc] text-[12px] py-10">暂无交易记录</div>;
+                  if (txs.length === 0) return (
+                    <div className="text-center py-10">
+                      <div className="text-[#ccc] text-[12px]">暂无交易记录</div>
+                      <button
+                        onClick={() => setWalletTab('topup')}
+                        className="mt-3 text-[12px] text-[#b8935a] border border-[#e8dcc0] rounded-full px-4 py-1.5 bg-[#fdfbf6]"
+                      >
+                        去充值
+                      </button>
+                    </div>
+                  );
                   const groups: Record<string, typeof txs> = {};
                   txs.forEach(tx => {
                     const d = new Date(tx.createdAt);

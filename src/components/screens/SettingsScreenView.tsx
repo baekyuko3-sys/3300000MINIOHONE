@@ -14,6 +14,7 @@ import { applyApiPreset, deleteApiPreset, readApiPresets, settingsToApiPreset, u
 import { clearAiDebugLog, readAiDebugLog, type AiDebugEntry } from '../../store/aiDebug';
 import { listOpenAiCompatibleModels, testAiConnection } from '../../ai/aiEngine';
 import { generateImage, generateSpeech } from '../../ai/mediaEngine';
+import { generateImage as generateImageNew, useImagePresets } from '../../ai/imageGen';
 import { playAppSound, saveSoundFile, type AppSoundKind } from '../../store/soundManager';
 import { exportMedia, importMedia, getMediaStats } from '../../store/mediaVault';
 import { reportPersistenceIssue, readPersistenceDiagnostics, type PersistenceDiagnostic } from '../../store/usePersistentState';
@@ -389,10 +390,19 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
     }
   };
 
+  const [imagePresets] = useImagePresets();
+
   const testImage = async () => {
     try {
-      const result = await generateImage('a quiet cinematic portrait, editorial photography, no text', settings);
-      notify(result.url ? '图片接口已返回结果' : '图片接口无结果');
+      // 用新引擎测试（和聊天里 AI 生图同一条链路），不用旧 mediaEngine
+      const preset = imagePresets[0];
+      if (!preset) { notify('请先在聊天设置里添加生图预设'); return; }
+      const result = await generateImageNew('a quiet cinematic portrait, editorial photography, no text', preset, {
+        apiKey: settings.imageApiKey,
+        baseUrl: settings.imageBaseUrl || 'https://api.openai.com',
+        model: settings.imageModel || 'gpt-image-1',
+      });
+      notify(result.ok && result.imageBase64 ? '图片接口已返回结果' : '图片测试失败：' + (result.error || '无结果'));
     } catch (error) {
       notify(error instanceof Error ? error.message : '图片测试失败');
     }

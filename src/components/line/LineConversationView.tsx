@@ -3377,8 +3377,12 @@ export function LineConversationView({
                   ? { ...m, type: 'voice' as const, transcript: finalReplyText, audioUrl, duration: Math.max(1, Math.round(finalReplyText.length / 5)) }
                   : m
               ));
+            } else {
+              showToast('语音合成失败：' + (res.error || '未知错误'));
             }
-          }).catch(() => {});
+          }).catch((e) => {
+            showToast('语音合成失败：' + (e instanceof Error ? e.message : '网络错误'));
+          });
         }
       } catch {}
 
@@ -6580,7 +6584,14 @@ export function LineConversationView({
                     const voiceMediaRef = resolveLineVoiceMediaRef(msg);
                     return (
                       <div className={`flex flex-col gap-1.5 ${isMe ? 'items-end' : 'items-start'}`}>
-                        <LineVoiceMessageBar
+                        {/* AI 语音转换：保留原文，语音作为附件 */}
+                        {msg.text && (
+                          <div className={`max-w-[75%] px-3 py-1.5 rounded-[16px] text-[13.5px] leading-relaxed break-words ${
+                            isMe ? 'bubble-me bg-[#f7eef0] text-[#303034]' : 'bubble-other bg-[#f5f5f6] text-[#303034]'
+                          }`}>
+                            {msg.text}
+                          </div>
+                        )}                        <LineVoiceMessageBar
                           isMe={!!isMe}
                           seconds={voiceSeconds}
                           playing={playingVoiceId === msg.id}
@@ -11727,6 +11738,11 @@ export function LineConversationView({
                     if (typeof d?.mediaUrl === 'string' && d.mediaUrl.startsWith('media:')) mediaRefs.push(d.mediaUrl.slice(6));
                     if (typeof d?.voiceUrl === 'string' && d.voiceUrl.startsWith('media:')) mediaRefs.push(d.voiceUrl.slice(6));
                     mediaRefs.forEach(id => { import('../../store/mediaVault').then(({ deleteMedia }) => deleteMedia(id).catch(() => {})); });
+                  } catch { /* ignore */ }
+                  // 释放语音消息的 blob URL（如果用的是 blob: 而不是 data:）
+                  try {
+                    const au = (deleting as any)?.audioUrl;
+                    if (typeof au === 'string' && au.startsWith('blob:')) URL.revokeObjectURL(au);
                   } catch { /* ignore */ }
                   setMessages((prev) => prev.filter((m) => String(m.id) !== String(deleting.id)));
                   if (isMusicInvite && inviteCard) {

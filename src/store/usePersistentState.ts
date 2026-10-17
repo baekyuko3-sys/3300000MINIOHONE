@@ -76,13 +76,17 @@ export function usePersistentState<T>(
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    try {
-      window.localStorage.setItem(key, JSON.stringify(value));
-      // 广播：同页其他组件可同步（storage 事件只跨 tab，不跨同页组件）
-      window.dispatchEvent(new CustomEvent('sane333:storage-changed', { detail: { key } }));
-    } catch (error) {
-      reportPersistenceIssue('write:' + key, '本地数据写入失败；当前更改可能尚未保存', error);
-    }
+    // 300ms 防抖：输入框连续输入、大聊天记录频繁更新时不卡顿
+    const timer = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(key, JSON.stringify(value));
+        // 广播：同页其他组件可同步（storage 事件只跨 tab，不跨同页组件）
+        window.dispatchEvent(new CustomEvent('sane333:storage-changed', { detail: { key } }));
+      } catch (error) {
+        reportPersistenceIssue('write:' + key, '本地数据写入失败；当前更改可能尚未保存', error);
+      }
+    }, 300);
+    return () => window.clearTimeout(timer);
   }, [key, value]);
 
   return [value, setValue];

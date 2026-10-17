@@ -296,7 +296,11 @@ function runWorldRoutineClock() {
 }
 
 if (typeof window !== 'undefined') {
-  runWorldRoutineClock();
+  // 单例保护：HMR 热更新时模块可能重复执行，避免启动多个 60s 定时器
+  if (!(window as any).__worldRuntimeStarted) {
+    (window as any).__worldRuntimeStarted = true;
+    runWorldRoutineClock();
+  }
 }
 
 export function setCurrentScene(sceneId: string | null) {
