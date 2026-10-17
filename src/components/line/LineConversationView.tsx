@@ -1015,7 +1015,6 @@ export function LineConversationView({
   // 消息操作菜单 (长按/右键菜单 Context Menu & 引用回复)
   const [contextMenuMsg, setContextMenuMsg] = useState<any | null>(null);
   const [showContactPicker, setShowContactPicker] = useState(false);
-  const [pinnedMsgId, setPinnedMsgId] = usePersistentState<string | null>(`line:pinned:${conversationStorageId}`, null);
   const [replyingToMsg, setReplyingToMsg] = useState<any | null>(null);
   const [showGroupMembers, setShowGroupMembers] = useState(false);
   const [unreadAnchorId, setUnreadAnchorId] = useState<number | string | null>(null);
@@ -6197,20 +6196,16 @@ export function LineConversationView({
                 ) : msg.type === 'contact-card' || (msg as any).kind === 'contact-card' ? (
                   <div
                     onContextMenu={(e) => { e.preventDefault(); setContextMenuMsg(msg); }}
-                    className="w-[200px] rounded-[14px] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.06)] border border-[#f0ede8] overflow-hidden"
+                    className="w-[205px] rounded-[12px] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] px-3.5 py-3 flex items-center gap-3"
                   >
-                    <div className="px-4 pt-3.5 pb-3 flex items-center gap-3">
-                      <div className="w-11 h-11 rounded-full bg-[#f5f5f5] overflow-hidden flex items-center justify-center shrink-0">
-                        {(msg as any).contactAvatar ? <img src={(msg as any).contactAvatar} className="w-full h-full object-cover" /> : <span className="text-[#bbb] text-[18px]">👤</span>}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[14px] font-semibold truncate">{String((msg as any).contactName || '联系人')}</div>
-                        <div className="text-[10px] text-[#aaa] mt-0.5">{String((msg as any).contactDesc || '')} · 名片</div>
-                      </div>
+                    <div className="w-9 h-9 rounded-full bg-[#f5f0e8] overflow-hidden flex items-center justify-center shrink-0">
+                      {(msg as any).contactAvatar ? <img src={(msg as any).contactAvatar} className="w-full h-full object-cover" /> : <span className="text-[#bbb]">👤</span>}
                     </div>
-                    <div className="px-4 py-2.5 border-t border-[#f7f5f2] text-[11px] text-[#6a8a6a] text-center font-medium">
-                      添加好友
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] text-[#999] tracking-[1px]">名片</div>
+                      <div className="text-[15px] font-semibold mt-0.5 truncate">{String((msg as any).contactName || '联系人')}</div>
                     </div>
+                    <div className="text-[#d0d0d0] text-[14px]">›</div>
                   </div>
                 ) : msg.type === 'transfer' || msg.kind === 'transfer' ? (
                   <div
@@ -6621,22 +6616,6 @@ export function LineConversationView({
                       </button>
                     </div>
                   )}
-
-                  {/* 置顶消息横条 */}
-                  {pinnedMsgId && (() => {
-                    const pinned = messages.find(m => String(m.id) === String(pinnedMsgId));
-                    if (!pinned) return null;
-                    return (
-                      <div className="mx-3 mt-2 px-3 py-2 rounded-[12px] bg-[#f7f3ea] border border-[#e8e0d0] flex items-center gap-2">
-                        <Pin className="w-3.5 h-3.5 text-[#b8a67e] shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[10px] text-[#b8a67e]">置顶</div>
-                          <div className="text-[11px] text-[#5a4a3a] truncate">{String(pinned.text || pinned.redPacketBlessing || '[多媒体消息]').slice(0, 30)}</div>
-                        </div>
-                        <button onClick={() => setPinnedMsgId(null)} className="text-[#ccc] text-[14px]">×</button>
-                      </div>
-                    );
-                  })()}
 
                   {/* 名片选择器 */}
                   {showContactPicker && (
@@ -7148,6 +7127,20 @@ export function LineConversationView({
                       <span>{game.label}</span>
                     </button>
                   ))}
+                </div>
+                <div className="grid grid-cols-4 gap-4 text-center text-[10px] text-[#444] mt-4">
+                  <button
+                    type="button"
+                    onClick={() => { setShowPlusSheet(false); setPlusSheetPage(0); setShowContactPicker(true); }}
+                    className="flex flex-col items-center gap-1.5 cursor-pointer"
+                  >
+                    <div className="w-12 h-12 rounded-[14px] bg-[#f7f7f8] flex items-center justify-center text-[#666] hover:bg-[#f0f0f2]">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6"/>
+                      </svg>
+                    </div>
+                    <span>名片</span>
+                  </button>
                 </div>
                 <button onClick={() => setPlusSheetPage(0)} className="w-full py-2.5 rounded-[12px] bg-[#f7f7f7] text-[#777] text-xs font-medium cursor-pointer">‹ 返回常用功能</button>
               </>
@@ -11009,20 +11002,6 @@ export function LineConversationView({
               >
                 <CornerUpLeft className="w-4 h-4 text-[#ae7e89]" />
                 <span className="text-[#333]">引用回复</span>
-              </div>
-
-              {/* 置顶 */}
-              <div
-                onClick={() => {
-                  const isPinned = String(pinnedMsgId) === String(contextMenuMsg.id);
-                  setPinnedMsgId(isPinned ? null : String(contextMenuMsg.id));
-                  setContextMenuMsg(null);
-                  showToast(isPinned ? '已取消置顶' : '已置顶');
-                }}
-                className="py-3 flex items-center gap-3 cursor-pointer hover:bg-neutral-50 px-2"
-              >
-                <Pin className="w-4 h-4 text-[#666]" />
-                <span className="text-[#333]">{String(pinnedMsgId) === String(contextMenuMsg.id) ? '取消置顶' : '置顶消息'}</span>
               </div>
 
               {/* 复制 */}
