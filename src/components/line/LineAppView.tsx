@@ -606,6 +606,11 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   const [imgCardOpen, setImgCardOpen] = useState(false);
   const [vidCardOpen, setVidCardOpen] = useState(false);
 
+  // 外观三件套：主题换肤 / 聊天背景 / 字体大小（聊天通用设置）
+  const [lineTheme, setLineTheme] = usePersistentState<'light' | 'dark' | 'ivory-gold'>('line:theme', 'light');
+  const [lineChatBg, setLineChatBg] = usePersistentState<string>('line:chat-bg', 'default');
+  const [lineFontSize, setLineFontSize] = usePersistentState<'small' | 'medium' | 'large'>('line:font-size', 'medium');
+
   // Notification toggles
   const [notifSound, setNotifSound] = useState(true);
   const [notifVibrate, setNotifVibrate] = useState(true);
@@ -1397,7 +1402,12 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     // character can still remain independent.
     const conversationId = activeItem.id;
     return (
-      <div className="w-full h-full pt-[30px] bg-white">
+      <div
+        className="w-full h-full pt-[30px] bg-white"
+        data-line-theme={lineTheme}
+        data-line-chatbg={lineChatBg}
+        data-line-fontsize={lineFontSize}
+      >
         <LineConversationErrorBoundary key={activeChatId} onBack={() => setActiveChatId(null)}>
         <LineConversationView
           contactName={activeChatName}
@@ -1488,6 +1498,35 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
 
   return (
     <div className="relative w-full h-full flex flex-col justify-between bg-white text-[#343538] select-none font-sans overflow-hidden pt-[30px]">
+      {/* LINE 外观三件套：主题 / 聊天背景 / 字号 —— 作用于 .custom-chat-view（聊天会话区） */}
+      <style>{`
+        /* —— 暗夜主题 —— */
+        [data-line-theme="dark"] .custom-chat-view{background:#17171c !important;color:#e9e9ec !important;}
+        [data-line-theme="dark"] .custom-chat-view .bubble-me{background:#4a4a55 !important;color:#f5f0e8 !important;}
+        [data-line-theme="dark"] .custom-chat-view .bubble-other{background:#26262e !important;color:#e9e9ec !important;}
+        [data-line-theme="dark"] .custom-chat-view .h-\\[60px\\]{background:rgba(23,23,28,.96) !important;border-color:#2e2e36 !important;}
+        [data-line-theme="dark"] .custom-chat-view .h-\\[60px\\] .text-\\[\\#27272a\\]{color:#f0f0f2 !important;}
+        [data-line-theme="dark"] .custom-chat-view div:not(.custom-chat-view):has([data-line-composer]){background:#1e1e24 !important;border-color:#2e2e36 !important;}
+        [data-line-theme="dark"] .custom-chat-view [data-line-composer]{color:#e9e9ec !important;}
+        [data-line-theme="dark"] .custom-chat-view [data-line-composer]::placeholder{color:#6a6a72 !important;}
+        /* —— 米白金主题 —— */
+        [data-line-theme="ivory-gold"] .custom-chat-view{background:linear-gradient(180deg,#fdfbf6 0%,#f6efe1 100%) !important;}
+        [data-line-theme="ivory-gold"] .custom-chat-view .bubble-me{background:#f1e6cd !important;color:#3a3226 !important;}
+        [data-line-theme="ivory-gold"] .custom-chat-view .bubble-other{background:#fffdf8 !important;color:#3a3226 !important;border:1px solid #ece1c9 !important;}
+        /* —— 聊天背景（显式选择时覆盖主题/单聊壁纸） —— */
+        [data-line-chatbg="warm-white"] .custom-chat-view{background:#faf8f5 !important;}
+        [data-line-chatbg="mist-blue"] .custom-chat-view{background:linear-gradient(180deg,#f2f5f9 0%,#e6ecf3 100%) !important;}
+        [data-line-chatbg="sage"] .custom-chat-view{background:linear-gradient(180deg,#f4f6f2 0%,#e7eee4 100%) !important;}
+        [data-line-chatbg="blush"] .custom-chat-view{background:linear-gradient(180deg,#fbf5f6 0%,#f4e8eb 100%) !important;}
+        [data-line-chatbg="graphite"] .custom-chat-view{background:#232326 !important;}
+        /* —— 字号 —— */
+        [data-line-fontsize="small"] .custom-chat-view .bubble-me,
+        [data-line-fontsize="small"] .custom-chat-view .bubble-other{font-size:12px !important;}
+        [data-line-fontsize="small"] .custom-chat-view [data-line-composer]{font-size:12px !important;}
+        [data-line-fontsize="large"] .custom-chat-view .bubble-me,
+        [data-line-fontsize="large"] .custom-chat-view .bubble-other{font-size:15.5px !important;}
+        [data-line-fontsize="large"] .custom-chat-view [data-line-composer]{font-size:15px !important;}
+      `}</style>
       
       {/* =====================================================
            PAGE 1: CHAT (聊天列表)
@@ -5687,6 +5726,87 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               <button onClick={() => setShowGlobalChatSettingsModal(false)} className="text-xl text-[#aaa] cursor-pointer">
                 ×
               </button>
+            </div>
+
+            {/* 外观三件套：主题换肤 / 聊天背景 / 字体大小 */}
+            <div className="rounded-[16px] border border-[#eeeeef] bg-white overflow-hidden">
+              <div className="p-4 pb-1">
+                <div className="text-[12px] font-bold text-[#333]">外观 · 主题换肤</div>
+                <div className="text-[9px] text-[#aaa] mt-1">切换聊天会话区的整体配色，立即生效</div>
+              </div>
+              <div className="px-4 pb-3 grid grid-cols-3 gap-2">
+                {([
+                  { id: 'light' as const, name: '默认浅色', bg: '#ffffff', me: '#f7eef0', other: '#f5f5f6', border: '#ececee' },
+                  { id: 'dark' as const, name: '暗夜', bg: '#17171c', me: '#4a4a55', other: '#26262e', border: '#2e2e36' },
+                  { id: 'ivory-gold' as const, name: '米白金', bg: '#fdfbf6', me: '#f1e6cd', other: '#fffdf8', border: '#e8dcc0' },
+                ]).map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => { setLineTheme(t.id); showToast(`主题已换成${t.name}`); }}
+                    className={`rounded-[12px] border p-2 text-left transition-all ${lineTheme === t.id ? 'border-[#d4aab5] ring-2 ring-[#d4aab5]/40' : 'border-[#eeeeef]'}`}
+                    style={{ background: t.bg }}
+                  >
+                    <div className="flex flex-col gap-1">
+                      <div className="self-end max-w-[80%] rounded-[8px] px-2 py-1 text-[8px]" style={{ background: t.me, color: t.id === 'dark' ? '#f5f0e8' : '#333' }}>你好呀</div>
+                      <div className="self-start max-w-[80%] rounded-[8px] px-2 py-1 text-[8px]" style={{ background: t.other, color: t.id === 'dark' ? '#e9e9ec' : '#333', border: t.id === 'ivory-gold' ? '1px solid #ece1c9' : undefined }}>在的</div>
+                    </div>
+                    <div className="mt-2 text-[10px] text-center" style={{ color: t.id === 'dark' ? '#e9e9ec' : '#555' }}>{t.name}</div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="px-4 pb-1">
+                <div className="text-[12px] font-bold text-[#333]">聊天背景</div>
+                <div className="text-[9px] text-[#aaa] mt-1">纯色 / 渐变，覆盖单聊壁纸</div>
+              </div>
+              <div className="px-4 pb-3 flex gap-2 flex-wrap">
+                {([
+                  { id: 'default', name: '默认', css: 'linear-gradient(135deg,#f5f5f6 50%,#fafafa 50%)' },
+                  { id: 'warm-white', name: '暖白', css: '#faf8f5' },
+                  { id: 'mist-blue', name: '雾蓝', css: 'linear-gradient(180deg,#f2f5f9,#e6ecf3)' },
+                  { id: 'sage', name: '鼠尾草', css: 'linear-gradient(180deg,#f4f6f2,#e7eee4)' },
+                  { id: 'blush', name: '淡粉', css: 'linear-gradient(180deg,#fbf5f6,#f4e8eb)' },
+                  { id: 'graphite', name: '石墨', css: '#232326' },
+                ]).map((b) => (
+                  <button
+                    key={b.id}
+                    onClick={() => { setLineChatBg(b.id); showToast(b.id === 'default' ? '聊天背景恢复默认（跟随单聊壁纸）' : `聊天背景已换成${b.name}`); }}
+                    className="flex flex-col items-center gap-1"
+                    title={b.name}
+                  >
+                    <span
+                      className={`w-10 h-10 rounded-full border transition-all ${lineChatBg === b.id ? 'border-[#d4aab5] ring-2 ring-[#d4aab5]/40' : 'border-[#e5e5e7]'}`}
+                      style={{ background: b.css }}
+                    />
+                    <span className="text-[9px] text-[#888]">{b.name}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="px-4 pb-4">
+                <div className="flex items-baseline justify-between">
+                  <div className="text-[12px] font-bold text-[#333]">字体大小</div>
+                  <div className="text-[10px] text-[#ae7e89] font-semibold">
+                    {lineFontSize === 'small' ? '小' : lineFontSize === 'large' ? '大' : '中'}
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={2}
+                  step={1}
+                  value={lineFontSize === 'small' ? 0 : lineFontSize === 'large' ? 2 : 1}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    const next = (v === 0 ? 'small' : v === 2 ? 'large' : 'medium') as 'small' | 'medium' | 'large';
+                    setLineFontSize(next);
+                  }}
+                  className="w-full mt-2 accent-[#d4aab5]"
+                />
+                <div className="flex justify-between text-[9px] text-[#aaa] mt-1">
+                  <span>小</span><span>中</span><span>大</span>
+                </div>
+              </div>
             </div>
 
             {/* AI 润色：聊天/朋友圈 文字图片卡 + 文字视频卡 发送前润色 */}
