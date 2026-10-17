@@ -1616,7 +1616,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                     e.preventDefault();
                     setChatContextMenu(item);
                   }}
-                  className="absolute inset-y-0 left-0 z-10 w-full px-4 flex items-center text-left bg-white transition-transform duration-200 touch-pan-y"
+                  className={`absolute inset-y-0 left-0 z-10 w-full px-4 flex items-center text-left transition-transform duration-200 touch-pan-y ${item.isPinned ? 'bg-[#f7f3ea]' : 'bg-white'}`}
                   style={{ transform: swipedChatId === item.id ? 'translateX(-76px)' : 'translateX(0)' }}
                 >
                 {/* Default Avatar SVG from template */}
@@ -1624,11 +1624,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   <div className="w-[49px] h-[49px] rounded-full bg-[#f1f1f2] border border-[#e8e8e9] flex items-center justify-center shrink-0 overflow-hidden">
                     <NpcAvatar name={item.name} avatar={resolveChatAvatar(item)} className="w-full h-full" textClassName="text-[18px]" />
                   </div>
-                  {item.isPinned && (
-                    <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[#ae7e89] text-white flex items-center justify-center text-[7px] shadow-2xs">
-                      📌
-                    </span>
-                  )}
+
                 </div>
 
                 <div className="flex-1 min-w-0 ml-3">
