@@ -1512,6 +1512,36 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         data-line-chatbg={lineChatBg}
         data-line-fontsize={lineFontSize}
       >
+
+      {/* LINE 外观三件套：主题 / 聊天背景 / 字号 —— 作用于 .custom-chat-view（聊天会话区） */}
+      <style>{`
+        /* —— 暗夜主题 —— */
+        [data-line-theme="dark"] .custom-chat-view{background:#17171c !important;color:#e9e9ec !important;}
+        [data-line-theme="dark"] .custom-chat-view .bubble-me{background:#4a4a55 !important;color:#f5f0e8 !important;}
+        [data-line-theme="dark"] .custom-chat-view .bubble-other{background:#26262e !important;color:#e9e9ec !important;}
+        [data-line-theme="dark"] .custom-chat-view .h-\\[60px\\]{background:rgba(23,23,28,.96) !important;border-color:#2e2e36 !important;}
+        [data-line-theme="dark"] .custom-chat-view .h-\\[60px\\] .text-\\[\\#27272a\\]{color:#f0f0f2 !important;}
+        [data-line-theme="dark"] .custom-chat-view div:not(.custom-chat-view):has([data-line-composer]){background:#1e1e24 !important;border-color:#2e2e36 !important;}
+        [data-line-theme="dark"] .custom-chat-view [data-line-composer]{color:#e9e9ec !important;}
+        [data-line-theme="dark"] .custom-chat-view [data-line-composer]::placeholder{color:#6a6a72 !important;}
+        /* —— 米白金主题 —— */
+        [data-line-theme="ivory-gold"] .custom-chat-view{background:linear-gradient(180deg,#fdfbf6 0%,#f6efe1 100%) !important;}
+        [data-line-theme="ivory-gold"] .custom-chat-view .bubble-me{background:#f1e6cd !important;color:#3a3226 !important;}
+        [data-line-theme="ivory-gold"] .custom-chat-view .bubble-other{background:#fffdf8 !important;color:#3a3226 !important;border:1px solid #ece1c9 !important;}
+        /* —— 聊天背景（显式选择时覆盖主题/单聊壁纸） —— */
+        [data-line-chatbg="warm-white"] .custom-chat-view{background:#faf8f5 !important;}
+        [data-line-chatbg="mist-blue"] .custom-chat-view{background:linear-gradient(180deg,#f2f5f9 0%,#e6ecf3 100%) !important;}
+        [data-line-chatbg="sage"] .custom-chat-view{background:linear-gradient(180deg,#f4f6f2 0%,#e7eee4 100%) !important;}
+        [data-line-chatbg="blush"] .custom-chat-view{background:linear-gradient(180deg,#fbf5f6 0%,#f4e8eb 100%) !important;}
+        [data-line-chatbg="graphite"] .custom-chat-view{background:#232326 !important;}
+        /* —— 字号 —— */
+        [data-line-fontsize="small"] .custom-chat-view .bubble-me,
+        [data-line-fontsize="small"] .custom-chat-view .bubble-other{font-size:12px !important;}
+        [data-line-fontsize="small"] .custom-chat-view [data-line-composer]{font-size:12px !important;}
+        [data-line-fontsize="large"] .custom-chat-view .bubble-me,
+        [data-line-fontsize="large"] .custom-chat-view .bubble-other{font-size:15.5px !important;}
+        [data-line-fontsize="large"] .custom-chat-view [data-line-composer]{font-size:15px !important;}
+      `}</style>
         <LineConversationErrorBoundary key={activeChatId} onBack={() => setActiveChatId(null)}>
         <LineConversationView
           contactName={activeChatName}

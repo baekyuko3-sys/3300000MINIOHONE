@@ -13,7 +13,12 @@ type UnlockStage = 'idle' | 'passcode' | 'fingerprint' | 'success';
 
 export function LockScreenView({ themeMode, onUnlock }: LockScreenViewProps) {
   const [now, setNow] = useState(new Date());
-  const [appearance] = useState(() => readAppearance());
+  const [appearance, setAppearance] = useState(() => readAppearance());
+  useEffect(() => {
+    const refresh = () => setAppearance(readAppearance());
+    window.addEventListener('sane333:appearance-changed', refresh);
+    return () => window.removeEventListener('sane333:appearance-changed', refresh);
+  }, []);
   const [flashlightOn, setFlashlightOn] = useState(false);
   const [stage, setStage] = useState<UnlockStage>('idle');
   const [passcode, setPasscode] = useState('');
