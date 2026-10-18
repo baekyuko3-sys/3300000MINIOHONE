@@ -1885,6 +1885,7 @@ export function LineConversationView({
 
   // 角色个人主页 (Threads / Twitter / LINE 混合风格)
   const [showCharacterProfile, setShowCharacterProfile] = useState(false);
+  const [editingProfileField, setEditingProfileField] = useState<string | null>(null);
   const [characterFeedPosts, setCharacterFeedPosts] = usePersistentState<any[]>(`line:character-feed:${conversationStorageId}`, []);
   const [characterProfileAvatar, setCharacterProfileAvatar] = usePersistentState<string>(`line:profile-avatar:${conversationStorageId}`, '');
   const [characterCover, setCharacterCover] = usePersistentState<string>(`line:profile-cover:${conversationStorageId}`, '');
@@ -9753,6 +9754,361 @@ export function LineConversationView({
 
           <div className="p-4 space-y-4 flex-1 overflow-y-auto text-xs pb-10">
 
+            {/* Section 1: 角色档案 (顶部) */}
+            {contactName === '我们的小角落' ? (
+              <div className="space-y-1.5">
+                <div className="text-[10px] text-[#aaa] font-medium px-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Users className="w-3 h-3 text-[#ae7e89]" />
+                    <span>当前群聊专属设定与世界书联动</span>
+                  </span>
+                  <span className="text-[9.5px] text-[#ae7e89] bg-[#faf1f3] px-2 py-0.5 rounded-full font-medium border border-[#f0dee3]">
+                    群聊模式已激活
+                  </span>
+                </div>
+
+                <div className="bg-white rounded-[14px] border border-[#f0f0f1] p-3.5 space-y-3">
+                  {/* 群公告与背景 */}
+                  <div>
+                    <div className="text-[#444] font-medium mb-1">群聊公告与背景设定</div>
+                    <textarea
+                      value={groupNoticeText}
+                      onChange={(e) => setGroupNoticeText(e.target.value)}
+                      placeholder="输入当前群聊需要知晓的背景与公告…"
+                      className="w-full p-2 bg-[#fafafa] border border-[#e8e8e9] rounded-md text-xs font-sans leading-relaxed resize-none text-[#333]"
+                      rows={2}
+                    />
+                  </div>
+
+                  {/* 群聊世界书：按条目勾选，未勾选的条目不会进入群聊 AI 上下文。 */}
+                  <div className="border-t border-[#f2f2f3] pt-2.5 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[#444] font-medium">群聊世界书条目</div>
+                        <div className="text-[9px] text-[#999] mt-0.5">只使用勾选的条目，不会自动读取整本世界书。</div>
+                      </div>
+                      <span className="text-[9px] text-[#ae7e89] shrink-0">已选 {groupWorldbooks.reduce((sum, book) => sum + book.entries.length, 0)} 条</span>
+                    </div>
+                    {worldbooks.filter(book => book.enabled).length === 0 ? (
+                      <div className="text-[10px] text-[#aaa] p-2 rounded-lg bg-[#fafafa]">暂无已启用的世界书，请先在世界书 App 中启用。</div>
+                    ) : (
+                      <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                        {worldbooks.filter(book => book.enabled).map(book => {
+                          const selectedIds = selectedGroupWorldBookEntries[book.id] || [];
+                          const availableEntries = (book.entries || []).filter(entry => entry.enabled !== false);
+                          const allSelected = availableEntries.length > 0 && availableEntries.every(entry => selectedIds.includes(entry.id));
+                          return (
+                            <div key={book.id} className="rounded-[10px] border border-[#eee] bg-white overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => setExpandedGroupWorldBookId(current => current === book.id ? null : book.id)}
+                                className="w-full flex items-center gap-2 p-2.5 text-left hover:bg-[#fcf8f9]"
+                              >
+                                {expandedGroupWorldBookId === book.id ? <ChevronDown className="w-3.5 h-3.5 text-[#ae7e89] shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-[#999] shrink-0" />}
+                                <span className="text-[10px] font-medium text-[#444] flex-1 truncate">{book.name}</span>
+                                <span className="text-[9px] text-[#999] shrink-0">{selectedIds.length}/{availableEntries.length} 条已选</span>
+                              </button>
+                              {expandedGroupWorldBookId === book.id && (
+                                <div className="border-t border-[#f2f2f3] px-2.5 py-2">
+                                  <div className="flex justify-end mb-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedGroupWorldBookEntries(prev => ({
+                                        ...prev,
+                                        [book.id]: allSelected ? [] : availableEntries.map(entry => entry.id),
+                                      }))}
+                                      className="text-[9px] text-[#ae7e89] shrink-0"
+                                    >{allSelected ? '取消全选' : '全选条目'}</button>
+                                  </div>
+                                  {availableEntries.length === 0 ? (
+                                    <div className="text-[9px] text-[#aaa] py-1">这本世界书没有已启用条目</div>
+                                  ) : availableEntries.map(entry => {
+                                    const checked = selectedIds.includes(entry.id);
+                                    const entryKey = book.id + ':' + entry.id;
+                                    const entryExpanded = expandedGroupWorldBookEntryId === entryKey;
+                                    const entryContent = String((entry as any).content ?? (entry as any).text ?? (entry as any).description ?? '').trim();
+                                    return (
+                                      <div key={entry.id} className="rounded-lg border border-[#f1edef] mb-1 last:mb-0 overflow-hidden">
+                                        <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-[#faf7f8]">
+                                          <input
+                                            aria-label={'选择条目：' + entry.name}
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => setSelectedGroupWorldBookEntries(prev => ({
+                                              ...prev,
+                                              [book.id]: checked ? selectedIds.filter(id => id !== entry.id) : [...selectedIds, entry.id],
+                                            }))}
+                                            className="accent-[#ae7e89] shrink-0"
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => setExpandedGroupWorldBookEntryId(current => current === entryKey ? null : entryKey)}
+                                            aria-expanded={entryExpanded}
+                                            className="flex-1 min-w-0 flex items-center gap-1.5 text-left"
+                                          >
+                                            {entryExpanded ? <ChevronDown className="w-3 h-3 text-[#ae7e89] shrink-0" /> : <ChevronRight className="w-3 h-3 text-[#999] shrink-0" />}
+                                            <span className="text-[10px] text-[#555] leading-relaxed flex-1">{entry.name}</span>
+                                            <span className="text-[9px] text-[#aaa] shrink-0">{entryExpanded ? '收起内容' : '查看内容'}</span>
+                                          </button>
+                                        </div>
+                                        {entryExpanded && (
+                                          <div className="border-t border-[#f1edef] bg-[#fdfbfc] px-3 py-2 text-[10px] leading-relaxed text-[#666] whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+                                            {entryContent || '该条目没有可显示的内容。'}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 群聊人际关系网 */}
+                  <div className="border-t border-[#f2f2f3] pt-2.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[#444] font-medium">群成员人际关系网 (关系矩阵)</div>
+                      <button
+                        onClick={handleAiInferGroupRelations}
+                        className="text-[10px] text-[#ae7e89] hover:underline flex items-center gap-1 cursor-pointer font-medium"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        <span>AI推演关系网</span>
+                      </button>
+                    </div>
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                      {groupRelationships.map((rel, idx) => (
+                        <div key={idx} className="p-2 bg-[#faf8f9] rounded-lg border border-[#f0e4e7] flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-[#8c5f6b] shrink-0">{rel.from} ➔ {rel.to}:</span>
+                          <input
+                            value={rel.relation}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setGroupRelationships((prev) =>
+                                prev.map((r, i) => (i === idx ? { ...r, relation: val } : r))
+                              );
+                            }}
+                            className="bg-transparent text-right outline-none text-[#555] flex-1 ml-2 text-xs truncate"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 群聊独立预设 */}
+                  <div className="border-t border-[#f2f2f3] pt-2.5">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="text-[#444] font-medium">群聊预设</div>
+                      <span className="text-[8px] text-[#9a6c78] font-mono">{activeGroupPreset.kind === 'online' ? 'ONLINE' : 'OFFLINE'}</span>
+                    </div>
+                    <select
+                      value={groupPresetId}
+                      onChange={(e) => setGroupPresetId(e.target.value)}
+                      className="w-full p-2 bg-[#fafafa] border border-[#e8e8e9] rounded-[10px] text-[10px] text-[#555] outline-none"
+                    >
+                      {getGroupPresets().filter(preset => preset.kind === 'online').map(preset => (
+                        <option key={preset.id} value={preset.id}>{preset.name}</option>
+                      ))}
+                    </select>
+                    <div className="mt-1.5 text-[9px] text-[#999] leading-relaxed">{activeGroupPreset.description}</div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="text-[11px] text-[#999] tracking-[1.5px] px-1 font-medium">角色档案</div>
+                <div className="bg-white rounded-[12px] overflow-hidden">
+                  {/* 头像 + 名字 + 羁绊关系 */}
+                  <div className="flex items-center gap-3 p-4">
+                    <div className="w-[52px] h-[52px] rounded-full overflow-hidden bg-[#f1f1f2] shrink-0 flex items-center justify-center">
+                      {importedCharacter?.avatar ? (
+                        <img src={importedCharacter.avatar} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-[18px] font-semibold text-[#999]">{String(characterIdentity || '?').slice(0, 1)}</span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[15px] font-semibold text-[#333] truncate">{characterChatNote || characterIdentity}</div>
+                      <div className="text-[10px] text-[#aaa] mt-0.5 truncate">{characterProfile.relationship || '尚未建立羁绊关系'}</div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowSettings(false);
+                        setShowCharacterProfile(true);
+                      }}
+                      className="text-[10px] text-[#ae7e89] hover:underline shrink-0 cursor-pointer font-medium"
+                    >
+                      查看TA的主页 ›
+                    </button>
+                  </div>
+
+                  {/* 聊天备注 */}
+                  <div className="border-t border-[#f5f5f6]">
+                    <button
+                      type="button"
+                      onClick={() => setEditingProfileField(editingProfileField === 'note' ? null : 'note')}
+                      className="w-full flex items-center justify-between px-4 py-3 cursor-pointer"
+                    >
+                      <span className="text-[13px] text-[#333]">聊天备注</span>
+                      <span className="text-[12px] text-[#888] truncate max-w-[60%]">{characterChatNote || characterIdentity} <span className="text-[#ccc]">›</span></span>
+                    </button>
+                    {editingProfileField === 'note' && (
+                      <div className="px-4 pb-3">
+                        <input
+                          value={characterChatNote}
+                          onChange={(e) => setCharacterChatNote(e.target.value)}
+                          placeholder={characterIdentity}
+                          className="w-full p-2 bg-[#fafafa] border border-[#e8e8e9] rounded-md text-xs text-[#333]"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 角色生日 */}
+                  <div className="border-t border-[#f5f5f6]">
+                    <button
+                      type="button"
+                      onClick={() => setEditingProfileField(editingProfileField === 'birthday' ? null : 'birthday')}
+                      className="w-full flex items-center justify-between px-4 py-3 cursor-pointer"
+                    >
+                      <span className="text-[13px] text-[#333]">角色生日</span>
+                      <span className="text-[12px] text-[#888]">{characterProfile.birthday || '未设置'} <span className="text-[#ccc]">›</span></span>
+                    </button>
+                    {editingProfileField === 'birthday' && (
+                      <div className="px-4 pb-3">
+                        <input
+                          value={characterProfile.birthday}
+                          onChange={(e) => setCharacterProfile({ ...characterProfile, birthday: e.target.value })}
+                          placeholder="如：3月14日"
+                          className="w-full p-2 bg-[#fafafa] border border-[#e8e8e9] rounded-md text-xs text-[#333]"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 羁绊关系 */}
+                  <div className="border-t border-[#f5f5f6]">
+                    <button
+                      type="button"
+                      onClick={() => setEditingProfileField(editingProfileField === 'relationship' ? null : 'relationship')}
+                      className="w-full flex items-center justify-between px-4 py-3 cursor-pointer"
+                    >
+                      <span className="text-[13px] text-[#333]">羁绊关系</span>
+                      <span className="text-[12px] text-[#888] truncate max-w-[60%]">{characterProfile.relationship || '未设置'} <span className="text-[#ccc]">›</span></span>
+                    </button>
+                    {editingProfileField === 'relationship' && (
+                      <div className="px-4 pb-3 space-y-2">
+                        <textarea
+                          value={characterProfile.relationship}
+                          onChange={(e) => setCharacterProfile({ ...characterProfile, relationship: e.target.value })}
+                          placeholder="如：暗恋未满 · 彼此在意的挚友"
+                          rows={3}
+                          className="w-full p-2 bg-[#fafafa] border border-[#e8e8e9] rounded-md text-xs text-[#333] resize-none"
+                        />
+                        <button
+                          onClick={handleAiUpdateCharacterJudgment}
+                          className="text-[10px] text-[#ae7e89] hover:underline flex items-center gap-1 cursor-pointer font-medium"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          <span>让角色判断关系</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 角色对我的称呼 */}
+                  <div className="border-t border-[#f5f5f6]">
+                    <button
+                      type="button"
+                      onClick={() => setEditingProfileField(editingProfileField === 'callMe' ? null : 'callMe')}
+                      className="w-full flex items-center justify-between px-4 py-3 cursor-pointer"
+                    >
+                      <span className="text-[13px] text-[#333]">角色对我的称呼</span>
+                      <span className="text-[12px] text-[#888] truncate max-w-[60%]">{characterProfile.callMe || '未形成'} <span className="text-[#ccc]">›</span></span>
+                    </button>
+                    {editingProfileField === 'callMe' && (
+                      <div className="px-4 pb-3 space-y-2">
+                        <input
+                          value={characterProfile.callMe}
+                          onChange={(e) => setCharacterProfile({ ...characterProfile, callMe: e.target.value })}
+                          placeholder="尚未形成专属称呼，由角色自己判断"
+                          className="w-full p-2 bg-[#fafafa] border border-[#e8e8e9] rounded-md text-xs text-[#333]"
+                        />
+                        <button
+                          onClick={handleAiUpdateCharacterJudgment}
+                          className="text-[10px] text-[#ae7e89] hover:underline flex items-center gap-1 cursor-pointer font-medium"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          <span>让角色判断称呼</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-[#999] tracking-[1.5px] px-1 pt-3 font-medium">关系与权限</div>
+                <div className="bg-white rounded-[12px] overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <div>
+                      <div className="text-[13px] text-[#333]">自主判断关系</div>
+                      <div className="text-[10px] text-[#aaa] mt-0.5">由角色根据性格、聊天、记忆判断关系</div>
+                    </div>
+                    <div
+                      onClick={() =>
+                        setCharacterProfile({
+                          ...characterProfile,
+                          canCharacterSelfJudge: !characterProfile.canCharacterSelfJudge,
+                        })
+                      }
+                      className={`w-9 h-5 rounded-full relative cursor-pointer transition-colors shrink-0 ${
+                        characterProfile.canCharacterSelfJudge ? 'bg-[#d4a3ad]' : 'bg-[#ddd]'
+                      }`}
+                    >
+                      <div
+                        className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${
+                          characterProfile.canCharacterSelfJudge ? 'left-4.5' : 'left-0.5'
+                        }`}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-[#f5f5f6]">
+                    <div>
+                      <div className="text-[13px] text-[#333]">行为权限</div>
+                      <div className="text-[10px] text-[#aaa] mt-0.5">允许角色在关系恶化时拉黑你</div>
+                    </div>
+                    <div
+                      onClick={() => setCharacterProfile({ ...characterProfile, canBlockUser: !characterProfile.canBlockUser })}
+                      className={`w-9 h-5 rounded-full relative cursor-pointer transition-colors shrink-0 ${characterProfile.canBlockUser ? 'bg-[#d4a3ad]' : 'bg-[#ddd]'}`}
+                    >
+                      <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${characterProfile.canBlockUser ? 'left-4.5' : 'left-0.5'}`} />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-[#f5f5f6]">
+                    <div>
+                      <div className="text-[13px] text-[#333]">拉黑状态</div>
+                      <div className="text-[10px] text-[#aaa] mt-0.5">{characterProfile.isBlockedByCharacter ? '你目前无法向 TA 发送消息' : '正常联系中'}</div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const next = !characterProfile.isBlockedByCharacter;
+                        setCharacterProfile({ ...characterProfile, isBlockedByCharacter: next });
+                        showToast(next ? '已模拟角色拉黑你' : '已解除拉黑');
+                      }}
+                      className={`px-3 py-1.5 rounded-full text-[10px] shrink-0 ${characterProfile.isBlockedByCharacter ? 'bg-[#292724] text-white' : 'bg-[#f3f3f4] text-[#555]'}`}
+                    >
+                      {characterProfile.isBlockedByCharacter ? '解除拉黑' : '拉黑我'}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+
+
+
             {/* 记忆管理入口 */}
             <button
               type="button"
@@ -10512,307 +10868,6 @@ export function LineConversationView({
               </div>
             </details>
 
-            {/* Section 1: 角色档案与羁绊 OR 群聊专属设定系统 */}
-            {isGroup || contactName === '我们的小角落' ? (
-              <div className="space-y-1.5">
-                <div className="text-[10px] text-[#aaa] font-medium px-1 flex items-center justify-between">
-                  <span className="flex items-center gap-1">
-                    <Users className="w-3 h-3 text-[#ae7e89]" />
-                    <span>当前群聊专属设定与世界书联动</span>
-                  </span>
-                  <span className="text-[9.5px] text-[#ae7e89] bg-[#faf1f3] px-2 py-0.5 rounded-full font-medium border border-[#f0dee3]">
-                    群聊模式已激活
-                  </span>
-                </div>
-
-                <div className="bg-white rounded-[14px] border border-[#f0f0f1] p-3.5 space-y-3">
-                  {/* 群公告与背景 */}
-                  <div>
-                    <div className="text-[#444] font-medium mb-1">群聊公告与背景设定</div>
-                    <textarea
-                      value={groupNoticeText}
-                      onChange={(e) => setGroupNoticeText(e.target.value)}
-                      placeholder="输入当前群聊需要知晓的背景与公告…"
-                      className="w-full p-2 bg-[#fafafa] border border-[#e8e8e9] rounded-md text-xs font-sans leading-relaxed resize-none text-[#333]"
-                      rows={2}
-                    />
-                  </div>
-
-                  {/* 群聊世界书：按条目勾选，未勾选的条目不会进入群聊 AI 上下文。 */}
-                  <div className="border-t border-[#f2f2f3] pt-2.5 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <div className="text-[#444] font-medium">群聊世界书条目</div>
-                        <div className="text-[9px] text-[#999] mt-0.5">只使用勾选的条目，不会自动读取整本世界书。</div>
-                      </div>
-                      <span className="text-[9px] text-[#ae7e89] shrink-0">已选 {groupWorldbooks.reduce((sum, book) => sum + book.entries.length, 0)} 条</span>
-                    </div>
-                    {worldbooks.filter(book => book.enabled).length === 0 ? (
-                      <div className="text-[10px] text-[#aaa] p-2 rounded-lg bg-[#fafafa]">暂无已启用的世界书，请先在世界书 App 中启用。</div>
-                    ) : (
-                      <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                        {worldbooks.filter(book => book.enabled).map(book => {
-                          const selectedIds = selectedGroupWorldBookEntries[book.id] || [];
-                          const availableEntries = (book.entries || []).filter(entry => entry.enabled !== false);
-                          const allSelected = availableEntries.length > 0 && availableEntries.every(entry => selectedIds.includes(entry.id));
-                          return (
-                            <div key={book.id} className="rounded-[10px] border border-[#eee] bg-white overflow-hidden">
-                              <button
-                                type="button"
-                                onClick={() => setExpandedGroupWorldBookId(current => current === book.id ? null : book.id)}
-                                className="w-full flex items-center gap-2 p-2.5 text-left hover:bg-[#fcf8f9]"
-                              >
-                                {expandedGroupWorldBookId === book.id ? <ChevronDown className="w-3.5 h-3.5 text-[#ae7e89] shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-[#999] shrink-0" />}
-                                <span className="text-[10px] font-medium text-[#444] flex-1 truncate">{book.name}</span>
-                                <span className="text-[9px] text-[#999] shrink-0">{selectedIds.length}/{availableEntries.length} 条已选</span>
-                              </button>
-                              {expandedGroupWorldBookId === book.id && (
-                                <div className="border-t border-[#f2f2f3] px-2.5 py-2">
-                                  <div className="flex justify-end mb-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedGroupWorldBookEntries(prev => ({
-                                        ...prev,
-                                        [book.id]: allSelected ? [] : availableEntries.map(entry => entry.id),
-                                      }))}
-                                      className="text-[9px] text-[#ae7e89] shrink-0"
-                                    >{allSelected ? '取消全选' : '全选条目'}</button>
-                                  </div>
-                                  {availableEntries.length === 0 ? (
-                                    <div className="text-[9px] text-[#aaa] py-1">这本世界书没有已启用条目</div>
-                                  ) : availableEntries.map(entry => {
-                                    const checked = selectedIds.includes(entry.id);
-                                    const entryKey = book.id + ':' + entry.id;
-                                    const entryExpanded = expandedGroupWorldBookEntryId === entryKey;
-                                    const entryContent = String((entry as any).content ?? (entry as any).text ?? (entry as any).description ?? '').trim();
-                                    return (
-                                      <div key={entry.id} className="rounded-lg border border-[#f1edef] mb-1 last:mb-0 overflow-hidden">
-                                        <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-[#faf7f8]">
-                                          <input
-                                            aria-label={'选择条目：' + entry.name}
-                                            type="checkbox"
-                                            checked={checked}
-                                            onChange={() => setSelectedGroupWorldBookEntries(prev => ({
-                                              ...prev,
-                                              [book.id]: checked ? selectedIds.filter(id => id !== entry.id) : [...selectedIds, entry.id],
-                                            }))}
-                                            className="accent-[#ae7e89] shrink-0"
-                                          />
-                                          <button
-                                            type="button"
-                                            onClick={() => setExpandedGroupWorldBookEntryId(current => current === entryKey ? null : entryKey)}
-                                            aria-expanded={entryExpanded}
-                                            className="flex-1 min-w-0 flex items-center gap-1.5 text-left"
-                                          >
-                                            {entryExpanded ? <ChevronDown className="w-3 h-3 text-[#ae7e89] shrink-0" /> : <ChevronRight className="w-3 h-3 text-[#999] shrink-0" />}
-                                            <span className="text-[10px] text-[#555] leading-relaxed flex-1">{entry.name}</span>
-                                            <span className="text-[9px] text-[#aaa] shrink-0">{entryExpanded ? '收起内容' : '查看内容'}</span>
-                                          </button>
-                                        </div>
-                                        {entryExpanded && (
-                                          <div className="border-t border-[#f1edef] bg-[#fdfbfc] px-3 py-2 text-[10px] leading-relaxed text-[#666] whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
-                                            {entryContent || '该条目没有可显示的内容。'}
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 群聊人际关系网 */}
-                  <div className="border-t border-[#f2f2f3] pt-2.5 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="text-[#444] font-medium">群成员人际关系网 (关系矩阵)</div>
-                      <button
-                        onClick={handleAiInferGroupRelations}
-                        className="text-[10px] text-[#ae7e89] hover:underline flex items-center gap-1 cursor-pointer font-medium"
-                      >
-                        <Sparkles className="w-3 h-3" />
-                        <span>AI推演关系网</span>
-                      </button>
-                    </div>
-                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                      {groupRelationships.map((rel, idx) => (
-                        <div key={idx} className="p-2 bg-[#faf8f9] rounded-lg border border-[#f0e4e7] flex items-center justify-between text-[11px]">
-                          <span className="font-semibold text-[#8c5f6b] shrink-0">{rel.from} ➔ {rel.to}:</span>
-                          <input
-                            value={rel.relation}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setGroupRelationships((prev) =>
-                                prev.map((r, i) => (i === idx ? { ...r, relation: val } : r))
-                              );
-                            }}
-                            className="bg-transparent text-right outline-none text-[#555] flex-1 ml-2 text-xs truncate"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* 群聊独立预设 */}
-                  <div className="border-t border-[#f2f2f3] pt-2.5">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="text-[#444] font-medium">群聊预设</div>
-                      <span className="text-[8px] text-[#9a6c78] font-mono">{activeGroupPreset.kind === 'online' ? 'ONLINE' : 'OFFLINE'}</span>
-                    </div>
-                    <select
-                      value={groupPresetId}
-                      onChange={(e) => setGroupPresetId(e.target.value)}
-                      className="w-full p-2 bg-[#fafafa] border border-[#e8e8e9] rounded-[10px] text-[10px] text-[#555] outline-none"
-                    >
-                      {getGroupPresets().filter(preset => preset.kind === 'online').map(preset => (
-                        <option key={preset.id} value={preset.id}>{preset.name}</option>
-                      ))}
-                    </select>
-                    <div className="mt-1.5 text-[9px] text-[#999] leading-relaxed">{activeGroupPreset.description}</div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <div className="text-[10px] text-[#aaa] font-medium px-1 flex items-center justify-between">
-                  <span className="flex items-center gap-1">
-                    <Users className="w-3 h-3 text-[#ae7e89]" />
-                    <span>角色档案、称呼与羁绊关系</span>
-                  </span>
-                  <button
-                    onClick={() => {
-                      setShowSettings(false);
-                      setShowCharacterProfile(true);
-                    }}
-                    className="text-[10px] text-[#ae7e89] hover:underline flex items-center gap-0.5 cursor-pointer font-medium"
-                  >
-                    <span>查看TA的主页 ›</span>
-                  </button>
-                </div>
-                
-                <div className="bg-white rounded-[14px] border border-[#f0f0f1] p-3.5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[#444] font-medium">角色名称 / 聊天备注</span>
-                    <input
-                      value={characterChatNote}
-                      onChange={(e) => setCharacterChatNote(e.target.value)}
-                      placeholder={characterIdentity}
-                      className="p-1 px-2 text-right bg-[#fafafa] border border-[#e8e8e9] rounded-md text-xs w-36 text-[#333]"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between border-t border-[#f2f2f3] pt-2.5">
-                    <span className="text-[#444] font-medium">角色生日</span>
-                    <input
-                      value={characterProfile.birthday}
-                      onChange={(e) => setCharacterProfile({ ...characterProfile, birthday: e.target.value })}
-                      className="p-1 px-2 text-right bg-[#fafafa] border border-[#e8e8e9] rounded-md text-xs w-44 text-[#333]"
-                    />
-                  </div>
-
-                  <div className="border-t border-[#f2f2f3] pt-2.5 space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-[#444] font-medium">与角色的羁绊关系</span>
-                        <span className="text-[9.5px] text-[#aaa] ml-1.5">(自己填写或让角色更新)</span>
-                      </div>
-                      <button
-                        onClick={handleAiUpdateCharacterJudgment}
-                        className="text-[10px] text-[#ae7e89] hover:underline flex items-center gap-1 cursor-pointer font-medium"
-                      >
-                        <Sparkles className="w-3 h-3" />
-                        <span>让角色判断关系</span>
-                      </button>
-                    </div>
-                    <input
-                      value={characterProfile.relationship}
-                      onChange={(e) => setCharacterProfile({ ...characterProfile, relationship: e.target.value })}
-                      placeholder="如：暗恋未满 · 彼此在意的挚友"
-                      className="w-full p-2 bg-[#fafafa] border border-[#e8e8e9] rounded-md text-xs text-[#333]"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between border-t border-[#f2f2f3] pt-2.5">
-                    <div>
-                      <div className="font-medium text-[#333]">角色自主判断关系</div>
-                      <div className="text-[10px] text-[#aaa]">由角色根据自己的性格、聊天、记忆与剧情判断你们的关系，不由系统自动替换</div>
-                    </div>
-                    <div
-                      onClick={() =>
-                        setCharacterProfile({
-                          ...characterProfile,
-                          canCharacterSelfJudge: !characterProfile.canCharacterSelfJudge,
-                        })
-                      }
-                      className={`w-9 h-5 rounded-full relative cursor-pointer transition-colors ${
-                        characterProfile.canCharacterSelfJudge ? 'bg-[#d4a3ad]' : 'bg-[#ddd]'
-                      }`}
-                    >
-                      <div
-                        className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${
-                          characterProfile.canCharacterSelfJudge ? 'left-4.5' : 'left-0.5'
-                        }`}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between border-t border-[#f2f2f3] pt-2.5">
-                    <div>
-                      <div className="font-medium text-[#333]">角色行为权限</div>
-                      <div className="text-[10px] text-[#aaa]">允许角色在关系恶化或剧情条件满足时拉黑你</div>
-                    </div>
-                    <div
-                      onClick={() => setCharacterProfile({ ...characterProfile, canBlockUser: !characterProfile.canBlockUser })}
-                      className={`w-9 h-5 rounded-full relative cursor-pointer transition-colors ${characterProfile.canBlockUser ? 'bg-[#d4a3ad]' : 'bg-[#ddd]'}`}
-                    >
-                      <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${characterProfile.canBlockUser ? 'left-4.5' : 'left-0.5'}`} />
-                    </div>
-                  </div>
-                  <div className="border-t border-[#f2f2f3] pt-2.5 flex items-center justify-between">
-                    <div>
-                      <div className="font-medium text-[#333]">当前拉黑状态</div>
-                      <div className="text-[10px] text-[#aaa]">{characterProfile.isBlockedByCharacter ? '你目前无法向 TA 发送消息' : '正常联系中'}</div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const next = !characterProfile.isBlockedByCharacter;
-                        setCharacterProfile({ ...characterProfile, isBlockedByCharacter: next });
-                        showToast(next ? '已模拟角色拉黑你' : '已解除拉黑');
-                      }}
-                      className={`px-3 py-1.5 rounded-full text-[10px] ${characterProfile.isBlockedByCharacter ? 'bg-[#292724] text-white' : 'bg-[#f3f3f4] text-[#555]'}`}
-                    >
-                      {characterProfile.isBlockedByCharacter ? '解除拉黑' : '拉黑我'}
-                    </button>
-                  </div>
-
-                  <div className="border-t border-[#f2f2f3] pt-2.5 space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-[#444] font-medium">角色对我的称呼</span>
-                        <span className="text-[9.5px] text-[#aaa] ml-1.5">(由角色自己形成，不使用模板)</span>
-                      </div>
-                      <button
-                        onClick={handleAiUpdateCharacterJudgment}
-                        className="text-[10px] text-[#ae7e89] hover:underline flex items-center gap-1 cursor-pointer font-medium"
-                      >
-                        <Sparkles className="w-3 h-3" />
-                        <span>让角色判断称呼</span>
-                      </button>
-                    </div>
-                    <input
-                      value={characterProfile.callMe}
-                      onChange={(e) => setCharacterProfile({ ...characterProfile, callMe: e.target.value })}
-                      placeholder="尚未形成专属称呼，由角色自己判断"
-                      className="w-full p-2 bg-[#fafafa] border border-[#e8e8e9] rounded-md text-xs text-[#333]"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Section 2: 世界书选择 (Lorebook) */}
             <details open={showWorldbookSettings} onToggle={(e) => setShowWorldbookSettings((e.currentTarget as HTMLDetailsElement).open)} className="bg-white rounded-[14px] border border-[#f0f0f1] overflow-hidden">
