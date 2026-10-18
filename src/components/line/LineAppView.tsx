@@ -4918,10 +4918,11 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                     const context = relationshipContext.trim();
                     if (effectivePersonaId) setNpcFriendship(npcFriend.id, effectivePersonaId, true);
                     setFriendsList(prev => prev.some(item => item.npcId === npcFriend.id && item.personaId === effectivePersonaId) ? prev : [friend, ...prev]);
+                    const newChatId = `c_${Date.now()}`;
                     setChatItems(prev => {
                       if (prev.some(chat => chat.npcId === npcFriend.id && chat.personaId === effectivePersonaId)) return prev;
                       return [{
-                        id: `c_${Date.now()}`,
+                        id: newChatId,
                         name: npcFriend.name,
                         characterId: npcFriend.boundCharacterId,
                         npcId: npcFriend.id,
@@ -4941,6 +4942,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                     });
                     setAddCharacterChatFriend(null);
                     setFriendSearchQuery('');
+                    setActiveChatId(newChatId);
                     showToast(`已添加 NPC「${npcFriend.name}」并建立聊天`);
                   }}
                   className="w-full py-3 rounded-2xl bg-[#292724] text-white text-xs font-semibold"
@@ -5075,11 +5077,12 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   const relationship = newChatRelationship;
                   const context = relationshipContext.trim();
                   const greeting = greetings[openingGreetingIndex] || '';
+                  const newChatId = `c_${Date.now()}`;
                   setFriendsList(prev => prev.some(friend => !friend.npcId && friend.characterId === character.id) ? prev : [{ ...addCharacterChatFriend, characterId: character.id, kind: 'character', note: '角色卡联系人', online: true }, ...prev]);
                   setChatItems(prev => prev.some(chat => !chat.npcId && chat.characterId === character.id && chat.personaId === effectivePersonaId)
                     ? prev
-                    : [{ id: `c_${Date.now()}`, name: character.name, characterId: character.id, personaId: effectivePersonaId || undefined, time: '刚刚', preview: '打个招呼吧', unread: 0, isPinned: false, isMuted: false, draft: '', isGroup: false, relationshipContext: context, openingMode, openingGreeting: openingMode === 'context' ? greeting : '', relationship }, ...prev]);
-                  setAddCharacterChatFriend(null); setFriendSearchQuery(''); showToast(`已添加「${character.name}」并建立聊天`);
+                    : [{ id: newChatId, name: character.name, characterId: character.id, personaId: effectivePersonaId || undefined, time: '刚刚', preview: '打个招呼吧', unread: 0, isPinned: false, isMuted: false, draft: '', isGroup: false, relationshipContext: context, openingMode, openingGreeting: openingMode === 'context' ? greeting : '', relationship }, ...prev]);
+                  setAddCharacterChatFriend(null); setFriendSearchQuery(''); setActiveChatId(newChatId); showToast(`已添加「${character.name}」并建立聊天`);
                 }} className="w-full py-3 rounded-2xl bg-[#292724] text-white text-xs font-semibold">添加为好友并进入聊天</button>
               )}
             </div>
