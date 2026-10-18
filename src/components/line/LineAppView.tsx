@@ -1118,11 +1118,29 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         if (next.some(f => !f.deleted && !f.npcId && (f as any).characterId === cid)) continue;
         const ch = importedCharacters.find(c => c.id === cid);
         if (!ch) continue;
-        next.unshift({ name: ch.name || '未命名', characterId: cid, kind: 'character', note: '', online: true, pinyin: '' } as LineFriend);
+        next.unshift({ name: ch.name || '未命名', characterId: cid, kind: 'character', note: '角色卡联系人', online: true, pinyin: '' } as LineFriend);
       }
       return next;
     });
     window.localStorage.setItem('sane333:bound-friend-sync-v1', 'done');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 补已有角色好友的空备注
+  useEffect(() => {
+    if (window.localStorage.getItem('sane333:friend-note-fix-v1')) return;
+    setFriendsList((prev: LineFriend[]) => {
+      let changed = false;
+      const next = prev.map(f => {
+        if (!f.npcId && f.characterId && !f.note?.trim()) {
+          changed = true;
+          return { ...f, note: '角色卡联系人' };
+        }
+        return f;
+      });
+      return changed ? next : prev;
+    });
+    window.localStorage.setItem('sane333:friend-note-fix-v1', 'done');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -2766,7 +2784,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   if (next.some(f => !f.deleted && !f.npcId && f.characterId === cid)) continue;
                   const ch = importedCharacters.find(c => c.id === cid);
                   if (!ch) continue;
-                  next.unshift({ name: ch.name || '未命名', characterId: cid, kind: 'character', note: '', online: true, pinyin: '' } as LineFriend);
+                  next.unshift({ name: ch.name || '未命名', characterId: cid, kind: 'character', note: '角色卡联系人', online: true, pinyin: '' } as LineFriend);
                 }
                 return next;
               });
