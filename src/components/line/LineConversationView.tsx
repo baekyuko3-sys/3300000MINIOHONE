@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, type MouseEvent, type PointerEvent } from 'react';
+import { useState, useRef, useEffect, useMemo, type MouseEvent, type PointerEvent, type ChangeEvent } from 'react';
 import { readPersistentState, usePersistentState } from '../../store/usePersistentState';
 import { readAndCompressImage, readFileAsDataUrl } from '../../store/imageCompress';
 import type { ImportedCharacter } from '../../data/characterImport';
@@ -80,7 +80,7 @@ import {
   Edit3, Brain, Play, Check, Trash2, Copy, Sparkle, Terminal,
   Phone, Search, CornerUpLeft, Share2, Download, AlertCircle, VolumeX,
   CheckSquare, Square, Pin, PinOff, Bell, BellOff, Bookmark, BookmarkCheck,
-  FileDown, MessageCircle, Heart, Music2, Headphones, MoreHorizontal
+  FileDown, FileUp, MessageCircle, Heart, Music2, Headphones, MoreHorizontal
 } from 'lucide-react';
 
 const SONG_INVITE_COLOR_SETS: Array<[string, string, string]> = [
@@ -1130,6 +1130,7 @@ export function LineConversationView({
     longPressTriggered?: boolean;
   } | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const clearMessageLongPress = () => {
     if (longPressTimerRef.current !== null) {
       window.clearTimeout(longPressTimerRef.current);
@@ -3877,6 +3878,70 @@ export function LineConversationView({
     }
   };
 
+  // 导出聊天记录为 JSON（可导入备份）
+  const handleExportChatJson = () => {
+    try {
+      const payload = {
+        app: 'sane333-line',
+        version: 1,
+        conversationId,
+        contactName,
+        exportedAt: new Date().toISOString(),
+        messages,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `LINE_Chat_${contactName}_${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('聊天记录已导出为 JSON，可导入恢复');
+    } catch (e) {
+      showToast('导出失败，请重试');
+    }
+  };
+
+  // 从 JSON 文件导入聊天记录
+  const handleImportChatFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    // 重置 input，允许重复选择同一文件
+    event.target.value = '';
+    if (!file) return;
+    let parsed: any;
+    try {
+      parsed = JSON.parse(await file.text());
+    } catch {
+      showToast('导入失败：文件不是有效的 JSON');
+      return;
+    }
+    const imported = Array.isArray(parsed?.messages) ? parsed.messages : Array.isArray(parsed) ? parsed : null;
+    if (!imported) {
+      showToast('导入失败：文件中没有 messages 数组');
+      return;
+    }
+    const cleaned = imported
+      .filter((m: any) => m && typeof m === 'object' && m.sender != null)
+      .map((m: any, idx: number) => ({
+        ...m,
+        id: m.id ?? `imported-${Date.now()}-${idx}`,
+        sender: m.sender === 'me' ? 'me' : 'other',
+        time: m.time || m.createdAt || new Date().toLocaleString(),
+      }));
+    if (!cleaned.length) {
+      showToast('导入失败：没有可用的消息');
+      return;
+    }
+    const replace = window.confirm(`导入 ${cleaned.length} 条消息\n\n确定 = 替换当前聊天记录\n取消 = 追加到当前聊天末尾`);
+    if (replace) {
+      setMessages(cleaned);
+    } else {
+      setMessages((prev) => [...prev, ...cleaned]);
+    }
+    setLoadedMessageCount(LINE_PAGE_SIZE);
+    showToast(`已导入 ${cleaned.length} 条消息（${replace ? '替换' : '追加'}）`);
+  };
+
   // 清空聊天记录 (Clear Chat)
   const handleClearChat = () => {
     clearLineConversation(conversationStorageId);
@@ -6400,7 +6465,7 @@ export function LineConversationView({
               >
                 {/* Preset flow · keep the existing compact disclosure UI */}
                 {!isMe && showCotHeader && (
-                  <div className={`my-2 ${cotStyle === 'minimal' ? '' : 'rounded-[11px] border px-2.5 py-1.5'} ${cotStyleClass}`}>
+                  <div className={`my-2 ${isGroup ? 'ml-9' : ''} ${cotStyle === 'minimal' ? '' : 'rounded-[11px] border px-2.5 py-1.5'} ${cotStyleClass}`}>
                     <button
                       type="button"
                       onPointerDown={(event) => event.stopPropagation()}
@@ -10165,17 +10230,46 @@ export function LineConversationView({
                 <span className="text-[10px] text-[#aaa]">查看收藏 ›</span>
               </div>
 
-              {/* 导出当前聊天记录 */}
+              {/* 导出当前聊天记录（JSON，可导入） */}
               <div
-                onClick={handleExportChat}
+                onClick={handleExportChatJson}
                 className="border-t border-[#f2f2f3] pt-2.5 flex items-center justify-between cursor-pointer hover:bg-neutral-50 px-1 py-1 rounded"
               >
                 <div className="flex items-center gap-2 text-[#333]">
                   <FileDown className="w-4 h-4 text-[#555]" />
                   <span>导出聊天记录备份</span>
                 </div>
-                <span className="text-[10px] text-[#ae7e89]">导出 .txt ›</span>
+                <span className="text-[10px] text-[#ae7e89]">导出 .json ›</span>
               </div>
+              {/* 导出纯文本 */}
+              <div
+                onClick={handleExportChat}
+                className="border-t border-[#f2f2f3] pt-2.5 flex items-center justify-between cursor-pointer hover:bg-neutral-50 px-1 py-1 rounded"
+              >
+                <div className="flex items-center gap-2 text-[#333]">
+                  <FileText className="w-4 h-4 text-[#888]" />
+                  <span>导出纯文本记录</span>
+                </div>
+                <span className="text-[10px] text-[#aaa]">导出 .txt ›</span>
+              </div>
+              {/* 导入聊天记录 */}
+              <div
+                onClick={() => importFileInputRef.current?.click()}
+                className="border-t border-[#f2f2f3] pt-2.5 flex items-center justify-between cursor-pointer hover:bg-neutral-50 px-1 py-1 rounded"
+              >
+                <div className="flex items-center gap-2 text-[#333]">
+                  <FileUp className="w-4 h-4 text-[#555]" />
+                  <span>导入聊天记录</span>
+                </div>
+                <span className="text-[10px] text-[#ae7e89]">从 .json ›</span>
+              </div>
+              <input
+                ref={importFileInputRef}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={handleImportChatFile}
+              />
               </div>
             </details>
             
