@@ -25,6 +25,75 @@ interface AppearanceScreenViewProps {
 
 type Section = 'theme' | 'home' | 'widgets' | 'icons' | 'apps' | 'lock' | 'shell' | 'schemes';
 
+// ========== 双层折叠组件 ==========
+// 一级折叠卡片
+function FoldCard({ id, title, subtitle, summary, defaultOpen, openIds, onToggle, children }: {
+  id: string;
+  title: string;
+  subtitle?: string;
+  summary?: string;
+  defaultOpen?: boolean;
+  openIds: Set<string>;
+  onToggle: (id: string) => void;
+  children: React.ReactNode;
+}) {
+  const isOpen = defaultOpen ? !openIds.has(id) : openIds.has(id);
+  return (
+    <div className="rounded-2xl bg-white/65 border border-black/5 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => onToggle(id)}
+        className="w-full p-3 flex items-center gap-2 text-left"
+      >
+        <div className="flex-1 min-w-0">
+          {subtitle && <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">{subtitle}</div>}
+          <div className="mt-1 text-[11px] font-semibold">{title}</div>
+          {summary && <div className="mt-0.5 text-[8px] text-[#777069] truncate">{summary}</div>}
+        </div>
+        <ChevronDown className={`w-4 h-4 text-[#8b8782] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && (
+        <div className="px-3 pb-3 space-y-3 border-t border-black/5 pt-3">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 二级折叠（分组内的子折叠）
+function SubFold({ id, title, summary, defaultOpen, openIds, onToggle, children }: {
+  id: string;
+  title: string;
+  summary?: string;
+  defaultOpen?: boolean;
+  openIds: Set<string>;
+  onToggle: (id: string) => void;
+  children: React.ReactNode;
+}) {
+  const isOpen = defaultOpen ? !openIds.has(id) : openIds.has(id);
+  return (
+    <div className="rounded-xl bg-white/80 border border-black/5 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => onToggle(id)}
+        className="w-full px-3 py-2.5 flex items-center gap-2 text-left"
+      >
+        <div className="flex-1 min-w-0">
+          <div className="text-[10px] font-semibold">{title}</div>
+          {summary && <div className="mt-0.5 text-[8px] text-[#777069] truncate">{summary}</div>}
+        </div>
+        <ChevronDown className={`w-3.5 h-3.5 text-[#8b8782] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && (
+        <div className="px-3 pb-3 space-y-2.5 border-t border-black/5 pt-2.5">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const themeOptions: Array<{ id: ThemeMode; title: string; note: string }> = [
   { id: 'nordic-light', title: '胶片原色', note: '米白 / 纸张 / 安静' },
   { id: 'dark-luxury', title: '暗夜胶片', note: '黑 / 炭灰 / 夜间' },
@@ -33,6 +102,20 @@ const themeOptions: Array<{ id: ThemeMode; title: string; note: string }> = [
 
 export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }: AppearanceScreenViewProps) {
   const [section, setSection] = useState<Section>('theme');
+  const [foldOpenIds, setFoldOpenIds] = useState<Set<string>>(new Set());
+  const toggleFold = (id: string) => {
+    setFoldOpenIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  // 切换 tab 时清空折叠状态
+  const switchSection = (id: Section) => {
+    setSection(id);
+    setFoldOpenIds(new Set());
+  };
   const [appearance, setAppearance] = useState<AppearanceScheme>(() => readAppearance());
   const [schemes, setSchemes] = useState<AppearanceScheme[]>(() => getAppearanceSchemes());
   const [schemeName, setSchemeName] = useState('');
@@ -43,7 +126,6 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
   const [fontDraftSource, setFontDraftSource] = useState<'upload' | 'url'>('url');
   const [selectedApp, setSelectedApp] = useState('line');
   const [appBeauty, setAppBeauty] = useState(() => readAppearance().appBeauty || {});
-  const [islandOpen, setIslandOpen] = useState(false);
   const appItems = [
     ['line', 'LINE / 聊天'], ['moments', 'VROOM / 朋友圈'], ['character-profile', '角色档案'], ['offline-story', '线下剧情'],
     ['world-book', '世界书'], ['gallery', '相册'], ['music', '音乐'], ['memory', 'Memory'], ['npc', 'NPC'],
@@ -155,7 +237,7 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
         </div>
         <div className="grid grid-cols-3 gap-1 mt-3">
           {navItems.map(([id, label, Icon]) => (
-            <button key={id} onClick={() => setSection(id)} className={section === id ? 'py-2 rounded-xl bg-[#292724] text-white text-[8px]' : 'py-2 rounded-xl text-[#777069] text-[8px] bg-white/40'}>
+            <button key={id} onClick={() => switchSection(id)} className={section === id ? 'py-2 rounded-xl bg-[#292724] text-white text-[8px]' : 'py-2 rounded-xl text-[#777069] text-[8px] bg-white/40'}>
               <Icon className="w-3.5 h-3.5 mx-auto mb-0.5" />
               {label}
             </button>
@@ -166,6 +248,15 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
       <main className="flex-1 min-h-0 overflow-y-auto no-scrollbar p-3.5 pb-24 space-y-2.5">
         {section === 'theme' && (
           <>
+            <FoldCard
+              id="theme-presets"
+              title="主题预设"
+              subtitle="THEME PRESETS"
+              summary="不改变首页布局，只改变外观系统"
+              defaultOpen
+              openIds={foldOpenIds}
+              onToggle={toggleFold}
+            >
             <div className="p-3.5 rounded-2xl bg-[#ebe6de] border border-black/5">
               <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">THEME PRESETS</div>
               <div className="mt-1 text-[12px] font-semibold">不改变首页布局，只改变它的外观系统。</div>
@@ -182,30 +273,21 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                 </button>
               ))}
             </div>
-            <div className="rounded-2xl bg-white/65 border border-black/5 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setIslandOpen((value) => !value)}
-                className="w-full p-3 flex items-center gap-2 text-left"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">DYNAMIC ISLAND</div>
-                  <div className="mt-1 text-[11px] font-semibold">灵动岛设置</div>
-                  <div className="mt-0.5 text-[8px] text-[#777069] truncate">
-                    {appearance.showDynamicIsland === false
-                      ? '已隐藏'
-                      : [
-                          appearance.islandCollapsedStyle === 'black' ? '纯黑' : '白玻璃',
-                          appearance.islandShowIdleDot ? '有圆点' : '无圆点',
-                          (appearance.islandIdleLabel || '').trim() || '无文字',
-                        ].join(' · ')}
-                  </div>
-                </div>
-                <ChevronDown className={`w-4 h-4 text-[#8b8782] transition-transform ${islandOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              {islandOpen && (
-                <div className="px-3 pb-3 space-y-3 border-t border-black/5 pt-3">
+            </FoldCard>
+            <FoldCard
+              id="dynamic-island"
+              title="灵动岛设置"
+              subtitle="DYNAMIC ISLAND"
+              summary={appearance.showDynamicIsland === false
+                ? '已隐藏'
+                : [
+                    appearance.islandCollapsedStyle === 'black' ? '纯黑' : '白玻璃',
+                    appearance.islandShowIdleDot ? '有圆点' : '无圆点',
+                    (appearance.islandIdleLabel || '').trim() || '无文字',
+                  ].join(' · ')}
+              openIds={foldOpenIds}
+              onToggle={toggleFold}
+            >
                   <div className="text-[8px] text-[#777069] leading-relaxed">
                     默认像真 iOS：干净胶囊，没有绿点和字。想写字、加圆点、换字体都可以在这里改。真机自带岛时建议整块关掉。
                   </div>
@@ -394,9 +476,15 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                       <span className="text-[8px] text-white/45">顶部干净 · 无灵动岛</span>
                     )}
                   </div>
-                </div>
-              )}
-            </div>
+            </FoldCard>
+            <FoldCard
+              id="theme-bgcolor"
+              title="手机主背景色"
+              subtitle="PHONE COLOR SYSTEM"
+              summary="统一控制手机的大部分页面"
+              openIds={foldOpenIds}
+              onToggle={toggleFold}
+            >
             <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-3">
               <div>
                 <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">PHONE COLOR SYSTEM</div>
@@ -486,6 +574,15 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                 </label>
               </div>
             </div>
+            </FoldCard>
+            <FoldCard
+              id="theme-font"
+              title="字体设置"
+              subtitle="CUSTOM TYPEFACE"
+              summary="上传自定义字体"
+              openIds={foldOpenIds}
+              onToggle={toggleFold}
+            >
             <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-3">
               <div>
                 <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">CUSTOM TYPEFACE</div>
@@ -606,11 +703,21 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                 </div>})}
               </div>
             </div>
+            </FoldCard>
           </>
         )}
 
         {section === 'home' && (
           <>
+            <FoldCard
+              id="home-layout"
+              title="桌面布局"
+              subtitle="HOME LAYOUT"
+              summary="手机名称、问候语、副标题"
+              defaultOpen
+              openIds={foldOpenIds}
+              onToggle={toggleFold}
+            >
             <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2.5">
               <label className="text-[9px] block">手机名称
                 <input value={appearance.appTitle} onChange={event => update('appTitle', event.target.value)} placeholder="Sane333" className="mt-1 w-full p-2.5 rounded-xl bg-white/80 text-[10px] outline-none" />
@@ -622,11 +729,21 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                 <textarea value={appearance.subtitle} onChange={event => update('subtitle', event.target.value)} className="mt-1 w-full h-20 p-2.5 rounded-xl bg-white/80 text-[9px] outline-none resize-none" />
               </label>
             </div>
+            </FoldCard>
           </>
         )}
 
         {section === 'widgets' && (
           <div className="space-y-3">
+            <FoldCard
+              id="widgets-design"
+              title="小组件设计"
+              subtitle="WIDGET DESIGN"
+              summary="为每个小组件选择视觉风格"
+              defaultOpen
+              openIds={foldOpenIds}
+              onToggle={toggleFold}
+            >
             <div className="p-3 rounded-2xl bg-[#ebe6de] border border-black/5">
               <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">WIDGET DESIGN</div>
               <div className="mt-1 text-[11px] font-semibold">选择小组件设计</div>
@@ -634,6 +751,12 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
             </div>
 
             {/* 天气小组件样式 */}
+            <SubFold
+              id="widget-weather"
+              title="天气小组件"
+              openIds={foldOpenIds}
+              onToggle={toggleFold}
+            >
             <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
               <div className="text-[10px] font-semibold flex items-center gap-1.5">
                 <Sun className="w-3.5 h-3.5 text-[#8b8782]" />
@@ -656,8 +779,15 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                 ))}
               </div>
             </div>
+            </SubFold>
 
             {/* 便签小组件样式 */}
+            <SubFold
+              id="widget-note"
+              title="便签小组件"
+              openIds={foldOpenIds}
+              onToggle={toggleFold}
+            >
             <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
               <div className="text-[10px] font-semibold flex items-center gap-1.5">
                 <StickyNote className="w-3.5 h-3.5 text-[#8b8782]" />
@@ -680,8 +810,15 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                 ))}
               </div>
             </div>
+            </SubFold>
 
             {/* 音乐小组件样式 */}
+            <SubFold
+              id="widget-music"
+              title="音乐小组件"
+              openIds={foldOpenIds}
+              onToggle={toggleFold}
+            >
             <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
               <div className="text-[10px] font-semibold flex items-center gap-1.5">
                 <Music className="w-3.5 h-3.5 text-[#8b8782]" />
@@ -704,8 +841,15 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                 ))}
               </div>
             </div>
+            </SubFold>
 
             {/* 日期小组件样式 */}
+            <SubFold
+              id="widget-date"
+              title="日期小组件"
+              openIds={foldOpenIds}
+              onToggle={toggleFold}
+            >
             <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
               <div className="text-[10px] font-semibold flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-[#8b8782]" />
@@ -729,11 +873,22 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                 ))}
               </div>
             </div>
+            </SubFold>
+            </FoldCard>
           </div>
         )}
 
         {section === 'icons' && (
           <>
+            <FoldCard
+              id="icons-custom"
+              title="自定义应用图标"
+              subtitle="APP ICONS"
+              summary="填图片 URL 替换图标"
+              defaultOpen
+              openIds={foldOpenIds}
+              onToggle={toggleFold}
+            >
             <div className="p-3 rounded-2xl bg-[#ebe6de] border border-black/5">
               <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">APP ICONS</div>
               <div className="mt-1 text-[11px] font-semibold">自定义应用图标</div>
@@ -784,11 +939,21 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                 </div>
               ))}
             </div>
+            </FoldCard>
           </>
         )}
 
         {section === 'apps' && (
           <>
+            <FoldCard
+              id="apps-beauty"
+              title="应用美化"
+              subtitle="APP BEAUTY"
+              summary="每个应用单独的美化设置"
+              defaultOpen
+              openIds={foldOpenIds}
+              onToggle={toggleFold}
+            >
             <div className="p-3 rounded-2xl bg-[#ebe6de] border border-black/5">
               <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">APP BEAUTY · SELECT ANY APP</div>
               <div className="mt-1 text-[12px] font-semibold">选择任意应用，单独保存它的美化</div>
@@ -836,27 +1001,61 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                 <button onClick={()=>{ const next={...appBeauty}; delete next[selectedApp]; setAppBeauty(next); update('appBeauty',next); notify('该应用美化已恢复默认'); }} className="w-full py-2.5 rounded-xl bg-[#f5f5f5] text-[#777] text-xs">恢复这个应用默认</button>
               </div>;
             })()}
+            </FoldCard>
           </>
         )}
 
         {section === 'lock' && (
+          <FoldCard
+            id="lock-screen"
+            title="锁屏设置"
+            subtitle="LOCK SCREEN"
+            summary="锁屏外观与解锁方式"
+            defaultOpen
+            openIds={foldOpenIds}
+            onToggle={toggleFold}
+          >
           <LockScreenSection
             appearance={appearance}
             update={update}
             notify={notify}
+            foldOpenIds={foldOpenIds}
+            toggleFold={toggleFold}
           />
+          </FoldCard>
         )}
 
         {section === 'shell' && (
+          <FoldCard
+            id="phone-shell"
+            title="手机外形"
+            subtitle="PHONE SHELL"
+            summary="外壳、外框、状态栏"
+            defaultOpen
+            openIds={foldOpenIds}
+            onToggle={toggleFold}
+          >
           <PhoneShellSection
             appearance={appearance}
             update={update}
             notify={notify}
+            foldOpenIds={foldOpenIds}
+            toggleFold={toggleFold}
           />
+          </FoldCard>
         )}
 
         {section === 'schemes' && (
           <>
+            <FoldCard
+              id="schemes-list"
+              title="外观方案"
+              subtitle="APPEARANCE SCHEMES"
+              summary="保存整套外观，一键切换"
+              defaultOpen
+              openIds={foldOpenIds}
+              onToggle={toggleFold}
+            >
             <div className="p-3 rounded-2xl bg-[#ebe6de] border border-black/5">
               <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">APPEARANCE SCHEMES</div>
               <div className="mt-1 text-[9px] text-[#777069]">把当前整套外观保存下来，之后可以一键切换。</div>
@@ -877,6 +1076,7 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                 </div>
               ))}
             </div>
+            </FoldCard>
           </>
         )}
       </main>
@@ -980,10 +1180,12 @@ function LockWallpaperBlock({ appearance, update, notify }: {
   );
 }
 
-function LockScreenSection({ appearance, update, notify }: {
+function LockScreenSection({ appearance, update, notify, foldOpenIds, toggleFold }: {
   appearance: ReturnType<typeof readAppearance>;
   update: <K extends keyof ReturnType<typeof readAppearance>>(key: K, value: ReturnType<typeof readAppearance>[K]) => void;
   notify: (text: string) => void;
+  foldOpenIds: Set<string>;
+  toggleFold: (id: string) => void;
 }) {
   const [passcodeDraft, setPasscodeDraft] = useState(appearance.lockPasscode || '');
 
@@ -1031,6 +1233,13 @@ function LockScreenSection({ appearance, update, notify }: {
       </div>
 
       {/* 锁屏风格 */}
+      <SubFold
+        id="lock-style"
+        title="锁屏风格"
+        summary="时间样式"
+        openIds={foldOpenIds}
+        onToggle={toggleFold}
+      >
       <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
         <div className="text-[8px] font-mono tracking-[1.5px] text-[#8b8782]">时间样式</div>
         <div className="grid grid-cols-2 gap-1.5">
@@ -1052,10 +1261,26 @@ function LockScreenSection({ appearance, update, notify }: {
         </div>
       </div>
 
+      </SubFold>
+
       {/* 锁屏壁纸 */}
+      <SubFold
+        id="lock-wallpaper"
+        title="锁屏壁纸"
+        openIds={foldOpenIds}
+        onToggle={toggleFold}
+      >
       <LockWallpaperBlock appearance={appearance} update={update} notify={notify} />
+      </SubFold>
 
       {/* 解锁方式 */}
+      <SubFold
+        id="lock-unlock"
+        title="解锁方式"
+        summary="上滑 / 密码 / 指纹"
+        openIds={foldOpenIds}
+        onToggle={toggleFold}
+      >
       <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
         <div className="text-[8px] font-mono tracking-[1.5px] text-[#8b8782]">解锁方式</div>
         <div className="space-y-1.5">
@@ -1092,7 +1317,15 @@ function LockScreenSection({ appearance, update, notify }: {
         <div className="text-[8px] leading-relaxed text-[#777069]">优先级：密码 &gt; 指纹 &gt; 上滑。指纹仅在未设置密码时可用。</div>
       </div>
 
+      </SubFold>
+
       {/* 密码设置 */}
+      <SubFold
+        id="lock-passcode"
+        title="锁屏密码"
+        openIds={foldOpenIds}
+        onToggle={toggleFold}
+      >
       <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
         <div className="text-[8px] font-mono tracking-[1.5px] text-[#8b8782]">锁屏密码</div>
         <input
@@ -1110,16 +1343,19 @@ function LockScreenSection({ appearance, update, notify }: {
         </div>
         <div className="text-[8px] leading-relaxed text-[#777069]">密码以明文存于浏览器本地（仅用于演示）。</div>
       </div>
+      </SubFold>
     </>
   );
 }
 
 // ========== 手机外形 Section ==========
 
-function PhoneShellSection({ appearance, update, notify }: {
+function PhoneShellSection({ appearance, update, notify, foldOpenIds, toggleFold }: {
   appearance: ReturnType<typeof readAppearance>;
   update: <K extends keyof ReturnType<typeof readAppearance>>(key: K, value: ReturnType<typeof readAppearance>[K]) => void;
   notify: (text: string) => void;
+  foldOpenIds: Set<string>;
+  toggleFold: (id: string) => void;
 }) {
   const shells: Array<{ key: 'modern' | 'classic-round' | 'classic-square'; label: string; desc: string; preview: React.ReactNode }> = [
     {
@@ -1163,6 +1399,13 @@ function PhoneShellSection({ appearance, update, notify }: {
         <div className="mt-1 text-[9px] text-[#777069] leading-relaxed">切换手机外观：全面屏、经典圆形 Home、经典方形 Home。Home 键点击会直接返回主屏幕。</div>
       </div>
 
+      <SubFold
+        id="shell-select"
+        title="外壳选择"
+        summary="全面屏 / 圆形 Home / 方形 Home"
+        openIds={foldOpenIds}
+        onToggle={toggleFold}
+      >
       <div className="grid grid-cols-3 gap-2">
         {shells.map(shell => {
           const active = appearance.phoneShell === shell.key;
@@ -1180,7 +1423,16 @@ function PhoneShellSection({ appearance, update, notify }: {
         })}
       </div>
 
+      </SubFold>
+
       {/* 手机外框开关 */}
+      <SubFold
+        id="shell-frame"
+        title="手机外框"
+        summary="显示 / 隐藏"
+        openIds={foldOpenIds}
+        onToggle={toggleFold}
+      >
       <div className="p-3 rounded-2xl bg-white/65 border border-black/5">
         <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">PHONE FRAME</div>
         <div className="mt-1 text-[11px] font-semibold">手机外框</div>
@@ -1213,7 +1465,16 @@ function PhoneShellSection({ appearance, update, notify }: {
         </div>
       </div>
 
+      </SubFold>
+
       {/* 顶部状态栏开关 */}
+      <SubFold
+        id="shell-statusbar"
+        title="顶部状态栏"
+        summary="显示 / 隐藏"
+        openIds={foldOpenIds}
+        onToggle={toggleFold}
+      >
       <div className="p-3 rounded-2xl bg-white/65 border border-black/5">
         <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">STATUS BAR</div>
         <div className="mt-1 text-[11px] font-semibold">顶部状态栏</div>
@@ -1245,6 +1506,7 @@ function PhoneShellSection({ appearance, update, notify }: {
           </button>
         </div>
       </div>
+      </SubFold>
 
       <div className="p-3 rounded-2xl bg-white/65 border border-black/5">
         <div className="text-[8px] leading-relaxed text-[#777069]">
