@@ -1533,12 +1533,12 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       {/* LINE 外观三件套：主题 / 聊天背景 / 字号 —— 作用于 .custom-chat-view（聊天会话区） */}
       <style>{`
         /* —— 暗夜主题 —— */
-        [data-line-theme="dark"] .custom-chat-view{background:#17171c !important;color:#e9e9ec !important;}
-        [data-line-theme="dark"] .custom-chat-view .bubble-me{background:#4a4a55 !important;color:#f5f0e8 !important;}
-        [data-line-theme="dark"] .custom-chat-view .bubble-other{background:#26262e !important;color:#e9e9ec !important;}
-        [data-line-theme="dark"] .custom-chat-view .h-\\[60px\\]{background:rgba(23,23,28,.96) !important;border-color:#2e2e36 !important;}
+        [data-line-theme="dark"] .custom-chat-view{background:#000 !important;color:#fff !important;}
+        [data-line-theme="dark"] .custom-chat-view .bubble-me{background:#333338 !important;color:#fff !important;}
+        [data-line-theme="dark"] .custom-chat-view .bubble-other{background:#1c1c1e !important;color:#fff !important;}
+        [data-line-theme="dark"] .custom-chat-view .h-\\[60px\\]{background:rgba(0,0,0,.96) !important;border-color:#2e2e36 !important;}
         [data-line-theme="dark"] .custom-chat-view .h-\\[60px\\] .text-\\[\\#27272a\\]{color:#f0f0f2 !important;}
-        [data-line-theme="dark"] .custom-chat-view div:not(.custom-chat-view):has([data-line-composer]){background:#1e1e24 !important;border-color:#2e2e36 !important;}
+        [data-line-theme="dark"] .custom-chat-view div:not(.custom-chat-view):has([data-line-composer]){background:#000 !important;border-color:#2e2e36 !important;}
         [data-line-theme="dark"] .custom-chat-view [data-line-composer]{color:#e9e9ec !important;}
         [data-line-theme="dark"] .custom-chat-view [data-line-composer]::placeholder{color:#6a6a72 !important;}
         /* —— 米白金主题 —— */
@@ -1656,12 +1656,12 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       {/* LINE 外观三件套：主题 / 聊天背景 / 字号 —— 作用于 .custom-chat-view（聊天会话区） */}
       <style>{`
         /* —— 暗夜主题 —— */
-        [data-line-theme="dark"] .custom-chat-view{background:#17171c !important;color:#e9e9ec !important;}
-        [data-line-theme="dark"] .custom-chat-view .bubble-me{background:#4a4a55 !important;color:#f5f0e8 !important;}
-        [data-line-theme="dark"] .custom-chat-view .bubble-other{background:#26262e !important;color:#e9e9ec !important;}
-        [data-line-theme="dark"] .custom-chat-view .h-\\[60px\\]{background:rgba(23,23,28,.96) !important;border-color:#2e2e36 !important;}
+        [data-line-theme="dark"] .custom-chat-view{background:#000 !important;color:#fff !important;}
+        [data-line-theme="dark"] .custom-chat-view .bubble-me{background:#333338 !important;color:#fff !important;}
+        [data-line-theme="dark"] .custom-chat-view .bubble-other{background:#1c1c1e !important;color:#fff !important;}
+        [data-line-theme="dark"] .custom-chat-view .h-\\[60px\\]{background:rgba(0,0,0,.96) !important;border-color:#2e2e36 !important;}
         [data-line-theme="dark"] .custom-chat-view .h-\\[60px\\] .text-\\[\\#27272a\\]{color:#f0f0f2 !important;}
-        [data-line-theme="dark"] .custom-chat-view div:not(.custom-chat-view):has([data-line-composer]){background:#1e1e24 !important;border-color:#2e2e36 !important;}
+        [data-line-theme="dark"] .custom-chat-view div:not(.custom-chat-view):has([data-line-composer]){background:#000 !important;border-color:#2e2e36 !important;}
         [data-line-theme="dark"] .custom-chat-view [data-line-composer]{color:#e9e9ec !important;}
         [data-line-theme="dark"] .custom-chat-view [data-line-composer]::placeholder{color:#6a6a72 !important;}
         /* —— 米白金主题 —— */
