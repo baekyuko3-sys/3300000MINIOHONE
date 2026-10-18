@@ -1794,6 +1794,7 @@ export function LineConversationView({
   const [statusBarHistoryIndex, setStatusBarHistoryIndex] = useState(Math.max(0, getStatusBarHistory(conversationStorageId).length - 1));
   const [statusBarRandomMode, setStatusBarRandomMode] = useState(() => getStatusBarRandomMode(conversationStorageId));
   const [statusBarEnabled, setStatusBarEnabled] = usePersistentState<boolean>(`line:status-bar-enabled:${conversationStorageId}`, true);
+  const [statusBarError, setStatusBarError] = useState<string>('');
   const [htmlInterludeEnabled, setHtmlInterludeEnabled] = usePersistentState<boolean>(`line:html-interlude-enabled:${conversationStorageId}`, false);
   const [htmlInterludeChance, setHtmlInterludeChance] = usePersistentState<number>(`line:html-interlude-chance:${conversationStorageId}`, 25);
   const [htmlInterludeTemplate, setHtmlInterludeTemplate] = usePersistentState<string>(
@@ -2044,6 +2045,27 @@ export function LineConversationView({
 
     if (!statusBarKnownMessageIdsRef.current) {
       statusBarKnownMessageIdsRef.current = new Set(delivered.map(message => String(message.id)));
+      // 补生成：打开已有聊天记录的会话时，若没有任何状态快照，
+      // 为最后一条已送达的 AI 消息补生成一次（仅当它携带了 statusBarRaw）。
+      if (statusBarEnabled && !isGroup && delivered.length && !getStatusBarHistory(conversationStorageId).length) {
+        const lastDelivered = delivered[delivered.length - 1] as any;
+        const backfillRaw = String(lastDelivered.statusBarRaw || lastDelivered.metadata?.statusBarRaw || '').trim();
+        if (backfillRaw) {
+          const backfillTurnId = String(lastDelivered.turnId || lastDelivered.id);
+          const backfillPreset = resolveStatusBarPresetForTurn();
+          statusBarProcessingRef.current.add(backfillTurnId);
+          statusBarPresetByTurnRef.current.set(backfillTurnId, backfillPreset);
+          void createStatusBarSnapshot(
+            String(lastDelivered.text || '').trim(),
+            lastDelivered.id,
+            backfillRaw,
+            backfillPreset,
+          ).finally(() => {
+            statusBarProcessingRef.current.delete(backfillTurnId);
+            statusBarPresetByTurnRef.current.delete(backfillTurnId);
+          });
+        }
+      }
       return;
     }
 
@@ -2201,10 +2223,19 @@ export function LineConversationView({
           .filter(item => sourceMessageIds.has(String(item.sourceMessageId)))
           .forEach(item => deleteStatusBarSnapshot(conversationStorageId, item.id));
       }
+      // 去重：新快照内容与历史最后一条相同时跳过，避免无意义堆积。
+      const existingHistory = getStatusBarHistory(conversationStorageId);
+      const lastExisting = existingHistory[existingHistory.length - 1];
+      if (lastExisting && String(lastExisting.sourceText || '').trim() === String(snapshot.sourceText || '').trim() && String(snapshot.sourceText || '').trim()) {
+        debugEvent('info', 'snapshot:skipped-duplicate', '状态栏内容与上一条相同，跳过保存', { snapshotId: snapshot.id });
+        setStatusBarError('');
+        return;
+      }
       appendStatusBarSnapshot(conversationStorageId, snapshot);
       const next = getStatusBarHistory(conversationStorageId);
       setStatusBarHistory(next);
       setStatusBarHistoryIndex(Math.max(0, next.length - 1));
+      setStatusBarError('');
 
       debugEvent('success', 'snapshot:saved', '状态栏快照已写入 History', {
         historyCount: next.length,
@@ -2213,6 +2244,7 @@ export function LineConversationView({
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       debugEvent('error', 'snapshot:failed', message, { replyText: String(replyText || '').slice(0, 3000) });
+      setStatusBarError(message);
       showToast(`状态栏生成失败：${message.slice(0, 55)}`);
     }
   };
@@ -5426,20 +5458,6 @@ export function LineConversationView({
     char_avatar: importedCharacter?.avatar || characterProfileAvatar || '',
     user_avatar: activePersona?.avatar || '',
   };
-  const latestCharacterMessageText = [...messages]
-    .reverse()
-    .find(message => message.sender === 'other' && !message.isRecalled)?.text || '';
-  const renderStatusHtml = () => currentStatusSnapshot?.html || renderStatusBarHtml(
-    activeStatusBarPreset,
-    latestCharacterMessageText,
-    {
-      location: statusData.location,
-      time: statusData.time,
-      activity: statusData.activity,
-      mood: statusData.mood,
-      favor: statusData.favor,
-    },
-  );
 
   // 背景
   const wallpaperClass =
@@ -8882,8 +8900,11 @@ export function LineConversationView({
                   dangerouslySetInnerHTML={{ __html: resolveStatusBarTokens(currentStatusSnapshotHtml, statusTokens) }}
                 />
               ) : (
-                <div className="py-12 text-center text-[10px] text-[#aaa]">
-                  还没有成功匹配的状态栏
+                <div className="py-12 text-center">
+                  <div className="text-[10px] text-[#aaa]">还没有成功匹配的状态栏</div>
+                  {statusBarError ? (
+                    <div className="mt-2 px-6 text-[9px] leading-relaxed text-[#c08080] break-words">原因：{statusBarError}</div>
+                  ) : null}
                 </div>
               )}
             </div>
