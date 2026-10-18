@@ -1078,6 +1078,12 @@ export function LineConversationView({
   const [showCallHistory, setShowCallHistory] = useState(false);
   const [selectedCallRecord, setSelectedCallRecord] = useState<any>(null);
   const [callAiSpeaking, setCallAiSpeaking] = useState(false);
+
+  // 切换聊天时关闭通话记录面板，避免残留弹出
+  useEffect(() => {
+    setShowCallHistory(false);
+    setSelectedCallRecord(null);
+  }, [conversationStorageId]);
   const [imageGenPresetId, setImageGenPresetId] = useState<string>('');
   const [imageGenPrompt, setImageGenPrompt] = useState('');
   const [imageGenLoading, setImageGenLoading] = useState(false);
