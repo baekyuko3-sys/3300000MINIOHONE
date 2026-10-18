@@ -5752,7 +5752,7 @@ export function LineConversationView({
             loadOlderMessages();
           }
         }}
-        className="h-full w-full overflow-y-auto overscroll-y-auto touch-pan-y px-3.5 py-4 space-y-1.5 relative"
+        className="h-full w-full overflow-y-auto overscroll-y-auto touch-pan-y px-3.5 py-4 space-y-1 relative"
         style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'thin', scrollbarColor: '#d8cbd0 transparent' }}
       >
         {showUnreadJump && unreadAnchorId !== null && (
@@ -6394,7 +6394,7 @@ export function LineConversationView({
               >
                 {/* Preset flow · keep the existing compact disclosure UI */}
                 {!isMe && showCotHeader && (
-                  <div className={`mb-1.5 ${cotStyle === 'minimal' ? '' : 'rounded-[11px] border px-2.5 py-1.5'} ${cotStyleClass}`}>
+                  <div className={`my-2 ${cotStyle === 'minimal' ? '' : 'rounded-[11px] border px-2.5 py-1.5'} ${cotStyleClass}`}>
                     <button
                       type="button"
                       onPointerDown={(event) => event.stopPropagation()}
@@ -6422,7 +6422,7 @@ export function LineConversationView({
                 )}
 
                 {!isGroup && lineActionDescriptionsEnabled && msg.actionDescription && !msg.isRecalled && (
-                  <div className="w-full flex items-center justify-center my-3 animate-in fade-in">
+                  <div className="w-full flex items-center justify-center my-[18px] animate-in fade-in">
                     <div className="relative flex w-full min-w-0 items-center justify-center gap-2 text-center">
                       <span className="h-px w-4 shrink-0 bg-[#eee8eb]" />
                       <span className="min-w-0 max-w-[calc(100%-3rem)] overflow-hidden text-ellipsis whitespace-nowrap text-[10.5px] leading-[1.6] italic tracking-[0.01em] text-[#9b9599]">
