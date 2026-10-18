@@ -6259,10 +6259,9 @@ export function LineConversationView({
             <div key={msg.id} className="contents">
               {showUwuTimeSeparator && (
                 <div className="flex flex-col items-center justify-center py-3">
-                  <span className="text-[9px] text-[#b5b5b8]">Message</span>
                   <span
                     title={currentDate ? formatLineMessageExactDateTime(msg, chatTimezone, lineTimeDisplayLocale) : undefined}
-                    className="mt-0.5 text-[10px] text-[#8a8a8e]"
+                    className="text-[10px] text-[#8a8a8e]"
                   >
                     {uwuTimeLabel}
                   </span>
