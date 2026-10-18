@@ -19,7 +19,7 @@ const KEY = 'line:cot-presets';
 export const DEFAULT_COT_PRESETS: CotPreset[] = [
   {
     id: 'cot-1',
-    title: 'SANE333 角色决策链',
+    title: '角色决策链',
     displayTitle: 'COT',
     displayStyle: 'minimal',
     tag: '<cot>...</cot>',
@@ -77,7 +77,7 @@ export function getCotPresets(): CotPreset[] {
     if (!Array.isArray(parsed)) return DEFAULT_COT_PRESETS;
     const defaultsById = new Map(DEFAULT_COT_PRESETS.map(item => [item.id, item]));
     const migrated = parsed.map((item: CotPreset) => {
-      const isLegacyDefault = ['深度心理侧写与情感博弈预设', '深度心理侧写与情感博弈'].includes(item?.title);
+      const isLegacyDefault = ['深度心理侧写与情感博弈预设', '深度心理侧写与情感博弈', 'SANE333 角色决策链'].includes(item?.title);
       const isMalformedSane333 = item?.id === 'cot-1'
         && typeof item?.template === 'string'
         && item.template.includes('<cot>')
