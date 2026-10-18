@@ -585,8 +585,47 @@ function formatLineMessageDayLabel(value: Date, timezone: string, displayLocale:
   }
 }
 
-function stripGroupSpeakerPrefix(text: string, characterName: string): string {
-  let value = String(text || '').trim();
+// uwu 风格时间格式：M月d日 HH:mm（如 10月14日 15:36），24小时制
+function formatUwuDateTime(value: Date, timezone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: timezone, month: 'numeric', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(value);
+    const part = (type: string) => parts.find(item => item.type === type)?.value || '';
+    return `${part('month')}月${part('day')}日 ${part('hour')}:${part('minute')}`;
+  } catch {
+    return `${value.getMonth() + 1}月${value.getDate()}日 ${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`;
+  }
+}
+
+// uwu 风格时间格式：HH:mm（如 15:36），24小时制
+function formatUwuClock(value: Date, timezone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(value);
+    const part = (type: string) => parts.find(item => item.type === type)?.value || '';
+    return `${part('hour')}:${part('minute')}`;
+  } catch {
+    return `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`;
+  }
+}
+
+// uwu 风格间隔描述：距离上次聊天已经过去 X天X小时 / X小时 / X分钟
+function formatUwuGapDuration(gapMinutes: number): string {
+  const days = Math.floor(gapMinutes / (24 * 60));
+  const hours = Math.floor((gapMinutes % (24 * 60)) / 60);
+  const minutes = gapMinutes % 60;
+  let duration = '';
+  if (days > 0) duration += `${days}天`;
+  if (hours > 0) duration += `${hours}小时`;
+  if (!duration && minutes > 0) duration = `${minutes}分钟`;
+  if (!duration) duration = '刚刚';
+  return `距离上次聊天已经过去 ${duration}`;
+}
+
+function stripGroupSpeakerPrefix(text: string, characterName: string): string {  let value = String(text || '').trim();
   if (!value) return '';
   const prefixes = [characterName, '[' + characterName + ']', '【' + characterName + '】'];
   const matchedPrefix = prefixes.find(prefix => value.startsWith(prefix + ':') || value.startsWith(prefix + '：'));
@@ -5776,17 +5815,25 @@ export function LineConversationView({
           const showPeriodSeparator = Boolean(currentDateIsValid && previousDateIsValid
             && currentDay === previousDay
             && getLineMessageDayPeriod(currentDate as Date, chatTimezone) !== getLineMessageDayPeriod(previousDate as Date, chatTimezone));
-          // 10分钟以上的时间差：显示"——x分钟后——"（同一天内才显示，跨天用日期分割线）。
-          const gapMinutes = currentDateIsValid && previousDateIsValid && currentDay === previousDay
+          // uwu 风格时间分隔：
+          // - 每天第一条消息：Message + M月d日 HH:mm
+          // - 同一天内、间隔超10分钟：Message + HH:mm
+          // - 间隔超24小时：Message + 距离上次聊天已经过去 X天X小时
+          const gapMinutesTotal = currentDateIsValid && previousDateIsValid
             ? Math.floor(((currentDate as Date).getTime() - (previousDate as Date).getTime()) / 60000)
             : 0;
-          const showGapHint = gapMinutes >= 10 && !showDaySeparator;
-          const gapLabel = gapMinutes >= 60
-            ? `—— ${Math.floor(gapMinutes / 60)}小时${gapMinutes % 60 ? gapMinutes % 60 + '分钟' : ''}后 ——`
-            : `—— ${gapMinutes}分钟后 ——`;
-          const dayLabel = currentDateIsValid
-            ? formatLineMessageDayLabel(currentDate as Date, chatTimezone, lineTimeDisplayLocale)
-            : '';
+          const gapMinutes = currentDay === previousDay ? gapMinutesTotal : 0;
+          let uwuTimeLabel: string | null = null;
+          if (showDaySeparator && currentDateIsValid) {
+            if (previousDateIsValid && gapMinutesTotal >= 24 * 60) {
+              uwuTimeLabel = formatUwuGapDuration(gapMinutesTotal);
+            } else {
+              uwuTimeLabel = formatUwuDateTime(currentDate as Date, chatTimezone);
+            }
+          } else if (gapMinutes >= 10 && currentDateIsValid) {
+            uwuTimeLabel = formatUwuClock(currentDate as Date, chatTimezone);
+          }
+          const showUwuTimeSeparator = uwuTimeLabel !== null;
 
           if (msg.type === 'html-interlude') {
             const safeHtml = sanitizeHtmlFragment(String(msg.htmlContent || ''));
@@ -6210,13 +6257,14 @@ export function LineConversationView({
 
           return (
             <div key={msg.id} className="contents">
-              {showDaySeparator && (
-                <div className="flex justify-center py-1.5">
+              {showUwuTimeSeparator && (
+                <div className="flex flex-col items-center justify-center py-3">
+                  <span className="text-[9px] text-[#b5b5b8]">Message</span>
                   <span
                     title={currentDate ? formatLineMessageExactDateTime(msg, chatTimezone, lineTimeDisplayLocale) : undefined}
-                    className="px-3 py-1 rounded-full bg-[#f5f5f6] text-[9px] text-[#a2a2a6]"
+                    className="mt-0.5 text-[10px] text-[#8a8a8e]"
                   >
-                    {dayLabel}
+                    {uwuTimeLabel}
                   </span>
                 </div>
               )}
@@ -6228,11 +6276,6 @@ export function LineConversationView({
                   >
                     {formatLineMessageClock(msg, chatTimezone, lineTimeDisplayLocale)}
                   </span>
-                </div>
-              )}
-              {showGapHint && (
-                <div className="flex justify-center py-1">
-                  <span className="text-[10px] text-[#c4c4c8]">{gapLabel}</span>
                 </div>
               )}
               {unreadAnchorId !== null && String(msg.id) === String(unreadAnchorId) && showUnreadJump && (
@@ -6380,7 +6423,7 @@ export function LineConversationView({
                 )}
 
                 {!isGroup && lineActionDescriptionsEnabled && msg.actionDescription && !msg.isRecalled && (
-                  <div className="w-full flex items-center justify-center my-2.5 animate-in fade-in">
+                  <div className="w-full flex items-center justify-center my-3 animate-in fade-in">
                     <div className="relative flex w-full min-w-0 items-center justify-center gap-2 text-center">
                       <span className="h-px w-4 shrink-0 bg-[#eee8eb]" />
                       <span className="min-w-0 max-w-[calc(100%-3rem)] overflow-hidden text-ellipsis whitespace-nowrap text-[10.5px] leading-[1.6] italic tracking-[0.01em] text-[#9b9599]">
