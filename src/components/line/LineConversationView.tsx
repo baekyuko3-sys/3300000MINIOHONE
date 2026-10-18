@@ -7838,14 +7838,13 @@ export function LineConversationView({
                 type="button"
                 aria-label="发送并请求回复"
                 title="发送并让角色回复"
-                onPointerUp={(e) => {
-                  e.preventDefault();
+                disabled={!inputText.trim()}
+                onClick={(e) => {
                   e.stopPropagation();
                   if (!inputText.trim()) return;
                   void handleSend(true);
                 }}
-                onClick={(e) => e.stopPropagation()}
-                className="relative z-30 pointer-events-auto w-[34px] h-[38px] flex items-center justify-center text-[#c98f9d] hover:text-[#ae7e89] cursor-pointer active:scale-95 transition-transform"
+                className={`relative z-30 pointer-events-auto w-[34px] h-[38px] flex items-center justify-center cursor-pointer active:scale-95 transition-all ${inputText.trim() ? 'text-[#ae7e89]' : 'text-[#d8d8da] opacity-50'}`}
               >
                 <Send className="w-5 h-5 stroke-[1.65] pointer-events-none" />
               </button>
