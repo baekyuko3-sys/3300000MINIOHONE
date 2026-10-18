@@ -8080,6 +8080,10 @@ export function LineConversationView({
                     <div className="w-12 h-12 rounded-[14px] bg-[#f4f1ed] flex items-center justify-center text-[#6f6963] hover:bg-[#ebe7df]"><Terminal className="w-5 h-5" /></div>
                     <span>AI后台</span>
                   </button>
+                  <button onClick={() => { setShowPlusSheet(false); setPlusSheetPage(0); setShowCallHistory(true); }} className="flex flex-col items-center gap-1.5 cursor-pointer">
+                    <div className="w-12 h-12 rounded-[14px] bg-[#f7f7f8] flex items-center justify-center text-[#666] hover:bg-[#f0f0f2]"><Phone className="w-5 h-5" /></div>
+                    <span>通话记录</span>
+                  </button>
                   {isGroup ? (
                     <button onClick={() => { setShowPlusSheet(false); setMoneySheetType('red-packet'); }} className="flex flex-col items-center gap-1.5 cursor-pointer">
                       <div className="w-12 h-12 rounded-[14px] bg-[#fff1f1] text-[#c96e7d] flex items-center justify-center hover:opacity-80">
@@ -9652,18 +9656,6 @@ export function LineConversationView({
           </div>
 
           <div className="p-4 space-y-4 flex-1 overflow-y-auto text-xs pb-10">
-
-            {/* 通话记录入口 */}
-            <button
-              onClick={() => setShowCallHistory(true)}
-              className="w-full bg-white rounded-[14px] border border-[#f0f0f1] p-3.5 flex items-center justify-between"
-            >
-              <div className="text-left">
-                <div className="font-medium text-[#333]">通话记录</div>
-                <div className="text-[10px] text-[#999] mt-0.5">查看语音/视频通话历史与字幕回放</div>
-              </div>
-              <span className="text-[#bbb] text-lg">›</span>
-            </button>
 
             {/* 语音预设绑定 */}
             {!isGroup && (npcForChat || boundImportedCharacter) && (
