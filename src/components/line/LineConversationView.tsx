@@ -6408,7 +6408,6 @@ export function LineConversationView({
                       }
                       className="flex items-center gap-1.5 text-[10px] leading-none cursor-pointer hover:opacity-70 transition-opacity"
                     >
-                      <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full ${cotStyle === 'minimal' ? 'bg-[#f3f1f2]' : 'bg-white'} text-[8px] font-semibold`}>P</span>
                       <span className="font-medium">{cotLabel}</span>
                       <span className="text-[9px] opacity-60">{msg.showThinking ? '⌃' : '›'}</span>
                     </button>
