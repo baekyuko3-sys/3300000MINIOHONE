@@ -83,11 +83,6 @@ export function PhoneSimulator({
     minute: '2-digit',
     hour12: false,
   });
-  const statusBarDate = statusBarNow.toLocaleDateString('zh-CN', {
-    month: 'numeric',
-    day: 'numeric',
-    weekday: 'short',
-  });
 
   const navigateTo = (next: ScreenType) => {
     if (next === currentScreen) return;
@@ -118,6 +113,9 @@ export function PhoneSimulator({
     navigateTo(next);
   };
   const isDark = themeMode === 'dark-luxury';
+  // 手机外框开关：关掉后只显示内容区；顶部状态栏开关
+  const showPhoneFrame = appearance.showPhoneFrame !== false;
+  const showStatusBar = appearance.showStatusBar !== false;
   const appBeauty = appearance.appBeauty?.[currentScreen] || {};
   const isLineScreen = currentScreen === 'chat' || currentScreen === 'inbox';
   const globalBg = isLineScreen ? '#ffffff' : (appearance.globalBackground || '#f7f4ee');
@@ -241,26 +239,18 @@ export function PhoneSimulator({
       {appearance.phoneShell === 'modern' && (
         <div
           data-theme={isDark ? 'dark' : 'light'}
-          className={`relative w-[360px] sm:w-[390px] h-[780px] sm:h-[844px] overflow-hidden rounded-[43px] border-[7px] border-[var(--frame,#1e1d1b)] shadow-[0_30px_100px_rgba(20,18,15,.28)] flex flex-col select-none ${
+          className={`relative ${showPhoneFrame ? 'w-[360px] sm:w-[390px] h-[780px] sm:h-[844px] rounded-[43px] border-[7px] border-[var(--frame,#1e1d1b)] shadow-[0_30px_100px_rgba(20,18,15,.28)]' : 'w-full max-w-[430px] h-[100dvh] sm:h-[94dvh]'} overflow-hidden flex flex-col select-none ${
             isDark ? 'dark-theme-mode' : ''
           }`}
           style={{ background: globalBg, color: 'var(--ink, #242323)', fontFamily: activeFont ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif' : undefined, fontSize: `${appearance.customFontSize || 1}em` }}
         >
-          {/* Statusbar */}
-          <div className="absolute z-20 top-0 left-0 right-0 h-[42px] flex items-center justify-between px-6 text-[12px] font-[650] tracking-[0.2px] text-[var(--ink)]">
-            <div className="flex items-baseline gap-1.5 tabular-nums" aria-label={statusBarNow.toLocaleString()}>
-              <span>{statusBarTime}</span>
-              <span className="text-[9px] font-medium tracking-normal opacity-75">{statusBarDate}</span>
+          {/* Statusbar · 极简版 */}
+          {showStatusBar && (
+            <div className="absolute z-20 top-0 left-0 right-0 h-[44px] flex items-center justify-between px-4 text-[11px] text-[#666]">
+              <span className="font-medium tracking-[0.5px]">{statusBarTime}</span>
+              <span>Wi-Fi · 80%</span>
             </div>
-            <div className="flex items-center gap-[7px]">
-              <span className="text-[11px]">⌁</span>
-              <span className="text-[11px] font-normal">Wi‑Fi</span>
-              <div className="w-[21px] h-[10px] border-[1.4px] border-current rounded-[3px] relative">
-                <div className="absolute -right-[3px] top-[2.5px] w-[2px] h-[4px] bg-current rounded-[1px]" />
-                <div className="w-[72%] h-full bg-current rounded-[1px]" />
-              </div>
-            </div>
-          </div>
+          )}
           <DynamicIsland
             enabled={appearance.showDynamicIsland !== false}
             onOpenMusic={() => setCurrentScreen('music')}
@@ -448,16 +438,20 @@ export function PhoneSimulator({
         {appearance.phoneShell === 'classic-round' && (
           <div
             data-theme={isDark ? 'dark' : 'light'}
-            className="relative w-[342px] sm:w-[375px] h-[740px] sm:h-[812px] overflow-hidden rounded-[42px] border-[9px] border-[#1c1c1e] shadow-[inset_0_0_0_1px_rgba(255,255,255,.15),0_30px_100px_rgba(20,18,15,.32)] flex flex-col select-none"
+            className={`relative ${showPhoneFrame ? 'w-[342px] sm:w-[375px] h-[740px] sm:h-[812px] rounded-[42px] border-[9px] border-[#1c1c1e] shadow-[inset_0_0_0_1px_rgba(255,255,255,.15),0_30px_100px_rgba(20,18,15,.32)]' : 'w-full max-w-[430px] h-[100dvh] sm:h-[94dvh]'} overflow-hidden flex flex-col select-none`}
             style={{ background: isDark ? '#171719' : '#f6f6f7', color: 'var(--ink, #242323)', fontFamily: activeFont ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif' : undefined, fontSize: `${appearance.customFontSize || 1}em` }}
           >
-            {/* iPhone 8 top bezel (speaker / sensor) */}
-            <div className="relative h-[62px] shrink-0 flex items-center justify-center">
-              <div className="absolute left-1/2 -translate-x-1/2 top-[22px] flex items-center gap-[8px]">
-                <div className="w-[6px] h-[6px] rounded-full bg-black/35 shadow-[inset_0_1px_1px_rgba(255,255,255,.25)]" />
-                <div className="w-[42px] h-[5px] rounded-full bg-black/40 shadow-[inset_0_1px_1px_rgba(255,255,255,.2)]" />
-              </div>
-            </div>
+            {showPhoneFrame && (
+              <>
+                {/* iPhone 8 top bezel (speaker / sensor) */}
+                <div className="relative h-[62px] shrink-0 flex items-center justify-center">
+                  <div className="absolute left-1/2 -translate-x-1/2 top-[22px] flex items-center gap-[8px]">
+                    <div className="w-[6px] h-[6px] rounded-full bg-black/35 shadow-[inset_0_1px_1px_rgba(255,255,255,.25)]" />
+                    <div className="w-[42px] h-[5px] rounded-full bg-black/40 shadow-[inset_0_1px_1px_rgba(255,255,255,.2)]" />
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* iPhone 8 Viewport */}
             <div
@@ -480,21 +474,13 @@ export function PhoneSimulator({
               {appBeauty.background && (
                 <div className="absolute inset-0 z-[4] pointer-events-none opacity-[0.12] bg-center bg-cover" style={{ backgroundImage: `url(${appBeauty.background})` }} />
               )}
-              {/* Statusbar */}
-              <div className="absolute z-20 top-0 left-0 right-0 h-[42px] flex items-center justify-between px-6 text-[12px] font-[650] tracking-[0.2px] text-[var(--ink)]">
-                <div className="flex items-baseline gap-1.5 tabular-nums">
-                  <span>{statusBarTime}</span>
-                  <span className="text-[9px] font-medium tracking-normal opacity-75">{statusBarDate}</span>
+              {/* Statusbar · 极简版 */}
+              {showStatusBar && (
+                <div className="absolute z-20 top-0 left-0 right-0 h-[44px] flex items-center justify-between px-4 text-[11px] text-[#666]">
+                  <span className="font-medium tracking-[0.5px]">{statusBarTime}</span>
+                  <span>Wi-Fi · 80%</span>
                 </div>
-                <div className="flex items-center gap-[7px]">
-                  <span className="text-[11px]">⌁</span>
-                  <span className="text-[11px] font-normal">Wi‑Fi</span>
-                  <div className="w-[21px] h-[10px] border-[1.4px] border-current rounded-[3px] relative">
-                    <div className="absolute -right-[3px] top-[2.5px] w-[2px] h-[4px] bg-current rounded-[1px]" />
-                    <div className="w-[72%] h-full bg-current rounded-[1px]" />
-                  </div>
-                </div>
-              </div>
+              )}
 
               {currentScreen === 'home' && <SaneHomeScreenView onNavigate={navigateTo} onOpenSheet={() => setIsSheetOpen(true)} onToggleTheme={handleToggleTheme} />}
               {(currentScreen === 'chat' || currentScreen === 'inbox') && (
@@ -524,17 +510,21 @@ export function PhoneSimulator({
               {isLocked && <LockScreenView themeMode={themeMode} onUnlock={() => setIsLocked(false)} />}
             </div>
 
-            {/* iPhone 8 bottom chrome with round Home button */}
-            <div className="relative h-[78px] shrink-0 flex items-center justify-center">
-              <button
-                type="button"
-                onClick={() => setCurrentScreen('home')}
-                className="w-[48px] h-[48px] rounded-full border border-black/35 bg-[linear-gradient(145deg,#fbfbfc,#d6d6d9)] shadow-[inset_0_1px_1px_rgba(255,255,255,.9),0_1px_2px_rgba(0,0,0,.18)] active:scale-95 transition flex items-center justify-center"
-                aria-label="Home"
-              >
-                <span className="w-[39px] h-[39px] rounded-full border border-black/15 shadow-[inset_0_0_0_1px_rgba(255,255,255,.5)]" />
-              </button>
-            </div>
+            {showPhoneFrame && (
+              <>
+                {/* iPhone 8 bottom chrome with round Home button */}
+                <div className="relative h-[78px] shrink-0 flex items-center justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentScreen('home')}
+                    className="w-[48px] h-[48px] rounded-full border border-black/35 bg-[linear-gradient(145deg,#fbfbfc,#d6d6d9)] shadow-[inset_0_1px_1px_rgba(255,255,255,.9),0_1px_2px_rgba(0,0,0,.18)] active:scale-95 transition flex items-center justify-center"
+                    aria-label="Home"
+                  >
+                    <span className="w-[39px] h-[39px] rounded-full border border-black/15 shadow-[inset_0_0_0_1px_rgba(255,255,255,.5)]" />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -542,16 +532,20 @@ export function PhoneSimulator({
         {appearance.phoneShell === 'classic-square' && (
           <div
             data-theme={isDark ? 'dark' : 'light'}
-            className="relative w-[320px] sm:w-[350px] h-[665px] sm:h-[728px] overflow-hidden rounded-[10px] border-[8px] border-[#1c1c1e] shadow-[inset_0_0_0_1px_rgba(255,255,255,.15),0_28px_85px_rgba(20,18,15,.30)] flex flex-col select-none"
+            className={`relative ${showPhoneFrame ? 'w-[320px] sm:w-[350px] h-[665px] sm:h-[728px] rounded-[10px] border-[8px] border-[#1c1c1e] shadow-[inset_0_0_0_1px_rgba(255,255,255,.15),0_28px_85px_rgba(20,18,15,.30)]' : 'w-full max-w-[430px] h-[100dvh] sm:h-[94dvh]'} overflow-hidden flex flex-col select-none`}
             style={{ background: isDark ? '#171719' : '#f6f6f7', color: 'var(--ink, #242323)', fontFamily: activeFont ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif' : undefined, fontSize: `${appearance.customFontSize || 1}em` }}
           >
-            {/* Top bezel */}
-            <div className="relative h-[56px] shrink-0 flex items-center justify-center">
-              <div className="absolute left-1/2 -translate-x-1/2 top-[20px] flex items-center gap-[8px]">
-                <div className="w-[6px] h-[6px] rounded-full bg-black/35" />
-                <div className="w-[38px] h-[5px] rounded-full bg-black/40" />
-              </div>
-            </div>
+            {showPhoneFrame && (
+              <>
+                {/* Top bezel */}
+                <div className="relative h-[56px] shrink-0 flex items-center justify-center">
+                  <div className="absolute left-1/2 -translate-x-1/2 top-[20px] flex items-center gap-[8px]">
+                    <div className="w-[6px] h-[6px] rounded-full bg-black/35" />
+                    <div className="w-[38px] h-[5px] rounded-full bg-black/40" />
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Viewport */}
             <div
@@ -574,21 +568,13 @@ export function PhoneSimulator({
               {appBeauty.background && (
                 <div className="absolute inset-0 z-[4] pointer-events-none opacity-[0.12] bg-center bg-cover" style={{ backgroundImage: `url(${appBeauty.background})` }} />
               )}
-              {/* Statusbar */}
-              <div className="absolute z-20 top-0 left-0 right-0 h-[42px] flex items-center justify-between px-6 text-[12px] font-[650] tracking-[0.2px] text-[var(--ink)]">
-                <div className="flex items-baseline gap-1.5 tabular-nums">
-                  <span>{statusBarTime}</span>
-                  <span className="text-[9px] font-medium tracking-normal opacity-75">{statusBarDate}</span>
+              {/* Statusbar · 极简版 */}
+              {showStatusBar && (
+                <div className="absolute z-20 top-0 left-0 right-0 h-[44px] flex items-center justify-between px-4 text-[11px] text-[#666]">
+                  <span className="font-medium tracking-[0.5px]">{statusBarTime}</span>
+                  <span>Wi-Fi · 80%</span>
                 </div>
-                <div className="flex items-center gap-[7px]">
-                  <span className="text-[11px]">⌁</span>
-                  <span className="text-[11px] font-normal">Wi‑Fi</span>
-                  <div className="w-[21px] h-[10px] border-[1.4px] border-current rounded-[3px] relative">
-                    <div className="absolute -right-[3px] top-[2.5px] w-[2px] h-[4px] bg-current rounded-[1px]" />
-                    <div className="w-[72%] h-full bg-current rounded-[1px]" />
-                  </div>
-                </div>
-              </div>
+              )}
 
               {currentScreen === 'home' && <SaneHomeScreenView onNavigate={navigateTo} onOpenSheet={() => setIsSheetOpen(true)} onToggleTheme={handleToggleTheme} />}
               {(currentScreen === 'chat' || currentScreen === 'inbox') && (
@@ -618,17 +604,21 @@ export function PhoneSimulator({
               {isLocked && <LockScreenView themeMode={themeMode} onUnlock={() => setIsLocked(false)} />}
             </div>
 
-            {/* Bottom chrome with square Home button */}
-            <div className="relative h-[72px] shrink-0 flex items-center justify-center">
-              <button
-                type="button"
-                onClick={() => setCurrentScreen('home')}
-                className="w-[44px] h-[44px] rounded-full border border-black/35 bg-[linear-gradient(145deg,#fbfbfc,#d6d6d9)] shadow-[inset_0_1px_1px_rgba(255,255,255,.9),0_1px_2px_rgba(0,0,0,.18)] active:scale-95 transition flex items-center justify-center"
-                aria-label="Home"
-              >
-                <span className="w-[25px] h-[25px] rounded-[6px] border border-black/25 shadow-[inset_0_0_0_1px_rgba(255,255,255,.5)]" />
-              </button>
-            </div>
+            {showPhoneFrame && (
+              <>
+                {/* Bottom chrome with square Home button */}
+                <div className="relative h-[72px] shrink-0 flex items-center justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentScreen('home')}
+                    className="w-[44px] h-[44px] rounded-full border border-black/35 bg-[linear-gradient(145deg,#fbfbfc,#d6d6d9)] shadow-[inset_0_1px_1px_rgba(255,255,255,.9),0_1px_2px_rgba(0,0,0,.18)] active:scale-95 transition flex items-center justify-center"
+                    aria-label="Home"
+                  >
+                    <span className="w-[25px] h-[25px] rounded-[6px] border border-black/25 shadow-[inset_0_0_0_1px_rgba(255,255,255,.5)]" />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 

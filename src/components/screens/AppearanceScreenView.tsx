@@ -1187,7 +1187,7 @@ function PhoneShellSection({ appearance, update, notify }: {
         <div className="mt-1 text-[9px] text-[#777069] leading-relaxed">切换手机外观：全面屏、经典圆形 Home、经典方形 Home。Home 键点击会直接返回主屏幕。</div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         {shells.map(shell => {
           const active = appearance.phoneShell === shell.key;
           return (
@@ -1202,6 +1202,72 @@ function PhoneShellSection({ appearance, update, notify }: {
             </button>
           );
         })}
+      </div>
+
+      {/* 手机外框开关 */}
+      <div className="p-3 rounded-2xl bg-white/65 border border-black/5">
+        <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">PHONE FRAME</div>
+        <div className="mt-1 text-[11px] font-semibold">手机外框</div>
+        <div className="mt-0.5 mb-2 text-[8px] text-[#777069] leading-relaxed">关掉后不渲染外框，只按网页大小显示内容。</div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => { update('showPhoneFrame', true); notify('已显示手机外框'); }}
+            className={appearance.showPhoneFrame !== false
+              ? 'p-2.5 rounded-xl bg-[#292724] text-white text-left'
+              : 'p-2.5 rounded-xl bg-white/80 border border-black/5 text-left'}
+          >
+            <div className="text-[10px] font-semibold">显示</div>
+            <div className={appearance.showPhoneFrame !== false ? 'mt-0.5 text-[7px] text-white/65' : 'mt-0.5 text-[7px] text-[#8b8782]'}>
+              带边框的手机
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => { update('showPhoneFrame', false); notify('已隐藏手机外框'); }}
+            className={appearance.showPhoneFrame === false
+              ? 'p-2.5 rounded-xl bg-[#292724] text-white text-left'
+              : 'p-2.5 rounded-xl bg-white/80 border border-black/5 text-left'}
+          >
+            <div className="text-[10px] font-semibold">隐藏</div>
+            <div className={appearance.showPhoneFrame === false ? 'mt-0.5 text-[7px] text-white/65' : 'mt-0.5 text-[7px] text-[#8b8782]'}>
+              纯网页模式
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* 顶部状态栏开关 */}
+      <div className="p-3 rounded-2xl bg-white/65 border border-black/5">
+        <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">STATUS BAR</div>
+        <div className="mt-1 text-[11px] font-semibold">顶部状态栏</div>
+        <div className="mt-0.5 mb-2 text-[8px] text-[#777069] leading-relaxed">时间 · Wi-Fi · 电量。关掉后顶部不再显示。</div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => { update('showStatusBar', true); notify('已显示状态栏'); }}
+            className={appearance.showStatusBar !== false
+              ? 'p-2.5 rounded-xl bg-[#292724] text-white text-left'
+              : 'p-2.5 rounded-xl bg-white/80 border border-black/5 text-left'}
+          >
+            <div className="text-[10px] font-semibold">显示</div>
+            <div className={appearance.showStatusBar !== false ? 'mt-0.5 text-[7px] text-white/65' : 'mt-0.5 text-[7px] text-[#8b8782]'}>
+              时间 / Wi-Fi / 电量
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => { update('showStatusBar', false); notify('已隐藏状态栏'); }}
+            className={appearance.showStatusBar === false
+              ? 'p-2.5 rounded-xl bg-[#292724] text-white text-left'
+              : 'p-2.5 rounded-xl bg-white/80 border border-black/5 text-left'}
+          >
+            <div className="text-[10px] font-semibold">隐藏</div>
+            <div className={appearance.showStatusBar === false ? 'mt-0.5 text-[7px] text-white/65' : 'mt-0.5 text-[7px] text-[#8b8782]'}>
+              顶部更干净
+            </div>
+          </button>
+        </div>
       </div>
 
       <div className="p-3 rounded-2xl bg-white/65 border border-black/5">

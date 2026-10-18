@@ -13,6 +13,8 @@ import { VroomImage } from '../VroomImage';
 import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory, updateCharacterMemoryItem, deleteCharacterMemoryItem, clearCharacterMemory } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
 import MemoryManagerPanel from './MemoryManagerPanel';
+import StickerManagerPanel from './StickerManagerPanel';
+import { findStickerByName, getStickerPacks } from '../../store/stickers';
 import { getCharacterProfile } from '../../data/characterProfiles';
 import { getInitialChatMessages } from '../../data/characterChatSeeds';
 import { upsertOfflineEvent, updateOfflineEvent } from '../../store/offlineEvents';
@@ -645,8 +647,14 @@ function expandCharacterReplyMessages(
     characterId?: string;
     groupMode?: boolean;
     extras?: Record<string, unknown>;
+    stripMediaTags?: boolean;
   },
 ) {
+  let processedSource = source;
+  // AI 生图关闭时：去掉 <text-image>/<text-video> 标签，不显示原文
+  if (options.stripMediaTags) {
+    processedSource = String(processedSource || '').replace(/<(text-image|text-video)(\s+[^>]*)?>[\s\S]*?<\/\1\s*>/gi, '').trim();
+  }
   const splitPlain = (text: string) => {
     const parts = options.groupMode
       ? splitGeneratedLineMessages(text, true).filter(Boolean)
@@ -656,7 +664,7 @@ function expandCharacterReplyMessages(
     }
     return parts;
   };
-  return expandLineReplyIntoMessages(source, splitPlain, {
+  return expandLineReplyIntoMessages(processedSource, splitPlain, {
     id: replyMsgId,
     sender: options.sender || 'other',
     senderName: options.senderName,
@@ -982,6 +990,9 @@ export function LineConversationView({
   // Settings & Overlays
   const [showSettings, setShowSettings] = useState(false);
   const [showMemoryManager, setShowMemoryManager] = useState(false);
+  const [showStickerManager, setShowStickerManager] = useState(false);
+  const [stickerPackTab, setStickerPackTab] = useState<string | null>(null);
+  const [stickerSheetVersion, setStickerSheetVersion] = useState(0);
   const [showBehaviourSettings, setShowBehaviourSettings] = useState(false);
   const [showWorldbookSettings, setShowWorldbookSettings] = useState(false);
   const [showOpeningSettings, setShowOpeningSettings] = useState(false);
@@ -993,6 +1004,25 @@ export function LineConversationView({
   const [typingHabitCustom, setTypingHabitCustom] = usePersistentState<string>(`line:typing-habit-custom:${conversationStorageId}`, '');
   const [typingPunctuation, setTypingPunctuation] = usePersistentState<string>(`line:typing-punctuation:${conversationStorageId}`, 'natural');
   const [typingEmoji, setTypingEmoji] = usePersistentState<string>(`line:typing-emoji:${conversationStorageId}`, 'rare');
+  // 表情包 prompt 规则：仅当用户设置"喜欢表情包"且有可用表情包时生效
+  const getStickerPromptRule = (): string => {
+    if (typingEmoji !== 'sticker') return '';
+    try {
+      const packs = getStickerPacks();
+      const names: string[] = [];
+      for (const pack of packs) {
+        for (const s of pack.stickers) {
+          if (s.name && !names.includes(s.name)) names.push(s.name);
+          if (names.length >= 30) break;
+        }
+        if (names.length >= 30) break;
+      }
+      if (!names.length) return '';
+      return `【表情包】你可以在回复中使用表情包。用 <sticker>表情名称</sticker> 标签单独发送一个表情包（标签独占一条消息，前后不要加文字）。可用表情：${names.join('、')}。每轮最多发 1 个表情包，不要连发；表情要贴合当前情绪和语境，不要为了发表情而发表情。`;
+    } catch {
+      return '';
+    }
+  };
   const [typingSplit, setTypingSplit] = usePersistentState<string>(`line:typing-split:${conversationStorageId}`, 'natural');
   const [typingLineBreak, setTypingLineBreak] = usePersistentState<string>(`line:typing-linebreak:${conversationStorageId}`, 'natural');
   const [typingLength, setTypingLength] = usePersistentState<string>(`line:typing-length:${conversationStorageId}`, 'medium');
@@ -1086,6 +1116,8 @@ export function LineConversationView({
     setShowCallHistory(false);
     setSelectedCallRecord(null);
     setShowMemoryManager(false);
+    setShowStickerManager(false);
+    setShowStickerSheet(false);
   }, [conversationStorageId]);
   const [imageGenPresetId, setImageGenPresetId] = useState<string>('');
   const [imageGenPrompt, setImageGenPrompt] = useState('');
@@ -3144,6 +3176,7 @@ export function LineConversationView({
             groupLorebookActive.trim() ? '群聊补充风格：' + groupLorebookActive.trim() : '',
             '标点：' + typingPunctuation,
             'emoji/表情：' + typingEmoji,
+            getStickerPromptRule(),
             '消息分条：' + typingSplit,
             '换行：' + typingLineBreak,
             '句子长度：' + typingLength,
@@ -3438,6 +3471,7 @@ export function LineConversationView({
           typingHabitPreset === 'custom' ? '总体风格：' + typingHabitCustom : '总体风格：' + typingHabitPreset,
           '标点：' + typingPunctuation,
           'emoji/表情：' + typingEmoji,
+            getStickerPromptRule(),
           '消息分条：' + typingSplit,
           '换行：' + typingLineBreak,
           '句子长度：' + typingLength,
@@ -3459,6 +3493,7 @@ export function LineConversationView({
       if (!replyMessageCreated) ensureReplyMessage(finalReplyText);
 
       const replyExpanded = expandCharacterReplyMessages(finalReplyText, replyMsgId, {
+        stripMediaTags: !aiImageEnabled,
         extras: {
           time: formatLineMessageClock({ createdAt: new Date().toISOString() }, chatTimezone, lineTimeDisplayLocale),
           createdAt: new Date().toISOString(),
@@ -4873,6 +4908,7 @@ export function LineConversationView({
           typingHabitPreset === 'custom' ? '总体风格：' + typingHabitCustom : '总体风格：' + typingHabitPreset,
           '标点：' + typingPunctuation,
           'emoji/表情：' + typingEmoji,
+            getStickerPromptRule(),
           '消息分条：' + typingSplit,
           '换行：' + typingLineBreak,
           '句子长度：' + typingLength,
@@ -5260,6 +5296,7 @@ export function LineConversationView({
           typingHabitPreset === 'custom' ? '总体风格：' + typingHabitCustom : '总体风格：' + typingHabitPreset,
           '标点：' + typingPunctuation,
           'emoji/表情：' + typingEmoji,
+            getStickerPromptRule(),
           '消息分条：' + typingSplit,
           '换行：' + typingLineBreak,
           '句子长度：' + typingLength,
@@ -5473,6 +5510,7 @@ export function LineConversationView({
           typingHabitPreset === 'custom' ? '总体风格：' + typingHabitCustom : '总体风格：' + typingHabitPreset,
           '标点：' + typingPunctuation,
           'emoji/表情：' + typingEmoji,
+            getStickerPromptRule(),
           '消息分条：' + typingSplit,
           '换行：' + typingLineBreak,
           '句子长度：' + typingLength,
@@ -6509,7 +6547,24 @@ export function LineConversationView({
                 )}
 
                 {/* 2. 主消息体 */}
-                {msg.type === 'real-media' && (msg.mediaRef || mediaCache[msg.mediaRef]) ? (
+                {(msg.type === 'sticker' || msg.kind === 'sticker') && (msg.stickerUrl || msg.mediaRef) ? (
+                  <button
+                    onClick={() => setLightboxImg(msg.stickerUrl || msg.mediaRef)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenuMsg(msg);
+                    }}
+                    className="block max-w-[120px] cursor-pointer hover:scale-105 active:scale-95 transition-transform"
+                    title={msg.stickerName || '表情包'}
+                  >
+                    <img
+                      src={msg.stickerUrl || msg.mediaRef}
+                      alt={msg.stickerName || '表情包'}
+                      className="w-full object-contain"
+                      loading="lazy"
+                    />
+                  </button>
+                ) : msg.type === 'real-media' && (msg.mediaRef || mediaCache[msg.mediaRef]) ? (
                   <button
                     onClick={() => setLightboxImg(mediaCache[msg.mediaRef] || msg.mediaRef)}
                     onContextMenu={(e) => {
@@ -11436,55 +11491,103 @@ export function LineConversationView({
       )}
 
       {/* 15. STICKER SHEET */}
-      {showStickerSheet && (
+      {showStickerSheet && (() => {
+        const packs = getStickerPacks();
+        const activePack = packs.find(p => p.id === stickerPackTab) || packs[0] || null;
+        const sendStickerMessage = (imageUrl: string, name: string) => {
+          setShowStickerSheet(false);
+          const newMsg = {
+            id: Date.now(),
+            sender: 'me',
+            type: 'sticker',
+            kind: 'sticker',
+            text: `[表情包] ${name}`,
+            stickerName: name,
+            stickerUrl: imageUrl,
+            mediaRef: imageUrl,
+            time: '刚刚',
+            createdAt: new Date().toISOString(),
+          };
+          setMessages((prev) => [...prev, newMsg]);
+        };
+        return (
         <div
           onClick={() => setShowStickerSheet(false)}
           className="absolute inset-0 bg-black/25 z-50 flex items-end animate-in fade-in"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full bg-white rounded-t-[20px] p-4 pb-6 space-y-3 animate-in slide-in-from-bottom"
+            className="w-full bg-white rounded-t-[20px] p-4 pb-6 space-y-3 animate-in slide-in-from-bottom max-h-[60%] flex flex-col"
           >
-            <div className="w-8 h-1 bg-[#ddd] rounded-full mx-auto" />
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-sm text-[#333]">贴纸</span>
+            <div className="w-8 h-1 bg-[#ddd] rounded-full mx-auto shrink-0" />
+            <div className="flex items-center justify-between shrink-0">
+              <span className="font-semibold text-sm text-[#333]">表情包</span>
               <button
-                onClick={() => showToast('已添加自定义贴纸')}
-                className="text-[11px] text-[#aaa] cursor-pointer"
+                onClick={() => { setShowStickerSheet(false); setShowStickerManager(true); }}
+                className="text-[11px] text-[#ae7e89] cursor-pointer"
               >
-                ＋ 自定义
+                管理
               </button>
             </div>
 
-            <div className="grid grid-cols-4 gap-4 py-2 text-2xl text-center">
-              {['♡', '☁', '✦', '☾', '☺', '☆', '♪', '🌸'].map((s, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    setShowStickerSheet(false);
-                    const newMsg = {
-                      id: Date.now(),
-                      sender: 'me',
-                      text: s,
-                      time: '刚刚',
-                    };
-                    setMessages((prev) => [...prev, newMsg]);
-                  }}
-                  className="hover:scale-110 active:scale-95 transition-transform cursor-pointer"
-                >
-                  {s}
-                </button>
-              ))}
+            {packs.length > 1 && (
+              <div className="flex gap-2 overflow-x-auto shrink-0 pb-1">
+                {packs.map(pack => (
+                  <button
+                    key={pack.id}
+                    type="button"
+                    onClick={() => setStickerPackTab(pack.id)}
+                    className={`px-3 py-1.5 rounded-full text-[11px] whitespace-nowrap border cursor-pointer ${
+                      (activePack && pack.id === activePack.id)
+                        ? 'bg-[#292724] text-white border-[#292724]'
+                        : 'bg-[#f7f7f8] text-[#666] border-[#eee]'
+                    }`}
+                  >
+                    {pack.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="flex-1 overflow-y-auto">
+              {!activePack || activePack.stickers.length === 0 ? (
+                <div className="text-center text-[#aaa] text-xs py-8">
+                  还没有表情包<br />点右上角「管理」去添加
+                </div>
+              ) : (
+                <div className="grid grid-cols-4 gap-3">
+                  {activePack.stickers.map(sticker => (
+                    <button
+                      key={sticker.id}
+                      type="button"
+                      onClick={() => sendStickerMessage(sticker.imageUrl, sticker.name)}
+                      className="aspect-square rounded-[12px] bg-[#f7f7f8] border border-[#eee] overflow-hidden hover:scale-105 active:scale-95 transition-transform cursor-pointer"
+                      title={sticker.name}
+                    >
+                      <img src={sticker.imageUrl} alt={sticker.name} className="w-full h-full object-contain" loading="lazy" />
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <button
               onClick={() => setShowStickerSheet(false)}
-              className="w-full py-2.5 rounded-[12px] bg-[#f7f7f7] text-[#777] text-xs font-medium cursor-pointer"
+              className="w-full py-2.5 rounded-[12px] bg-[#f7f7f7] text-[#777] text-xs font-medium cursor-pointer shrink-0"
             >
               取消
             </button>
           </div>
         </div>
+        );
+      })()}
+
+      {/* 表情包管理面板 */}
+      {showStickerManager && (
+        <StickerManagerPanel
+          onClose={() => { setShowStickerManager(false); setStickerSheetVersion(v => v + 1); }}
+          showToast={showToast}
+        />
       )}
 
       {/* 16. FULLSCREEN VIDEO CALL OVERLAY */}

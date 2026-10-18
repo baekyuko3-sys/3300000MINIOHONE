@@ -1,7 +1,8 @@
 export const TEXT_IMAGE_TYPE = 'text-image';
 export const TEXT_VIDEO_TYPE = 'text-video';
+export const STICKER_TYPE = 'sticker';
 
-export type LineMediaCardKind = typeof TEXT_IMAGE_TYPE | typeof TEXT_VIDEO_TYPE;
+export type LineMediaCardKind = typeof TEXT_IMAGE_TYPE | typeof TEXT_VIDEO_TYPE | typeof STICKER_TYPE;
 
 export type LineMediaCardSegment = {
   text: string;
@@ -10,6 +11,8 @@ export type LineMediaCardSegment = {
   cardStyle?: string;
   category?: 'image' | 'video';
   duration?: number;
+  stickerName?: string;
+  stickerUrl?: string;
 };
 
 function messageType(message: any): string {
@@ -313,6 +316,24 @@ export function expandLineReplyIntoMessages(
   return segments.map((segment, index) => {
     const id = index === 0 ? base.id : `${base.id}-${index}`;
     const extras = index === 0 ? (base.extras || {}) : {};
+    if (segment.type === STICKER_TYPE) {
+      return {
+        id,
+        turnId: String(base.id),
+        sender: base.sender || 'other',
+        senderName: base.senderName,
+        characterId: base.characterId,
+        type: 'sticker',
+        kind: 'sticker',
+        text: segment.text,
+        stickerName: segment.stickerName,
+        stickerUrl: segment.stickerUrl,
+        mediaRef: segment.stickerUrl,
+        time: '刚刚',
+        createdAt: new Date().toISOString(),
+        ...extras,
+      };
+    }
     if (segment.type === TEXT_IMAGE_TYPE || segment.type === TEXT_VIDEO_TYPE) {
       const card = buildLineVroomCardMessage({
         id,
@@ -348,6 +369,47 @@ export function expandLineReplyIntoMessages(
       ...extras,
     };
   });
+}
+
+import { findStickerByName } from './stickers';
+
+const STICKER_TAG_RE = /<sticker>([\s\S]*?)<\/sticker\s*>/gi;
+
+/**
+ * 解析 AI 回复中的 <sticker>名称</sticker> 标签。
+ * 找到对应表情则生成 sticker segment；找不到则丢弃标签（不显示原文）。
+ * 每轮最多保留 1 个表情包，避免连发。
+ */
+export function splitTextWithStickers(source: string): LineMediaCardSegment[] {
+  const text = String(source || '');
+  const segments: LineMediaCardSegment[] = [];
+  let lastIndex = 0;
+  let stickerUsed = false;
+  STICKER_TAG_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = STICKER_TAG_RE.exec(text))) {
+    const before = text.slice(lastIndex, match.index).trim();
+    if (before) segments.push({ text: before });
+    const name = String(match[1] || '').trim();
+    if (name && !stickerUsed) {
+      const sticker = findStickerByName(name);
+      if (sticker) {
+        segments.push({
+          text: `[表情包] ${sticker.name}`,
+          type: STICKER_TYPE,
+          stickerName: sticker.name,
+          stickerUrl: sticker.imageUrl,
+        });
+        stickerUsed = true;
+      }
+      // 找不到对应表情：直接丢弃标签，不显示原文
+    }
+    lastIndex = STICKER_TAG_RE.lastIndex;
+  }
+  const after = text.slice(lastIndex).trim();
+  if (after) segments.push({ text: after });
+  if (!segments.length && text.trim()) segments.push({ text: text.trim() });
+  return segments;
 }
 
 const CARD_TAG_RE = /<(text-image|text-video)(\s+[^>]*)?>([\s\S]*?)<\/\1\s*>/gi;
@@ -391,9 +453,13 @@ export function materializeLineReplyMessages(
   source: string,
   splitPlain: (text: string) => string[],
 ): LineMediaCardSegment[] {
-  return splitTextWithMediaCards(source).flatMap((segment) => {
+  // 先解析 <sticker> 标签，再解析 <text-image>/<text-video>，最后切分纯文本
+  return splitTextWithStickers(source).flatMap((segment) => {
     if (segment.type) return [segment];
-    return splitPlain(segment.text).map(text => ({ text }));
+    return splitTextWithMediaCards(segment.text).flatMap((seg2) => {
+      if (seg2.type) return [seg2];
+      return splitPlain(seg2.text).map(text => ({ text }));
+    });
   });
 }
 

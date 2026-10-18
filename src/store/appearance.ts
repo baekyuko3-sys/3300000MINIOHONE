@@ -53,6 +53,10 @@ export interface AppearanceScheme {
   lockPasscode: string;
   /** 手机外形 */
   phoneShell: 'modern' | 'classic-round' | 'classic-square';
+  /** 是否显示手机外框；关掉后只显示内容区 */
+  showPhoneFrame: boolean;
+  /** 是否显示顶部系统状态栏（时间/信号/电池） */
+  showStatusBar: boolean;
   updatedAt: string;
 }
 
@@ -88,6 +92,8 @@ export const DEFAULT_APPEARANCE: AppearanceScheme = {
   lockMethods: ['swipe'],
   lockPasscode: '',
   phoneShell: 'modern',
+  showPhoneFrame: true,
+  showStatusBar: true,
   widget: {
     weatherCity: 'YOUR CITY',
     weatherTemp: '21°',
@@ -153,6 +159,8 @@ function normalizeAppearance(value: Partial<AppearanceScheme>): AppearanceScheme
       : ['swipe'],
     lockPasscode: String(value.lockPasscode || '').replace(/\D/g, '').slice(0, 6),
     phoneShell: value.phoneShell === 'classic-round' || value.phoneShell === 'classic-square' ? value.phoneShell : 'modern',
+    showPhoneFrame: value.showPhoneFrame !== false,
+    showStatusBar: value.showStatusBar !== false,
     updatedAt: String(value.updatedAt || new Date().toISOString()),
   };
 }
