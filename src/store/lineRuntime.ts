@@ -1,5 +1,6 @@
 import type { OfflineEvent } from '../types';
 import { reportPersistenceIssue } from './usePersistentState';
+import { removeMemoryByMessage } from './characterMemory';
 
 export type LineMessageKind =
   | 'text' | 'image' | 'video' | 'file' | 'voice' | 'sticker'
@@ -176,11 +177,28 @@ export function recallLineMessage(id: string, messageId: number | string) {
 }
 
 export function deleteLineMessage(id: string, messageId: number | string) {
-  return updateLineMessage(id, messageId, {
+  // 先拿到原文：删掉的聊天内容不应再留在角色记忆里。
+  const target = getLineConversationMessages(id).find(message => String(message.id) === String(messageId));
+  const deletedText = String((target as { text?: unknown } | undefined)?.text || '').trim();
+  const next = updateLineMessage(id, messageId, {
     text: '',
     status: 'deleted',
     deletedAt: new Date().toISOString(),
   });
+  if (deletedText) {
+    try {
+      // 会话 id 可能是 `npc:{npcId}:persona:{personaId}` 格式，记忆 key 用 characterId[/persona]。
+      const npcMatch = /^npc:(.+):persona:(.+)$/.exec(id);
+      if (npcMatch) {
+        removeMemoryByMessage(npcMatch[1], deletedText, npcMatch[2] === 'legacy' ? null : npcMatch[2]);
+      } else {
+        removeMemoryByMessage(id, deletedText);
+      }
+    } catch {
+      // 记忆清理是尽力而为，不影响删除本身。
+    }
+  }
+  return next;
 }
 
 export function editLineMessage(id: string, messageId: number | string, text: string) {

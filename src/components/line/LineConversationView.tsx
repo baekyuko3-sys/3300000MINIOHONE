@@ -12,6 +12,7 @@ import { walletSendRedPacket, walletGrabRedPacket, spendFamilyCard } from '../..
 import { VroomImage } from '../VroomImage';
 import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory, updateCharacterMemoryItem, deleteCharacterMemoryItem, clearCharacterMemory } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
+import MemoryManagerPanel from './MemoryManagerPanel';
 import { getCharacterProfile } from '../../data/characterProfiles';
 import { getInitialChatMessages } from '../../data/characterChatSeeds';
 import { upsertOfflineEvent, updateOfflineEvent } from '../../store/offlineEvents';
@@ -980,6 +981,7 @@ export function LineConversationView({
 
   // Settings & Overlays
   const [showSettings, setShowSettings] = useState(false);
+  const [showMemoryManager, setShowMemoryManager] = useState(false);
   const [showBehaviourSettings, setShowBehaviourSettings] = useState(false);
   const [showWorldbookSettings, setShowWorldbookSettings] = useState(false);
   const [showOpeningSettings, setShowOpeningSettings] = useState(false);
@@ -1083,6 +1085,7 @@ export function LineConversationView({
   useEffect(() => {
     setShowCallHistory(false);
     setSelectedCallRecord(null);
+    setShowMemoryManager(false);
   }, [conversationStorageId]);
   const [imageGenPresetId, setImageGenPresetId] = useState<string>('');
   const [imageGenPrompt, setImageGenPrompt] = useState('');
@@ -6465,7 +6468,7 @@ export function LineConversationView({
               >
                 {/* Preset flow · keep the existing compact disclosure UI */}
                 {!isMe && showCotHeader && (
-                  <div className={`my-2 ${isGroup ? 'ml-9' : ''} ${cotStyle === 'minimal' ? '' : 'rounded-[11px] border px-2.5 py-1.5'} ${cotStyleClass}`}>
+                  <div className={`my-2 ${cotStyle === 'minimal' ? '' : 'rounded-[11px] border px-2.5 py-1.5'} ${cotStyleClass}`}>
                     <button
                       type="button"
                       onPointerDown={(event) => event.stopPropagation()}
@@ -9722,6 +9725,19 @@ export function LineConversationView({
 
           <div className="p-4 space-y-4 flex-1 overflow-y-auto text-xs pb-10">
 
+            {/* 记忆管理入口 */}
+            <button
+              type="button"
+              onClick={() => setShowMemoryManager(true)}
+              className="w-full bg-white rounded-[14px] border border-[#f0f0f1] p-3.5 flex items-center justify-between cursor-pointer"
+            >
+              <div className="text-left">
+                <div className="font-medium text-[#333]">记忆管理</div>
+                <div className="text-[10px] text-[#999] mt-0.5">查看、编辑、删除角色记住的内容</div>
+              </div>
+              <span className="text-[#bbb] text-lg">›</span>
+            </button>
+
             {/* 语音预设绑定 */}
             {!isGroup && (npcForChat || boundImportedCharacter) && (
               <div className="bg-white rounded-[14px] border border-[#f0f0f1] p-3.5">
@@ -11107,6 +11123,17 @@ export function LineConversationView({
               清空聊天记录
             </button>
           </div>
+
+          {/* 记忆管理面板 */}
+          {showMemoryManager && (
+            <MemoryManagerPanel
+              characterId={importedCharacter?.id || contactName}
+              characterName={contactName}
+              personaId={npcForChat ? resolvedPersonaId : undefined}
+              onClose={() => setShowMemoryManager(false)}
+              showToast={showToast}
+            />
+          )}
         </div>
       )}
 

@@ -400,6 +400,71 @@ export function deleteCharacterMemoryItem(characterId: string, itemId: string, p
   return saveCharacterMemory(next);
 }
 
+/** 删除单条近期记忆摘要 */
+export function deleteRecentMemorySummary(characterId: string, summaryId: string, personaId?: string | null): CharacterMemory | null {
+  if (typeof window === 'undefined') return null;
+  const current = getCharacterMemory(characterId, '', personaId);
+  const next = { ...current, recentSummaries: (current.recentSummaries || []).filter(item => item.id !== summaryId) };
+  return saveCharacterMemory(next);
+}
+
+/**
+ * 按被删除的消息文本清理相关记忆。
+ * 用关键词匹配找出记忆条目 / 近期摘要中与该消息相关的内容并删除，
+ * 长期摘要按句切分后删掉命中的句子。返回清理统计。
+ */
+export function removeMemoryByMessage(
+  characterId: string,
+  messageText: string,
+  personaId?: string | null,
+): { removedItems: number; removedSummaries: number; summaryTrimmed: boolean } {
+  const result = { removedItems: 0, removedSummaries: 0, summaryTrimmed: false };
+  if (typeof window === 'undefined' || !characterId) return result;
+  const text = String(messageText || '').trim();
+  if (text.length < 2) return result;
+  const terms = memoryQueryTerms(text).filter(term => term.length >= 2);
+  if (!terms.length) return result;
+  const current = getCharacterMemory(characterId, '', personaId);
+  const hasAny = current.items.length > 0 || (current.recentSummaries || []).length > 0 || String(current.summary || '').trim();
+  if (!hasAny) return result;
+
+  // 命中判定：记忆内容包含消息原文片段，或命中 1 个长关键词 / 2 个以上短关键词。
+  const matches = (content: string): boolean => {
+    const normalized = String(content || '').toLowerCase().replace(/\s+/g, '');
+    if (!normalized) return false;
+    const snippet = text.toLowerCase().replace(/\s+/g, '').slice(0, 24);
+    if (snippet.length >= 8 && normalized.includes(snippet)) return true;
+    let hits = 0;
+    for (const term of terms) {
+      if (!normalized.includes(term)) continue;
+      if (term.length >= 4) return true;
+      hits += 1;
+      if (hits >= 2) return true;
+    }
+    return false;
+  };
+
+  const nextItems = current.items.filter(item => !matches(item.content || ''));
+  result.removedItems = current.items.length - nextItems.length;
+  const nextRecent = (current.recentSummaries || []).filter(item => !matches(item.content || ''));
+  result.removedSummaries = (current.recentSummaries || []).length - nextRecent.length;
+
+  let nextSummary = String(current.summary || '');
+  if (nextSummary.trim()) {
+    const sentences = nextSummary.split(/(?<=[。！？!?\n])/);
+    const kept = sentences.filter(sentence => !matches(sentence));
+    if (kept.length !== sentences.length) {
+      nextSummary = kept.join('').trim();
+      result.summaryTrimmed = true;
+    }
+  }
+
+  if (result.removedItems > 0 || result.removedSummaries > 0 || result.summaryTrimmed) {
+    saveCharacterMemory({ ...current, items: nextItems, recentSummaries: nextRecent, summary: nextSummary });
+  }
+  return result;
+}
+
 function memoryQueryTerms(query: string): string[] {
   const text = query.toLocaleLowerCase().trim();
   if (!text) return [];

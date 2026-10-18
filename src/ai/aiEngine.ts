@@ -74,6 +74,7 @@ export interface AiReplyInput {
     timestamp?: string | number;
     isRecalled?: boolean;
     isRecalledByOther?: boolean;
+    status?: string;
   }>;
   userMessage: string;
   isGroup?: boolean;
@@ -320,7 +321,7 @@ function getApplicableWorldBooks(input: AiReplyInput): WorldBook[] {
 
 function buildWorldBookScanResolver(input: AiReplyInput, defaultDepth: number) {
   const messages = input.messages
-    .filter(message => !message.isRecalled && !message.isRecalledByOther && message.type !== 'system-nudge');
+    .filter(message => !message.isRecalled && !message.isRecalledByOther && message.status !== 'deleted' && message.type !== 'system-nudge');
 
   return (entry: WorldBook['entries'][number]) => {
     const depth = entry.scanDepth !== undefined
@@ -458,7 +459,7 @@ export function buildCharacterSystemPrompt(input: AiReplyInput): string {
     ...applicableWorldBooks.flatMap(book => book.entries.map(entry => Number(entry.scanDepth || 0)))
   )));
   const scannedMessages = input.messages
-    .filter(message => !message.isRecalled && !message.isRecalledByOther && message.type !== 'system-nudge')
+    .filter(message => !message.isRecalled && !message.isRecalledByOther && message.status !== 'deleted' && message.type !== 'system-nudge')
     .slice(-scanDepth)
     .map(message => conversationTurnText(message))
     .filter(Boolean)
@@ -653,6 +654,7 @@ function findRelevantHistory(input: AiReplyInput, recentIds: Set<string>): AiRep
       message.type !== 'system-nudge' &&
       !message.isRecalled &&
       !message.isRecalledByOther &&
+      message.status !== 'deleted' &&
       !recentIds.has(String((message as any).id))
     )
     .map((message, index) => {
@@ -696,7 +698,8 @@ function buildConversationMessages(input: AiReplyInput) {
     .filter(message =>
       message.type !== 'system-nudge' &&
       !message.isRecalled &&
-      !message.isRecalledByOther
+      !message.isRecalledByOther &&
+      message.status !== 'deleted'
     );
 
   // Exclude the current user turn here; it is appended exactly once as the final
@@ -1206,7 +1209,7 @@ export async function generateCharacterReply(input: AiReplyInput): Promise<AiRep
   const worldbooks = input.worldbooks || [];
   const scanDepth = Math.max(1, Math.min(50, Math.max(12, ...worldbooks.flatMap(book => book.entries.map(entry => Number(entry.scanDepth || 0))))));
   const scannedText = input.messages
-    .filter(message => !message.isRecalled && !message.isRecalledByOther && message.type !== 'system-nudge')
+    .filter(message => !message.isRecalled && !message.isRecalledByOther && message.status !== 'deleted' && message.type !== 'system-nudge')
     .slice(-scanDepth)
     .map(message => message.text || message.transcript || '')
     .filter(Boolean)
