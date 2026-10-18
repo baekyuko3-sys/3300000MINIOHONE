@@ -12,7 +12,6 @@ import { walletSendRedPacket, walletGrabRedPacket, spendFamilyCard } from '../..
 import { VroomImage } from '../VroomImage';
 import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory, updateCharacterMemoryItem, deleteCharacterMemoryItem, clearCharacterMemory } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
-import MemoryManagerPanel from './MemoryManagerPanel';
 import StickerManagerPanel from './StickerManagerPanel';
 import { findStickerByName, getStickerPacks } from '../../store/stickers';
 import { getCharacterProfile } from '../../data/characterProfiles';
@@ -989,7 +988,6 @@ export function LineConversationView({
 
   // Settings & Overlays
   const [showSettings, setShowSettings] = useState(false);
-  const [showMemoryManager, setShowMemoryManager] = useState(false);
   const [showStickerManager, setShowStickerManager] = useState(false);
   const [stickerPackTab, setStickerPackTab] = useState<string | null>(null);
   const [stickerSheetVersion, setStickerSheetVersion] = useState(0);
@@ -1115,7 +1113,6 @@ export function LineConversationView({
   useEffect(() => {
     setShowCallHistory(false);
     setSelectedCallRecord(null);
-    setShowMemoryManager(false);
     setShowStickerManager(false);
     setShowStickerSheet(false);
   }, [conversationStorageId]);
@@ -10112,7 +10109,11 @@ export function LineConversationView({
             {/* 记忆管理入口 */}
             <button
               type="button"
-              onClick={() => setShowMemoryManager(true)}
+              onClick={() => {
+                const cid = importedCharacter?.id || contactName;
+                try { window.localStorage.setItem('phone:memory-active-character', cid); } catch {}
+                window.dispatchEvent(new CustomEvent('sane333:navigate', { detail: { screen: 'memory' } }));
+              }}
               className="w-full bg-white rounded-[14px] border border-[#f0f0f1] p-3.5 flex items-center justify-between cursor-pointer"
             >
               <div className="text-left">
@@ -11207,16 +11208,6 @@ export function LineConversationView({
             </button>
           </div>
 
-          {/* 记忆管理面板 */}
-          {showMemoryManager && (
-            <MemoryManagerPanel
-              characterId={importedCharacter?.id || contactName}
-              characterName={contactName}
-              personaId={npcForChat ? resolvedPersonaId : undefined}
-              onClose={() => setShowMemoryManager(false)}
-              showToast={showToast}
-            />
-          )}
         </div>
       )}
 
