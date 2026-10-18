@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { compressImageDataUrl } from '../../store/imageCompress';
-import { ArrowLeft, Check, ChevronDown, Copy, Lock, Palette, Plus, Smartphone, Sparkles, Trash2, Type, Wand2 } from 'lucide-react';
+import { ArrowLeft, Calendar, Check, ChevronDown, Copy, Lock, Music, Palette, Plus, Smartphone, Sparkles, StickyNote, Sun, Trash2, Type, Wand2 } from 'lucide-react';
 import type { ScreenType, ThemeMode } from '../../types';
 import {
   applyAppearanceScheme,
@@ -44,7 +44,6 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
   const [selectedApp, setSelectedApp] = useState('line');
   const [appBeauty, setAppBeauty] = useState(() => readAppearance().appBeauty || {});
   const [islandOpen, setIslandOpen] = useState(false);
-  const [lockAppearanceOpen, setLockAppearanceOpen] = useState(false);
   const appItems = [
     ['line', 'LINE / 聊天'], ['moments', 'VROOM / 朋友圈'], ['character-profile', '角色档案'], ['offline-story', '线下剧情'],
     ['world-book', '世界书'], ['gallery', '相册'], ['music', '音乐'], ['memory', 'Memory'], ['npc', 'NPC'],
@@ -398,29 +397,6 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
                 </div>
               )}
             </div>
-            {/* 锁屏外观（折叠）：壁纸设定 */}
-            <div className="rounded-2xl bg-white/65 border border-black/5 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setLockAppearanceOpen((value) => !value)}
-                className="w-full p-3 flex items-center gap-2 text-left"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">LOCK SCREEN</div>
-                  <div className="mt-1 text-[11px] font-semibold">锁屏外观</div>
-                  <div className="mt-0.5 text-[8px] text-[#777069] truncate">
-                    {appearance.lockWallpaper ? '已设置独立锁屏壁纸' : '跟随主屏幕壁纸'}
-                  </div>
-                </div>
-                <ChevronDown className={`w-4 h-4 text-[#8b8782] transition-transform ${lockAppearanceOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              {lockAppearanceOpen && (
-                <div className="px-3 pb-3 space-y-3 border-t border-black/5 pt-3">
-                  <LockWallpaperBlock appearance={appearance} update={update} notify={notify} />
-                </div>
-              )}
-            </div>
             <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-3">
               <div>
                 <div className="text-[9px] font-mono tracking-[1.5px] text-[#8b8782]">PHONE COLOR SYSTEM</div>
@@ -592,7 +568,7 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button onClick={() => { update('customFont',''); update('customFontUrl',''); update('customFontName',''); notify('已恢复默认字体'); }} className="py-2.5 rounded-xl bg-[#f5f3ef] text-[#777069] text-[9px]">恢复默认字体</button>
-                <button onClick={() => { saveAppearance({}); notify('字体设置已保存'); }} className="py-2.5 rounded-xl bg-[#292724] text-white text-[9px]">保存字体设置</button>
+                <button onClick={() => { const next = saveAppearance({ customFont: appearance.customFont, customFontName: appearance.customFontName, customFontUrl: appearance.customFontUrl, customFontSize: appearance.customFontSize }); setAppearance(next); setAppBeauty(next.appBeauty || {}); window.dispatchEvent(new CustomEvent('sane333:appearance-changed')); notify('字体设置已保存'); }} className="py-2.5 rounded-xl bg-[#292724] text-white text-[9px]">保存字体设置</button>
               </div>
               <div className="text-[8px] text-[#aaa] leading-relaxed">字体、链接、大小都会保存到当前设备。上传字体会保存在浏览器本地，不会上传到服务器。</div>
             </div>
@@ -660,7 +636,7 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
             {/* 天气小组件样式 */}
             <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
               <div className="text-[10px] font-semibold flex items-center gap-1.5">
-                <span>☀️</span>
+                <Sun className="w-3.5 h-3.5 text-[#8b8782]" />
                 <span>天气小组件</span>
               </div>
               <div className="grid grid-cols-3 gap-2">
@@ -684,7 +660,7 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
             {/* 便签小组件样式 */}
             <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
               <div className="text-[10px] font-semibold flex items-center gap-1.5">
-                <span>📝</span>
+                <StickyNote className="w-3.5 h-3.5 text-[#8b8782]" />
                 <span>便签小组件</span>
               </div>
               <div className="grid grid-cols-3 gap-2">
@@ -708,7 +684,7 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
             {/* 音乐小组件样式 */}
             <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
               <div className="text-[10px] font-semibold flex items-center gap-1.5">
-                <span>🎵</span>
+                <Music className="w-3.5 h-3.5 text-[#8b8782]" />
                 <span>音乐小组件</span>
               </div>
               <div className="grid grid-cols-3 gap-2">
@@ -732,7 +708,7 @@ export function AppearanceScreenView({ currentTheme, onNavigate, onSelectTheme }
             {/* 日期小组件样式 */}
             <div className="p-3 rounded-2xl bg-white/65 border border-black/5 space-y-2">
               <div className="text-[10px] font-semibold flex items-center gap-1.5">
-                <span>📅</span>
+                <Calendar className="w-3.5 h-3.5 text-[#8b8782]" />
                 <span>日期小组件</span>
               </div>
               <div className="grid grid-cols-3 gap-2">
@@ -1187,7 +1163,7 @@ function PhoneShellSection({ appearance, update, notify }: {
         <div className="mt-1 text-[9px] text-[#777069] leading-relaxed">切换手机外观：全面屏、经典圆形 Home、经典方形 Home。Home 键点击会直接返回主屏幕。</div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         {shells.map(shell => {
           const active = appearance.phoneShell === shell.key;
           return (

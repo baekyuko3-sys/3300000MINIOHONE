@@ -232,7 +232,7 @@ export function PhoneSimulator({
   }, []);
 
   return (
-    <div className={`relative ${showPhoneFrame ? "mx-auto" : "w-full"} flex flex-col items-center`}>
+    <div className={showPhoneFrame ? 'relative mx-auto flex flex-col items-center' : 'relative w-full flex flex-col'}>
       {fontFaceCss ? <style>{fontFaceCss + ' .phone-screen, .phone-screen *{font-family:Sane333Custom,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif !important;}'}</style> : null}
       
       {/* Physical Phone Chassis — shape depends on phoneShell */}
