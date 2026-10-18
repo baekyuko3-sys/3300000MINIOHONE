@@ -6466,33 +6466,7 @@ export function LineConversationView({
               <div
                 className={`${isGroup && !isMe ? 'flex-1 min-w-0 flex flex-col items-start' : 'max-w-[78%] relative touch-pan-y select-none ' + (isMe ? 'items-end' : 'items-start')}`}
               >
-                {/* Preset flow · keep the existing compact disclosure UI */}
-                {!isMe && showCotHeader && (
-                  <div className={`my-2 ${cotStyle === 'minimal' ? '' : 'rounded-[11px] border px-2.5 py-1.5'} ${cotStyleClass}`}>
-                    <button
-                      type="button"
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onPointerUp={(event) => event.stopPropagation()}
-                      onClick={() =>
-                        setMessages((prev) =>
-                          prev.map((m) =>
-                            m.id === msg.id ? { ...m, showThinking: !m.showThinking } : m
-                          )
-                        )
-                      }
-                      className="flex items-center gap-1.5 text-[10px] leading-none cursor-pointer hover:opacity-70 transition-opacity"
-                    >
-                      <span className="font-medium">{cotLabel}</span>
-                      <span className="text-[9px] opacity-60">{msg.showThinking ? '⌃' : '›'}</span>
-                    </button>
-
-                    {msg.showThinking && (
-                      <div className="mt-2 pt-2 border-t border-current/10 text-[10px] leading-[1.65] whitespace-pre-wrap break-words animate-in fade-in">
-                        {String(thinkingContent)}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {/* COT 小标签已按用户要求移除 */}
 
                 {!isGroup && lineActionDescriptionsEnabled && msg.actionDescription && !msg.isRecalled && (
                   <div className="w-full flex items-center justify-center my-[18px] animate-in fade-in">
