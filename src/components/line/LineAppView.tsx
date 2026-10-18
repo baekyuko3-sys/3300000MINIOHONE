@@ -2119,9 +2119,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   <div className="ml-[59px] mt-2 text-[9px] text-[#aaa]">◌ {(post as any).visibilityLabel}</div>
                 )}
 
-                {momentsStyle.showTags && !!post.tag && <div className="ml-[59px] mt-2 inline-block text-[9px] px-2 py-0.5 rounded-[4px]" style={{ color: momentsStyle.accent, background: `${momentsStyle.accent}14` }}>
-                  {post.tag}
-                </div>}
+                {/* 标签已删除 */}
 
                 {/* L2 点赞名单 + C1 灰底评论 */}
                 {(() => {
@@ -3076,7 +3074,6 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
             <div><div className="text-[9px] text-[#aaa] mb-2">内容卡片</div><div className="grid grid-cols-3 gap-2">{[['clean','极简'],['paper','纸张'],['soft','柔和']].map(([id,label])=><button key={id} onClick={()=>setMomentsStyle(p=>({...p,cardStyle:id as any}))} className={`py-2.5 rounded-xl border text-[10px] ${momentsStyle.cardStyle===id?'bg-[#292724] text-white border-[#292724]':'bg-white border-[#eee] text-[#666]'}`}>{label}</button>)}</div></div>
             <div><div className="text-[9px] text-[#aaa] mb-2">强调色 · 当前 {momentsStyle.accent}（点一下话题标签和点赞就会变色）</div><div className="flex gap-2">{['#292724','#ae7e89','#71849b','#7d8b72','#9b7d62'].map(color=><button key={color} onClick={()=>{setMomentsStyle(p=>({...p,accent:color}));showToast('强调色已换，看看话题标签的颜色');}} className={`w-8 h-8 rounded-full border shadow ${momentsStyle.accent===color?'border-[#202124] ring-2 ring-[#202124]/25':'border-white'}`} style={{background:color}} />)}</div></div>
             <div><div className="text-[9px] text-[#aaa] mb-2">文字大小</div><input type="range" min="0.9" max="1.15" step="0.05" value={momentsStyle.fontScale} onChange={e=>setMomentsStyle(p=>({...p,fontScale:Number(e.target.value)}))} className="w-full" /></div>
-            <label className="flex items-center justify-between p-3 rounded-xl bg-[#fafafa] text-xs"><span>显示话题标签</span><input type="checkbox" checked={momentsStyle.showTags} onChange={e=>setMomentsStyle(p=>({...p,showTags:e.target.checked}))} /></label>
             <button onClick={()=>setMomentsStyle({banner:'',bannerColor:'',pageColor:'',colorScope:'all',accent:'#ae7e89',cardStyle:'clean',fontScale:1,showTags:true})} className="w-full py-2.5 rounded-xl bg-[#f5f5f5] text-[#777] text-xs">恢复 VROOM 默认美化</button>
           </div>
         </div>
@@ -3999,7 +3996,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                                 </div>
                                 <div className="min-w-0">
                                   <div className="text-[12px] font-semibold text-[#333]">{post.name}</div>
-                                  <div className="text-[9px] text-[#aaa] mt-0.5">{post.time}{post.tag ? ' · ' + post.tag : ''}</div>
+                                  <div className="text-[9px] text-[#aaa] mt-0.5">{post.time}</div>
                                 </div>
                               </div>
                               <div className="ml-[50px] mt-2.5 text-[12px] leading-[1.8] text-[#4b4b4d] whitespace-pre-wrap">{post.text}</div>
@@ -4122,7 +4119,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   </div>
                   <div className="ml-3 flex-1 min-w-0">
                     <div className="text-[13px] font-semibold">{postDetail.name}</div>
-                    <div className="text-[9px] text-[#aaa]">{postDetail.time}{postDetail.tag ? ` · ${postDetail.tag}` : ''}</div>
+                    <div className="text-[9px] text-[#aaa]">{postDetail.time}</div>
                   </div>
                 </div>
                 {(() => {
@@ -4268,7 +4265,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 <div className="mt-3 space-y-3">
                   {myMoments.slice(0, 5).map((p: any) => (
                     <button key={p.id} onClick={() => setPostDetail(p)} className="w-full text-left rounded-2xl border border-[#eeeeef] p-3 hover:bg-[#fafafa]">
-                      <div className="text-[10px] text-[#aaa]">{p.time}{p.tag ? ` · ${p.tag}` : ''}</div>
+                      <div className="text-[10px] text-[#aaa]">{p.time}</div>
                       <div className="mt-1 text-xs text-[#444] line-clamp-3">{p.text || (getPostTextCards(p).length ? '[文字图片]' : getPostVideoCard(p) ? '[文字视频]' : p.image || p.images?.length ? '[图片动态]' : '')}</div>
                     </button>
                   ))}
@@ -5779,7 +5776,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   <div key={post.id} className="py-3 space-y-1.5">
                     <div className="flex justify-between text-[11px] text-[#aaa]">
                       <span>{post.time}</span>
-                      <span className="text-[#ae7e89]">{post.tag}</span>
+                      
                     </div>
                     <div className="text-xs text-[#333] leading-relaxed">{post.text || (getPostTextCards(post).length ? '[文字图片]' : getPostVideoCard(post) ? '[文字视频]' : post.image || post.images?.length ? '[图片动态]' : '')}</div>
                     <div className="text-[10px] text-[#888] flex items-center justify-between pt-1">
