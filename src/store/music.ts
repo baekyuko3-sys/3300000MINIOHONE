@@ -434,9 +434,25 @@ async function fetchJson(url: string): Promise<any> {
     const sep = finalUrl.includes('?') ? '&' : '?';
     finalUrl = `${finalUrl}${sep}cookie=${encodeURIComponent(cookie.raw)}`;
   }
-  const response = await fetch(finalUrl, { headers: { Accept: 'application/json' } });
+  const response = await fetchWithTimeout(finalUrl, { headers: { Accept: 'application/json' } });
   if (!response.ok) throw new Error('MUSIC_API_' + response.status);
   return response.json();
+}
+
+/** 带超时的 fetch（音乐 API 统一用它，避免请求卡死无反馈） */
+async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 20000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('MUSIC_TIMEOUT: 音乐接口超过 ' + Math.round(timeoutMs / 1000) + ' 秒没有响应，请检查网络或稍后重试');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 // ===== 网易云扫码登录（3 步） =====
@@ -451,7 +467,7 @@ export async function loginQrKey(settings = readMusicApiSettings()): Promise<str
   const url = new URL(joinUrl(settings.baseUrl, '/login/qr/key'), window.location.origin);
   // 加时间戳避免缓存命中未登录态
   url.searchParams.set('timestamp', String(Date.now()));
-  const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+  const response = await fetchWithTimeout(url.toString(), { headers: { Accept: 'application/json' } });
   if (!response.ok) throw new Error('生成二维码 key 失败：网络错误 ' + response.status);
   const payload = await response.json();
   const key = payload?.data?.unikey ?? payload?.unikey;
@@ -465,7 +481,7 @@ export async function loginQrCreate(unikey: string, settings = readMusicApiSetti
   url.searchParams.set('key', unikey);
   url.searchParams.set('qrimg', 'true');
   url.searchParams.set('timestamp', String(Date.now()));
-  const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+  const response = await fetchWithTimeout(url.toString(), { headers: { Accept: 'application/json' } });
   if (!response.ok) throw new Error('生成二维码失败：网络错误 ' + response.status);
   const payload = await response.json();
   return {
@@ -480,7 +496,7 @@ export async function loginQrCheck(unikey: string, settings = readMusicApiSettin
   const url = new URL(joinUrl(settings.baseUrl, '/login/qr/check'), window.location.origin);
   url.searchParams.set('key', unikey);
   url.searchParams.set('timestamp', String(Date.now()));
-  const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+  const response = await fetchWithTimeout(url.toString(), { headers: { Accept: 'application/json' } });
   if (!response.ok) throw new Error('扫码状态查询失败：网络错误 ' + response.status);
   const payload = await response.json();
   return {
@@ -659,7 +675,7 @@ export async function fetchUserPlaylists(settings = readMusicApiSettings()): Pro
   // 先获取用户 UID
   const accountUrl = new URL(joinUrl(settings.baseUrl, '/user/account'), window.location.origin);
   accountUrl.searchParams.set('cookie', cookie.raw);
-  const accountRes = await fetch(accountUrl.toString(), { headers: { Accept: 'application/json' } });
+  const accountRes = await fetchWithTimeout(accountUrl.toString(), { headers: { Accept: 'application/json' } });
   const accountData = await accountRes.json();
   const uid = accountData?.account?.innerData?.uid || accountData?.profile?.userId || accountData?.account?.id;
   if (!uid) throw new Error('无法获取用户信息');
@@ -670,7 +686,7 @@ export async function fetchUserPlaylists(settings = readMusicApiSettings()): Pro
   url.searchParams.set('uid', String(uid));
   url.searchParams.set('timestamp', String(Date.now()));
 
-  const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+  const response = await fetchWithTimeout(url.toString(), { headers: { Accept: 'application/json' } });
   if (!response.ok) throw new Error('获取歌单失败：' + response.status);
 
   const payload = await response.json();
@@ -702,7 +718,7 @@ export async function fetchPlaylistDetail(playlistId: string, settings = readMus
   url.searchParams.set('id', playlistId);
   url.searchParams.set('timestamp', String(Date.now()));
 
-  const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+  const response = await fetchWithTimeout(url.toString(), { headers: { Accept: 'application/json' } });
   if (!response.ok) throw new Error('获取歌单详情失败：' + response.status);
 
   const payload = await response.json();
@@ -844,7 +860,7 @@ export async function resolveTrackUrl(track: MusicTrack, settings = readMusicApi
     // 解决在 vercel 等海外节点上调用网易云时 460「cheating」的问题：
     // 让 API 用一个中国 IP 伪装请求来源。
     url302.searchParams.set('randomCNIP', 'true');
-    const response = await fetch(url302.toString(), {
+    const response = await fetchWithTimeout(url302.toString(), {
       method: 'GET',
       redirect: 'follow',
       headers: { Accept: 'application/json' },

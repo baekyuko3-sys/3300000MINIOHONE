@@ -71,7 +71,12 @@ const DEFAULT_OFFLINE_PRESETS: PromptPreset[] = [
 ];
 
 function readLibraries(): Libraries {
-  const parsed = JSON.parse(localStorage.getItem(LIBRARIES_KEY) || 'null') as Partial<Libraries> | null;
+  let parsed: Partial<Libraries> | null = null;
+  try {
+    parsed = JSON.parse(localStorage.getItem(LIBRARIES_KEY) || 'null') as Partial<Libraries> | null;
+  } catch {
+    parsed = null; // 脏数据时回退，下方用默认预设补齐
+  }
   return {
     single: Array.isArray(parsed?.single) ? parsed!.single! : [],
     group: Array.isArray(parsed?.group) ? parsed!.group! : [],
@@ -130,7 +135,12 @@ export function setActivePromptPreset(scope: PromptPresetScope, presetId: string
   if (typeof window === 'undefined') return;
   const libraries = readLibraries();
   if (!libraries[scope].some(preset => preset.id === presetId)) throw new Error('找不到要启用的预设。');
-  const active = JSON.parse(localStorage.getItem(ACTIVE_KEY) || '{}') as Partial<Record<PromptPresetScope, string>>;
+  let active: Partial<Record<PromptPresetScope, string>> = {};
+  try {
+    active = JSON.parse(localStorage.getItem(ACTIVE_KEY) || '{}') as Partial<Record<PromptPresetScope, string>>;
+  } catch {
+    active = {}; // 脏数据时从空开始写
+  }
   active[scope] = presetId;
   localStorage.setItem(ACTIVE_KEY, JSON.stringify(active));
   window.dispatchEvent(new CustomEvent('sane333:prompt-presets-changed', { detail: { scope, presetId } }));

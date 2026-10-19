@@ -24,6 +24,21 @@ async function readJsonOrText(response: Response): Promise<any> {
   }
 }
 
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 60000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('MEDIA_TIMEOUT: 媒体请求超过 ' + Math.round(timeoutMs / 1000) + ' 秒没有响应，请检查网络或服务商状态。');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 function joinEndpoint(base: string, path: string): string {
   const normalized = base.trim().replace(/\/+$/, '');
   if (!normalized) throw new Error('MEDIA_BASE_URL_MISSING');
@@ -55,7 +70,7 @@ export async function generateSpeech(text: string, settings: AppSettings): Promi
   if (!settings.voiceApiKey.trim()) throw new Error('VOICE_API_KEY_MISSING');
   const endpoint = joinEndpoint(settings.voiceBaseUrl, '/audio/speech');
 
-  const response = await fetch(endpoint, {
+  const response = await fetchWithTimeout(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -67,7 +82,7 @@ export async function generateSpeech(text: string, settings: AppSettings): Promi
       input: content,
       response_format: settings.voiceFormat,
     }),
-  });
+  }, 60000);
 
   if (!response.ok) {
     const error = await readJsonOrText(response);
@@ -87,7 +102,7 @@ export async function generateImage(prompt: string, settings: AppSettings): Prom
   if (!settings.imageApiKey.trim()) throw new Error('IMAGE_API_KEY_MISSING');
 
   const endpoint = joinEndpoint(settings.imageBaseUrl, '/images/generations');
-  const response = await fetch(endpoint, {
+  const response = await fetchWithTimeout(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -99,7 +114,7 @@ export async function generateImage(prompt: string, settings: AppSettings): Prom
       size: settings.imageSize,
       n: 1,
     }),
-  });
+  }, 120000);
 
   if (!response.ok) {
     const error = await readJsonOrText(response);
@@ -136,11 +151,11 @@ export async function transcribeAudio(
   form.append('model', settings.sttModel.trim());
   if (settings.sttLanguage.trim()) form.append('language', settings.sttLanguage.trim());
 
-  const response = await fetch(endpoint, {
+  const response = await fetchWithTimeout(endpoint, {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + settings.sttApiKey.trim() },
     body: form,
-  });
+  }, 60000);
 
   if (!response.ok) {
     const error = await readJsonOrText(response);

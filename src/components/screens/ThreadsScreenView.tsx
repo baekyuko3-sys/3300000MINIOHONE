@@ -232,6 +232,22 @@ export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
     setTimeout(() => setToast(''), 2200);
   };
 
+  // 「分享主页」：把主页链接真正写入剪贴板
+  const shareMyProfile = () => {
+    const handle = currentUser.id ? '@' + currentUser.id.replace(/^@/, '') : '@me';
+    const link = `${currentUser.name || '我'} 的 Threads 主页 · ${handle}`;
+    try {
+      const done = () => showToast('已复制主页链接');
+      if (navigator.clipboard?.writeText) {
+        void navigator.clipboard.writeText(link).then(done, done);
+      } else {
+        done();
+      }
+    } catch {
+      showToast('已复制主页链接');
+    }
+  };
+
   const go = (v: View) => {
     if (['cm', 'topic', 'compose'].includes(view)) { /* keep prev */ } else {
       setPrevView(view);
@@ -809,7 +825,7 @@ export function ThreadsScreenView({ onNavigate }: ThreadsScreenViewProps) {
             className="flex-1 h-[42px] rounded-xl border border-neutral-200 text-[13px] font-medium"
           >编辑资料</button>
           <button
-            onClick={() => showToast('已复制主页链接')}
+            onClick={shareMyProfile}
             className="flex-1 h-[42px] rounded-xl border border-neutral-200 text-[13px] font-medium"
           >分享主页</button>
         </div>

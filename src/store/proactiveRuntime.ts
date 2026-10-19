@@ -5,7 +5,7 @@ import { getCharacterMemory } from './characterMemory';
 import { getProjectManifest } from './projectManifest';
 import { readAppSettings } from './appSettings';
 import { generateCreativeText, readStoredAiSettings } from '../ai/aiEngine';
-import { emitWorldEvent, setCharacterRuntime, syncWorldCharacters } from './worldRuntime';
+import { emitWorldEvent, setCharacterRuntime, syncWorldCharacters, readSchedulesForCharacter } from './worldRuntime';
 import { appendLineMessage, getLineConversationMessages, saveLineConversationMessages } from './lineRuntime';
 import { upsertOfflineEvent } from './offlineEvents';
 import {
@@ -469,11 +469,11 @@ export async function runProactiveCatchup() {
     try { await runNpcPrivateProactive(today, state); } catch { /* best-effort background work */ }
 
     for (const character of characters) {
-      const rawSchedule = window.localStorage.getItem(`line:schedule:${character.name}`);
-      if (!rawSchedule) continue;
+      // 日程可能存在角色名 key / 角色 id key / 会话 id key 三种命名空间下
+      //（聊天设置页写入的是会话级 key），统一读取避免日程静默失效。
+      const schedule: ScheduleItem[] = readSchedulesForCharacter(character);
+      if (!schedule.length) continue;
 
-      let schedule: ScheduleItem[] = [];
-      try { schedule = JSON.parse(rawSchedule); } catch { continue; }
       const due = schedule
         .map(item => ({ item, minute: parseClock(item.time) }))
         .filter((entry): entry is { item: ScheduleItem; minute: number } => entry.minute !== null && entry.minute <= currentMinutes)

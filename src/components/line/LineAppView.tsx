@@ -1,5 +1,5 @@
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
-import { usePersistentState } from '../../store/usePersistentState';
+import { usePersistentState, useSyncedPersistentState } from '../../store/usePersistentState';
 import { readAndCompressImage } from '../../store/imageCompress';
 import type { ImportedCharacter } from '../../data/characterImport';
 import { getCharacterMemory } from '../../store/characterMemory';
@@ -531,6 +531,22 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   const showToast = (msg: string) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(''), 1800);
+  };
+
+  // 真正清理本地缓存：Cache Storage + sessionStorage + 已知的非关键缓存键。
+  // 注意：绝不删 line:/phone: 持久化数据（聊天记录、人设、设置都在里面）。
+  const handleClearLocalCache = () => {
+    try {
+      if ('caches' in window) {
+        void caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key))));
+      }
+      window.sessionStorage.clear();
+      // 明确标注为缓存的 localStorage 键（重建时会自动回填）
+      window.localStorage.removeItem('phone:music-cloud-playlists-cache');
+      showToast('本地缓存已清理完毕');
+    } catch {
+      showToast('清理失败，请重试');
+    }
   };
 
   // Modals state
@@ -1096,7 +1112,9 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   const globalFavorites = Array.isArray(globalFavoritesRaw) ? globalFavoritesRaw : [];
 
   // Friends Data
-  const [friendsListRaw, setFriendsList] = usePersistentState<LineFriend[]>('line:friends-list', []);
+  // 跨组件同步版：NPC 屏删除 NPC 时会直接写 line:friends-list 存储，
+  // 普通 usePersistentState 收不到变更，会导致已删 NPC 残留在好友列表（幽灵好友）。
+  const [friendsListRaw, setFriendsList] = useSyncedPersistentState<LineFriend[]>('line:friends-list', []);
   const friendsList = Array.isArray(friendsListRaw)
     ? friendsListRaw.filter((f): f is LineFriend => !!f && typeof f === 'object' && typeof f.name === 'string')
       .map(f => ({ ...f, note: typeof f.note === 'string' ? f.note : '', pinyin: typeof f.pinyin === 'string' ? f.pinyin : '' }))
@@ -6462,9 +6480,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 <span className="text-[#888]">LINE — White Edition v2.5</span>
               </div>
               <div
-                onClick={() => {
-                  showToast('本地缓存已清理完毕');
-                }}
+                onClick={handleClearLocalCache}
                 className="py-2.5 flex justify-between items-center cursor-pointer hover:bg-neutral-50"
               >
                 <span className="text-[#333]">清除缓存数据</span>

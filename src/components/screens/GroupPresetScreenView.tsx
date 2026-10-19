@@ -112,8 +112,8 @@ export function GroupPresetScreenView({ onNavigate }: { onNavigate: (screen: Scr
   const filteredPresets = libraries[scope].filter(p => (p.name + ' ' + p.desc).toLowerCase().includes(search.trim().toLowerCase()));
   const notify = (text: string) => { setNotice(text); window.setTimeout(() => setNotice(''), 2200); };
 
-  useEffect(() => { localStorage.setItem(KEY, JSON.stringify(libraries)); }, [libraries]);
-  useEffect(() => { localStorage.setItem('phone:preset-active-v1', JSON.stringify(selectedIds)); }, [selectedIds]);
+  useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(libraries)); } catch { /* 配额满/隐私模式时忽略，内存态继续可用 */ } }, [libraries]);
+  useEffect(() => { try { localStorage.setItem('phone:preset-active-v1', JSON.stringify(selectedIds)); } catch { /* 配额满/隐私模式时忽略 */ } }, [selectedIds]);
   useEffect(() => {
     if (selectedPreset && !selectedEntryId && selectedPreset.entries.length) setSelectedEntryId(selectedPreset.entries[0].id);
     if (selectedPreset && selectedEntryId && !selectedPreset.entries.some(e => e.id === selectedEntryId)) setSelectedEntryId(selectedPreset.entries[0]?.id || null);

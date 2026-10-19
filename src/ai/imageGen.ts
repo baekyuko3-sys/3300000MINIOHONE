@@ -83,7 +83,7 @@ export async function resolveImageToDataUrl(url?: string | null): Promise<string
       return resolved || undefined;
     }
     if (/^https?:\/\//i.test(url)) {
-      const resp = await fetch(url);
+      const resp = await fetchWithTimeout(url, {}, 30000);
       if (!resp.ok) return undefined;
       const blob = await resp.blob();
       return await new Promise<string | undefined>((resolve) => {

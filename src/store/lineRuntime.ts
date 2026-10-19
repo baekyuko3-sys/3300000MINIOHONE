@@ -403,6 +403,24 @@ export function removeLineConversationData(id: string, options: { removeChatItem
   window.localStorage.removeItem(`line:custom-css:${id}`);
   window.localStorage.removeItem(`line:wallpaper:${id}`);
   window.localStorage.removeItem(`line:chat-api-override:${id}`);
+  // 该会话的其余 per-conversation 设置也一并清理，否则同 id 重建会话时会读到幽灵旧配置。
+  for (const key of [
+    `line:opening-context:${id}`,
+    `line:schedule:${id}`,
+    `line:cot-active:${id}`,
+    `line:cot-custom:${id}`,
+    `line:preset:${id}`,
+    `line:preset-temp:${id}`,
+    `line:preset-context:${id}`,
+    `line:status:${id}`,
+    `line:status-regex:${id}`,
+    `line:status-format:${id}`,
+    `line:status-bar-active:${id}`,
+    `line:offline-draft:${id}`,
+    `line:offline-css:${id}`,
+  ]) {
+    try { window.localStorage.removeItem(key); } catch { /* ignore */ }
+  }
 
   const meta = readJson<Record<string, LineConversationMeta>>(META_KEY, {});
   delete meta[id];

@@ -176,16 +176,26 @@ function weatherLabel(code: number): string {
   return '天气变化';
 }
 
+async function fetchWeatherWithTimeout(url: string, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 export async function fetchLineWeather(location: string): Promise<LineWeatherSnapshot | null> {
   const query = location.trim();
   if (!query || typeof window === 'undefined') return null;
   try {
-    const geoResponse = await fetch('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(query) + '&count=1&language=zh&format=json');
+    const geoResponse = await fetchWeatherWithTimeout('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(query) + '&count=1&language=zh&format=json');
     if (!geoResponse.ok) return null;
     const geo = await geoResponse.json();
     const place = Array.isArray(geo?.results) ? geo.results[0] : null;
     if (!place || typeof place.latitude !== 'number' || typeof place.longitude !== 'number') return null;
-    const weatherResponse = await fetch(
+    const weatherResponse = await fetchWeatherWithTimeout(
       'https://api.open-meteo.com/v1/forecast?latitude=' + encodeURIComponent(String(place.latitude)) +
       '&longitude=' + encodeURIComponent(String(place.longitude)) +
       '&current=temperature_2m,apparent_temperature,precipitation,weather_code&timezone=auto'

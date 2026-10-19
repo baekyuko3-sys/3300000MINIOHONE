@@ -82,6 +82,8 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [mediaModels, setMediaModels] = useState<{ voice: string[]; stt: string[]; image: string[] }>({ voice: [], stt: [], image: [] });
   const [mediaModelBusy, setMediaModelBusy] = useState<'voice' | 'stt' | 'image' | null>(null);
+  const [testVoiceBusy, setTestVoiceBusy] = useState(false);
+  const [testImageBusy, setTestImageBusy] = useState(false);
   const [heartbeat, setHeartbeat] = useState(() => getBackgroundHeartbeat());
   const [includeSecretsInBackup, setIncludeSecretsInBackup] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
@@ -144,6 +146,7 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
 
   const uploadSound = async (kind: AppSoundKind, file?: File) => {
     if (!file) return;
+    if (file.size > 20 * 1024 * 1024) { notify('音频文件太大，请选择 20MB 以内的'); return; }
     try {
       const ref = await saveSoundFile(file, kind);
       if (kind === 'message') update('messageSoundRef', ref);
@@ -390,6 +393,8 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
   };
 
   const testVoice = async () => {
+    if (testVoiceBusy) return;
+    setTestVoiceBusy(true);
     try {
       const media = await generateSpeech('私人设备语音连接测试。', settings);
       if (media?.url) {
@@ -399,12 +404,16 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
       notify(media?.source === 'browser' ? '浏览器语音已调用' : 'TTS 语音连接成功');
     } catch (error) {
       notify(error instanceof Error ? error.message : '语音测试失败');
+    } finally {
+      setTestVoiceBusy(false);
     }
   };
 
   const [imagePresets] = useImagePresets();
 
   const testImage = async () => {
+    if (testImageBusy) return;
+    setTestImageBusy(true);
     try {
       // 用新引擎测试（和聊天里 AI 生图同一条链路），不用旧 mediaEngine
       const preset = imagePresets[0];
@@ -417,6 +426,8 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
       notify(result.ok && result.imageBase64 ? '图片接口已返回结果' : '图片测试失败：' + (result.error || '无结果'));
     } catch (error) {
       notify(error instanceof Error ? error.message : '图片测试失败');
+    } finally {
+      setTestImageBusy(false);
     }
   };
 
@@ -849,7 +860,7 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
 
             <div className="grid grid-cols-2 gap-2 mt-3">
               <button onClick={() => copyChatToMedia('voice')} className="py-2 rounded-xl bg-white/75 border border-[rgba(40,36,31,.1)] text-[9px] flex items-center justify-center gap-1"><RefreshCw className="w-3 h-3" />复制聊天 API</button>
-              <button onClick={testVoice} className="py-2 rounded-xl bg-[#292724] text-white text-[9px] flex items-center justify-center gap-1"><Volume2 className="w-3 h-3" />测试语音</button>
+              <button onClick={testVoice} disabled={testVoiceBusy} className="py-2 rounded-xl bg-[#292724] text-white text-[9px] flex items-center justify-center gap-1"><Volume2 className="w-3 h-3" />{testVoiceBusy ? '测试中…' : '测试语音'}</button>
             </div>
           </section>
         )}
@@ -889,7 +900,7 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
             <button onClick={() => void fetchMediaModels('image')} className="w-full mt-2 py-2 rounded-xl bg-white/70 border border-black/5 text-[9px]">{mediaModelBusy === 'image' ? '拉取中…' : '拉取图片模型'}</button>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button onClick={() => copyChatToMedia('image')} className="py-2 rounded-xl bg-white/75 border border-[rgba(40,36,31,.1)] text-[9px] flex items-center justify-center gap-1"><RefreshCw className="w-3 h-3" />复制聊天 API</button>
-              <button onClick={testImage} className="py-2 rounded-xl bg-[#292724] text-white text-[9px] flex items-center justify-center gap-1"><ImageIcon className="w-3 h-3" />测试图片接口</button>
+              <button onClick={testImage} disabled={testImageBusy} className="py-2 rounded-xl bg-[#292724] text-white text-[9px] flex items-center justify-center gap-1"><ImageIcon className="w-3 h-3" />{testImageBusy ? '测试中…' : '测试图片接口'}</button>
             </div>
             <div className="mt-2 text-[8.5px] text-[#8b8782] leading-relaxed">视觉理解不需要独立模型配置：LINE 上传图片时，会把图片作为多模态消息送给当前聊天模型；前提是你的模型支持 vision / multimodal。</div>
           </section>

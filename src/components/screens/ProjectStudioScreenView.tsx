@@ -92,15 +92,28 @@ function aiUrl(base: string) {
 }
 
 async function github(url: string, token: string, init: RequestInit = {}) {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 30000);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      headers: {
       Accept: 'application/vnd.github+json',
       Authorization: 'Bearer ' + token,
       'X-GitHub-Api-Version': '2022-11-28',
       ...(init.headers || {}),
-    },
-  });
+      },
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('GitHub 请求超过 30 秒没有响应，请检查网络或稍后重试');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
   if (!response.ok) {
     let message = '';
     try {

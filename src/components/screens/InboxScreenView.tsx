@@ -43,6 +43,13 @@ export function InboxScreenView({ onNavigate, onSelectChat }: InboxScreenViewPro
 
       {/* Letters List */}
       <div className="relative z-10 flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar text-xs">
+        {letters.length === 0 && (
+          <div className="py-16 text-center">
+            <div className="text-[8px] font-mono tracking-[2px] text-[#817a72] uppercase">EMPTY MAILBOX</div>
+            <div className="mt-3 font-serif font-bold text-[15px] text-[#242323]">还没有信函</div>
+            <div className="mt-2 text-[10px] leading-relaxed text-[#8b8782]">和角色的私密信件<br />会投递到这里</div>
+          </div>
+        )}
         {letters.map((item) => (
           <div
             key={item.id}

@@ -269,6 +269,67 @@ export function syncCharacterRoutine(
   window.dispatchEvent(new CustomEvent('sane333:world-state-changed', { detail: state }));
 }
 
+export interface CharacterScheduleItem {
+  id: string;
+  time: string;
+  title: string;
+  kind?: 'message' | 'moment' | 'offline-invite';
+  location?: string;
+  theme?: string;
+  conversationId?: string;
+}
+
+/**
+ * 读取某角色的全部日程。日程在不同时期用过不同 key 命名空间：
+ * - `line:schedule:<角色名>`（旧）
+ * - `line:schedule:<角色 id>`（旧）
+ * - `line:schedule:<会话 id>`（当前聊天设置页写入，conversationStorageId）
+ * 只读角色名 key 会导致聊天设置页添加的日程永远不被触发。
+ */
+export function readSchedulesForCharacter(character: { id?: string; name?: string }): CharacterScheduleItem[] {
+  if (typeof window === 'undefined') return [];
+  const keys = new Set<string>();
+  if (character.name) keys.add(`line:schedule:${character.name}`);
+  if (character.id) keys.add(`line:schedule:${character.id}`);
+  try {
+    const rawChats = window.localStorage.getItem('line:chat-items');
+    const chats = rawChats ? JSON.parse(rawChats) : [];
+    if (Array.isArray(chats)) {
+      for (const chat of chats) {
+        if (chat && !chat.isGroup && chat.id && chat.characterId
+          && String(chat.characterId) === String(character.id)) {
+          keys.add(`line:schedule:${chat.id}`);
+        }
+      }
+    }
+  } catch {
+    // Chat list unreadable: fall back to the name/id keys above.
+  }
+  const items: CharacterScheduleItem[] = [];
+  const seen = new Set<string>();
+  for (const key of keys) {
+    let parsed: unknown = null;
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (raw) parsed = JSON.parse(raw);
+    } catch {
+      // One broken schedule key must not stop the others.
+      continue;
+    }
+    if (!Array.isArray(parsed)) continue;
+    for (const item of parsed) {
+      if (!item || typeof item !== 'object') continue;
+      const id = String((item as { id?: unknown }).id || '');
+      if (id) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+      }
+      items.push(item as CharacterScheduleItem);
+    }
+  }
+  return items;
+}
+
 function runWorldRoutineClock() {
   if (typeof window === 'undefined') return;
   const tick = () => {
@@ -278,11 +339,10 @@ function runWorldRoutineClock() {
       if (!Array.isArray(characters) || !characters.length) return;
       const now = new Date();
       characters.forEach((character: ImportedCharacter) => {
-        const scheduleRaw = window.localStorage.getItem(`line:schedule:${character.name}`);
-        if (!scheduleRaw) return;
+        const schedule = readSchedulesForCharacter(character);
+        if (!schedule.length) return;
         try {
-          const schedule = JSON.parse(scheduleRaw);
-          if (Array.isArray(schedule)) syncCharacterRoutine(character, schedule, now);
+          syncCharacterRoutine(character, schedule, now);
         } catch {
           // One broken schedule must not stop the world clock.
         }

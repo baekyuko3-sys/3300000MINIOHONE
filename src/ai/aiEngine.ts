@@ -1670,7 +1670,7 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
   const history = input.history || [];
 
   const proxyChat = async () => {
-    const response = await fetch('/api/ai-models', {
+    const response = await fetchWithTimeout('/api/ai-models', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1683,7 +1683,7 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
         userPrompt: input.userPrompt,
         history,
       }),
-    });
+    }, 30000);
     if (!response.ok) throw new Error('AI_PROXY_' + response.status + ': ' + await readError(response));
     const data = await response.json();
     const text = input.settings.provider === 'gemini' ? extractGeminiText(data).trim() : extractOpenAiText(data).trim();
@@ -1800,7 +1800,7 @@ export async function listOpenAiCompatibleModels(
   // the user's localhost.
   if (settings.provider === 'gemini' || (!response && !isLocalAiBaseUrl(base))) {
     try {
-      response = await fetch('/api/ai-models', {
+      response = await fetchWithTimeout('/api/ai-models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1809,7 +1809,7 @@ export async function listOpenAiCompatibleModels(
           baseUrl: base,
           apiKey: settings.apiKey.trim(),
         }),
-      });
+      }, 15000);
     } catch (proxyError) {
       throw new Error(
         'AI_MODELS_NETWORK: ' +
@@ -2077,7 +2077,13 @@ export async function mergeRecentMemoryBatch(
     temperature: appSettings.memoryTemperature,
   });
   const cleaned = raw.trim().replace(/^\`\`\`(?:json)?\s*/i, '').replace(/\s*\`\`\`$/i, '');
-  const parsed = JSON.parse(cleaned);
+  let parsed: any = null;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    // AI 返回了非 JSON：本次合并跳过，保留现有记忆（调用方 catch 会在之后重试）。
+    return { summary: currentMemory.summary, updates: [] };
+  }
   const validSections = new Set(['stage','about-you','relationship','understanding','confirm','todo','done']);
   const validKinds = new Set(['fact','diary','relationship','preference','event']);
   const updates = Array.isArray(parsed?.updates) ? parsed.updates.map((item: any) => ({
@@ -2158,7 +2164,13 @@ export async function summarizeConversationMemory(
     temperature: appSettings.memoryTemperature,
   });
   const cleaned = raw.trim().replace(/^\`\`\`(?:json)?\s*/i, '').replace(/\s*\`\`\`$/i, '');
-  const parsed = JSON.parse(cleaned);
+  let parsed: any = null;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    // AI 返回了非 JSON：本次摘要生成跳过，保留现有摘要（调用方 catch 会在之后重试）。
+    return { summary: currentMemory.summary, items: [] };
+  }
 
   return {
     summary: typeof parsed?.summary === 'string' ? parsed.summary.trim() : currentMemory.summary,

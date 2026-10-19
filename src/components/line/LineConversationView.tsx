@@ -881,6 +881,13 @@ export function LineConversationView({
       return {
         id: message.id,
         sender: message.sender,
+        // 群聊发言人身份：persist 映射是落盘前的最后一道，usePersistentState 的 300ms
+        // 防抖写可能因切屏被取消，此时存储里只有这里写下的版本；丢了 senderName，
+        // 重载后群消息就只剩「群成员」，群记忆/AI 上下文也会丢发言人。
+        senderName: message.senderName,
+        senderType: message.senderType,
+        senderId: message.senderId,
+        characterId: message.characterId,
         text: message.text || message.content,
         kind: msgKind as LineRuntimeMessage['kind'],
         // 保留 type，避免 music-together 被只写 kind 后渲染/触发逻辑丢字段
@@ -2393,6 +2400,21 @@ export function LineConversationView({
   const showToast = (text: string) => {
     setToastMsg(text);
     setTimeout(() => setToastMsg(''), 1800);
+  };
+
+  // 角色主页「分享」：把主页链接真正写入剪贴板
+  const shareCharacterProfile = () => {
+    const link = `${characterProfile.nickname} 的主页 · @guyan.whisper（LINE White Edition）`;
+    try {
+      const done = () => showToast('已复制TA的主页链接');
+      if (navigator.clipboard?.writeText) {
+        void navigator.clipboard.writeText(link).then(done, done);
+      } else {
+        done();
+      }
+    } catch {
+      showToast('已分享TA的主页链接');
+    }
   };
 
   const stopLiveSpeechRecognition = () => {
@@ -3992,10 +4014,13 @@ export function LineConversationView({
   const handleRecallMessage = (msgId: number) => {
     // Persist recall in the same runtime record used by search/history/AI.
     import('../../store/lineRuntime').then(({ recallLineMessage }) => recallLineMessage(conversationStorageId, msgId));
+    // React 状态必须同步写成占位文本：persist effect 会把整个 messages 写回存储，
+    // 若保留原文，存储里刚写入的「你撤回了一条消息」会被原文覆盖，
+    // AI/搜索/重载后仍能读到已撤回内容。
     setMessages((prev) =>
       prev.map((m) =>
-        m.id === msgId
-          ? { ...m, isRecalled: true, recalledOriginalText: m.text }
+        String(m.id) === String(msgId)
+          ? { ...m, text: '你撤回了一条消息', status: 'recalled', isRecalled: true, recalledOriginalText: m.text, recalledAt: new Date().toISOString() }
           : m
       )
     );
@@ -4011,12 +4036,17 @@ export function LineConversationView({
       recalledAt: new Date().toISOString(),
       metadata: { recalledByOther: true, roleplayEvent: isRoleplayEvent },
     });
+    // 同 handleRecallMessage：React 状态必须同步写成占位文本，
+    // 否则 persist effect 会把原文写回存储，覆盖上面的占位文本。
     setMessages((prev) =>
       prev.map((m) =>
-        m.id === msgId
+        String(m.id) === String(msgId)
           ? {
               ...m,
+              text: '对方撤回了一条消息',
+              status: 'recalled',
               isRecalledByOther: true,
+              recalledAt: new Date().toISOString(),
               recalledByOtherReason: isRoleplayEvent
                 ? '（刚才手滑发出了内心私语，仓促撤回了……）'
                 : '（对方撤回了一条消息）',
@@ -12568,7 +12598,7 @@ export function LineConversationView({
               <div className="text-[9.5px] text-[#aaa]">@guyan.whisper · 个人动态与设定</div>
             </div>
             <button
-              onClick={() => showToast('已分享TA的主页链接')}
+              onClick={shareCharacterProfile}
               className="text-sm text-[#666] px-2 cursor-pointer hover:text-[#ae7e89]"
             >
               <Share2 className="w-4 h-4" />

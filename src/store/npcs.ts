@@ -83,6 +83,11 @@ export function deleteNpc(id: string): void {
 /** 删除 NPC 后清理各处引用，避免群聊/好友列表里留下幽灵成员 */
 export function removeNpcReferences(npcId: string): void {
   if (typeof window === 'undefined' || !npcId) return;
+  // 同页其他组件（如 LINE 好友列表用 useSyncedPersistentState）靠这个事件同步，
+  // 否则直接写存储后 React 状态收不到变更，已删 NPC 会残留显示。
+  const broadcastKey = (key: string) => {
+    try { window.dispatchEvent(new CustomEvent('sane333:storage-changed', { detail: { key } })); } catch { /* ignore */ }
+  };
   try {
     // 群聊：移除带该 npcId 的成员 + npcMembers 记录
     const groupsRaw = window.localStorage.getItem('line:groups');
@@ -101,13 +106,17 @@ export function removeNpcReferences(npcId: string): void {
         return changed ? { ...group, members, npcMembers, updatedAt: new Date().toISOString() } : group;
       });
       window.localStorage.setItem('line:groups', JSON.stringify(next));
+      broadcastKey('line:groups');
     }
     // 好友列表：移除带该 npcId 的好友
     const friendsRaw = window.localStorage.getItem('line:friends-list');
     if (friendsRaw) {
       const friends = JSON.parse(friendsRaw) as Array<any>;
       const next = friends.filter(f => f?.npcId !== npcId);
-      if (next.length !== friends.length) window.localStorage.setItem('line:friends-list', JSON.stringify(next));
+      if (next.length !== friends.length) {
+        window.localStorage.setItem('line:friends-list', JSON.stringify(next));
+        broadcastKey('line:friends-list');
+      }
     }
   } catch {
     // 清理失败不影响删除流程

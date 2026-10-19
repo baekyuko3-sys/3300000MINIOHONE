@@ -36,6 +36,7 @@ interface IgPost {
   likes: number;
   liked: boolean;
   saved: boolean;
+  reposted?: boolean;
   comments: IgComment[];
   time: string;
   deleted?: boolean;
@@ -211,7 +212,11 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
         sidecar[target.id] = { ...(sidecar[target.id] || DEFAULT_IG_EXTRAS), ...extras };
         localStorage.setItem('line:user-personas', JSON.stringify(lines));
         localStorage.setItem('phone:instagram-persona-extras', JSON.stringify(sidecar));
-        localStorage.setItem('line:active-persona', JSON.stringify(target.id));
+        // 与 Threads 迁移保持一致：已有 active-persona 时不覆盖，
+        // 否则两个迁移都会写同一个 key，后执行的会踩掉用户已选的人设。
+        if (!localStorage.getItem('line:active-persona')) {
+          localStorage.setItem('line:active-persona', JSON.stringify(target.id));
+        }
         setLinePersonas(lines);
         setIgExtras(sidecar);
         setLineActivePersonaId(target.id);
@@ -363,6 +368,14 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
       const saved = !p.saved;
       showToast(saved ? '已收藏' : '已取消收藏');
       return { ...p, saved };
+    }));
+  };
+  const toggleRepost = (id: string) => {
+    setPosts(prev => prev.map(p => {
+      if (p.id !== id) return p;
+      const reposted = !p.reposted;
+      showToast(reposted ? '已转发' : '已取消转发');
+      return { ...p, reposted };
     }));
   };
   const openComments = (id: string) => {
@@ -550,12 +563,12 @@ export function InstagramScreenView({ onNavigate }: InstagramScreenViewProps) {
           <Heart size={25} fill={p.liked ? 'currentColor' : 'none'} />
         </button>
         <button onClick={() => openComments(p.id)}><MessageCircle size={25} /></button>
-        <button onClick={() => showToast('已转发')}><Send size={25} /></button>
+        <button onClick={() => toggleRepost(p.id)} style={p.reposted ? { color: '#1d9bf0' } : undefined}><Send size={25} /></button>
         <button onClick={() => toggleSave(p.id)} className="ml-auto">
           <Bookmark size={25} fill={p.saved ? 'currentColor' : 'none'} />
         </button>
       </div>
-      <p className="px-3.5 pt-1 text-[13px]"><b>{p.likes + (p.liked ? 1 : 0)} 人赞了</b></p>
+      <p className="px-3.5 pt-1 text-[13px]"><b>{p.likes + (p.liked ? 1 : 0)} 人赞了</b>{p.reposted && <span className="ml-2 text-[12px] text-[#1d9bf0]">已转发</span>}</p>
       <p className="px-3.5 text-[13px] leading-[1.6]"><b>{p.byName}</b> {p.text}</p>
       {(() => {
         const pt = p.track || getAuthorTrack(p.by);
