@@ -6505,10 +6505,10 @@ export function LineConversationView({
                 {/* COT 小标签已按用户要求移除 */}
 
                 {!isGroup && lineActionDescriptionsEnabled && msg.actionDescription && !msg.isRecalled && (
-                  <div className="w-full flex items-center justify-center my-[18px] animate-in fade-in">
-                    <div className="relative flex w-full min-w-0 items-center justify-center gap-2 text-center">
+                  <div className="w-full flex justify-center my-[18px] animate-in fade-in" style={{textAlign:'center'}}>
+                    <div className="flex w-full items-center justify-center gap-2" style={{textAlign:'center'}}>
                       <span className="h-px w-4 shrink-0 bg-[#eee8eb]" />
-                      <span className="min-w-0 max-w-[calc(100%-3rem)] overflow-hidden text-ellipsis whitespace-nowrap text-[10.5px] leading-[1.6] italic tracking-[0.01em] text-[#9b9599]">
+                      <span className="max-w-[calc(100%-3rem)] text-[10.5px] leading-[1.6] italic tracking-[0.01em] text-[#9b9599]" style={{textAlign:'center'}}>
                         {msg.actionDescription}
                       </span>
                       <span className="h-px w-4 shrink-0 bg-[#eee8eb]" />
