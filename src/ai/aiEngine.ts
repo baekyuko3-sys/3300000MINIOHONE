@@ -1692,6 +1692,18 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
     return text;
   };
 
+  // SillyTavern 方式：优先走后端代理，避免浏览器 CORS 问题。
+  // 代理不可用（404/网络错误）时才尝试直连。
+  try {
+    return await proxyChat();
+  } catch (proxyError) {
+    const msg = String(proxyError);
+    // 代理返回的业务错误直接抛出；只有代理不存在或连不上才降级直连
+    if (!msg.includes('AI_PROXY_404') && !msg.includes('Failed to fetch') && !msg.includes('NetworkError') && !(proxyError instanceof TypeError)) {
+      throw proxyError;
+    }
+  }
+
   try {
     if (input.settings.provider === 'gemini') {
       const base = (input.settings.apiBaseUrl || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/+$/, '');
@@ -1744,12 +1756,6 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
     input.onDelta?.(text);
     return text;
   } catch (error) {
-    // A local Docker endpoint must stay in the browser. Vercel cannot reach
-    // the user's localhost, so proxying localhost requests only creates a hang.
-    if (!isLocalAiBaseUrl(input.settings.apiBaseUrl) &&
-        (error instanceof TypeError || /Failed to fetch|NetworkError|Load failed|CORS/i.test(String(error)))) {
-      return proxyChat();
-    }
     throw error;
   }
 }
