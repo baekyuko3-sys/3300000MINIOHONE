@@ -248,19 +248,19 @@ export function PhoneSimulator({
           {showStatusBar && (
             <div className="absolute z-20 top-0 left-0 right-0 h-[44px] flex items-center justify-between px-4 text-[11px] text-[#666]">
               <span className="font-medium tracking-[0.5px]">{statusBarTime}</span>
-              <span className="flex items-center gap-1.5">
+              <span className="flex items-center gap-1" style={{color:'#666'}}>
                 <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor">
-                  <path d="M8 9.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/>
-                  <path d="M8 5.5c1.8 0 3.4.7 4.6 1.9l-1.4 1.4C10.3 7.9 9.2 7.5 8 7.5s-2.3.4-3.2 1.3L3.4 7.4C4.6 6.2 6.2 5.5 8 5.5z"/>
-                  <path d="M8 1c2.9 0 5.6 1.2 7.6 3.1l-1.4 1.4C12.6 3.9 10.4 3 8 3S3.4 3.9 1.8 5.5L.4 4.1C2.4 2.2 5.1 1 8 1z"/>
+                  <path d="M8 9.6c-.8 0-1.5-.7-1.5-1.6 0-.8.7-1.5 1.5-1.5.9 0 1.6.7 1.6 1.5 0 .9-.7 1.6-1.6 1.6z"/>
+                  <path d="M8 5.2c-1.9 0-3.6.8-4.9 2l1.5 1.5c.9-.9 2.1-1.4 3.4-1.4s2.5.5 3.4 1.4l1.5-1.5c-1.3-1.2-3-2-4.9-2z"/>
+                  <path d="M8 .8c-3 0-5.8 1.2-7.9 3.2L1.6 5.5C3.3 3.9 5.5 3 8 3s4.7.9 6.4 2.5L15.9 4C13.8 2 11 .8 8 .8z"/>
                 </svg>
-                <span className="relative inline-flex items-center">
-                  <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
-                    <rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" strokeWidth="1" opacity="0.4"/>
-                    <rect x="2" y="2" width="15" height="8" rx="1.5" fill="currentColor"/>
-                    <path d="M23 4v4c1-.3 1.5-1 1.5-2s-.5-1.7-1.5-2z" fill="currentColor" opacity="0.4"/>
+                <span className="flex items-center">
+                  <svg width="27" height="13" viewBox="0 0 27 13">
+                    <rect x="0.5" y="0.5" width="22" height="12" rx="3.5" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.35"/>
+                    <rect x="2" y="2" width="14" height="9" rx="2" fill="currentColor"/>
+                    <text x="4" y="9.5" fontSize="7" fontWeight="600" fill="#fff">80</text>
+                    <path d="M24.5 4.5v4c1.2-.3 2-1 2-2s-.8-1.7-2-2z" fill="currentColor" opacity="0.35"/>
                   </svg>
-                  <span className="absolute inset-0 flex items-center justify-center text-[8px] font-semibold" style={{color:'#fff'}}>80</span>
                 </span>
               </span>
             </div>
@@ -492,19 +492,19 @@ export function PhoneSimulator({
               {showStatusBar && (
                 <div className="absolute z-20 top-0 left-0 right-0 h-[44px] flex items-center justify-between px-4 text-[11px] text-[#666]">
                   <span className="font-medium tracking-[0.5px]">{statusBarTime}</span>
-                  <span className="flex items-center gap-1.5">
+                  <span className="flex items-center gap-1" style={{color:'#666'}}>
                 <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor">
-                  <path d="M8 9.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/>
-                  <path d="M8 5.5c1.8 0 3.4.7 4.6 1.9l-1.4 1.4C10.3 7.9 9.2 7.5 8 7.5s-2.3.4-3.2 1.3L3.4 7.4C4.6 6.2 6.2 5.5 8 5.5z"/>
-                  <path d="M8 1c2.9 0 5.6 1.2 7.6 3.1l-1.4 1.4C12.6 3.9 10.4 3 8 3S3.4 3.9 1.8 5.5L.4 4.1C2.4 2.2 5.1 1 8 1z"/>
+                  <path d="M8 9.6c-.8 0-1.5-.7-1.5-1.6 0-.8.7-1.5 1.5-1.5.9 0 1.6.7 1.6 1.5 0 .9-.7 1.6-1.6 1.6z"/>
+                  <path d="M8 5.2c-1.9 0-3.6.8-4.9 2l1.5 1.5c.9-.9 2.1-1.4 3.4-1.4s2.5.5 3.4 1.4l1.5-1.5c-1.3-1.2-3-2-4.9-2z"/>
+                  <path d="M8 .8c-3 0-5.8 1.2-7.9 3.2L1.6 5.5C3.3 3.9 5.5 3 8 3s4.7.9 6.4 2.5L15.9 4C13.8 2 11 .8 8 .8z"/>
                 </svg>
-                <span className="relative inline-flex items-center">
-                  <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
-                    <rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" strokeWidth="1" opacity="0.4"/>
-                    <rect x="2" y="2" width="15" height="8" rx="1.5" fill="currentColor"/>
-                    <path d="M23 4v4c1-.3 1.5-1 1.5-2s-.5-1.7-1.5-2z" fill="currentColor" opacity="0.4"/>
+                <span className="flex items-center">
+                  <svg width="27" height="13" viewBox="0 0 27 13">
+                    <rect x="0.5" y="0.5" width="22" height="12" rx="3.5" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.35"/>
+                    <rect x="2" y="2" width="14" height="9" rx="2" fill="currentColor"/>
+                    <text x="4" y="9.5" fontSize="7" fontWeight="600" fill="#fff">80</text>
+                    <path d="M24.5 4.5v4c1.2-.3 2-1 2-2s-.8-1.7-2-2z" fill="currentColor" opacity="0.35"/>
                   </svg>
-                  <span className="absolute inset-0 flex items-center justify-center text-[8px] font-semibold" style={{color:'#fff'}}>80</span>
                 </span>
               </span>
                 </div>
@@ -600,19 +600,19 @@ export function PhoneSimulator({
               {showStatusBar && (
                 <div className="absolute z-20 top-0 left-0 right-0 h-[44px] flex items-center justify-between px-4 text-[11px] text-[#666]">
                   <span className="font-medium tracking-[0.5px]">{statusBarTime}</span>
-                  <span className="flex items-center gap-1.5">
+                  <span className="flex items-center gap-1" style={{color:'#666'}}>
                 <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor">
-                  <path d="M8 9.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/>
-                  <path d="M8 5.5c1.8 0 3.4.7 4.6 1.9l-1.4 1.4C10.3 7.9 9.2 7.5 8 7.5s-2.3.4-3.2 1.3L3.4 7.4C4.6 6.2 6.2 5.5 8 5.5z"/>
-                  <path d="M8 1c2.9 0 5.6 1.2 7.6 3.1l-1.4 1.4C12.6 3.9 10.4 3 8 3S3.4 3.9 1.8 5.5L.4 4.1C2.4 2.2 5.1 1 8 1z"/>
+                  <path d="M8 9.6c-.8 0-1.5-.7-1.5-1.6 0-.8.7-1.5 1.5-1.5.9 0 1.6.7 1.6 1.5 0 .9-.7 1.6-1.6 1.6z"/>
+                  <path d="M8 5.2c-1.9 0-3.6.8-4.9 2l1.5 1.5c.9-.9 2.1-1.4 3.4-1.4s2.5.5 3.4 1.4l1.5-1.5c-1.3-1.2-3-2-4.9-2z"/>
+                  <path d="M8 .8c-3 0-5.8 1.2-7.9 3.2L1.6 5.5C3.3 3.9 5.5 3 8 3s4.7.9 6.4 2.5L15.9 4C13.8 2 11 .8 8 .8z"/>
                 </svg>
-                <span className="relative inline-flex items-center">
-                  <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
-                    <rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" strokeWidth="1" opacity="0.4"/>
-                    <rect x="2" y="2" width="15" height="8" rx="1.5" fill="currentColor"/>
-                    <path d="M23 4v4c1-.3 1.5-1 1.5-2s-.5-1.7-1.5-2z" fill="currentColor" opacity="0.4"/>
+                <span className="flex items-center">
+                  <svg width="27" height="13" viewBox="0 0 27 13">
+                    <rect x="0.5" y="0.5" width="22" height="12" rx="3.5" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.35"/>
+                    <rect x="2" y="2" width="14" height="9" rx="2" fill="currentColor"/>
+                    <text x="4" y="9.5" fontSize="7" fontWeight="600" fill="#fff">80</text>
+                    <path d="M24.5 4.5v4c1.2-.3 2-1 2-2s-.8-1.7-2-2z" fill="currentColor" opacity="0.35"/>
                   </svg>
-                  <span className="absolute inset-0 flex items-center justify-center text-[8px] font-semibold" style={{color:'#fff'}}>80</span>
                 </span>
               </span>
                 </div>
