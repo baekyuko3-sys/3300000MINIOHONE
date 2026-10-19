@@ -68,10 +68,14 @@ export function SaneHomeScreenView({ onNavigate, onOpenSheet, onToggleTheme }: S
     const phone = typeof document !== 'undefined' ? document.querySelector('[data-sane333-home-viewport]') as HTMLElement | null : null;
     const width = phone?.clientWidth || 360;
     const height = phone?.clientHeight || 800;
+    const scaleX = width / 360;
     return getDefaultLayout(page).map(item => {
       const saved = desktopLayouts[pageKey(page)][item.id] || {};
       // Saved positions are user-owned: never auto-shift them during render.
-      const merged = { ...item, ...saved };
+      // Default positions scale with width so frameless mode spreads out.
+      const hasSavedX = saved.x !== undefined;
+      const baseX = hasSavedX ? saved.x : item.x * scaleX;
+      const merged = { ...item, ...saved, x: baseX };
       const metrics = itemMetrics(item.id);
       const dockSafeBottom = 132;
       return { ...merged, x: Math.max(8, Math.min(width - metrics.width - 8, merged.x)), y: Math.max(8, Math.min(height - dockSafeBottom - metrics.height, merged.y)) };
