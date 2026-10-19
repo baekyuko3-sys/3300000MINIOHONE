@@ -12368,6 +12368,8 @@ export function LineConversationView({
                     import('../../store/lineRuntime').then(({ deleteLineMessage }) => {
                       deleteLineMessage(conversationStorageId, deleting.id);
                     });
+                    // 同步更新 React 状态，否则 AI 下次回复时还会读到已删消息
+                    setMessages((prev) => prev.map((m) => String(m.id) === String(deleting.id) ? { ...m, text: '', status: 'deleted', deletedAt: new Date().toISOString() } : m));
                   } catch {
                     /* ignore */
                   }
