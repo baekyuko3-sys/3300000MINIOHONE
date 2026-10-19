@@ -239,7 +239,7 @@ export function PhoneSimulator({
       {appearance.phoneShell === 'modern' && (
         <div
           data-theme={isDark ? 'dark' : 'light'}
-          className={`relative ${showPhoneFrame ? 'w-[360px] sm:w-[390px] h-[780px] sm:h-[844px] rounded-[43px] border-[7px] border-[var(--frame,#1e1d1b)] shadow-[0_30px_100px_rgba(20,18,15,.28)]' : 'w-full h-[100dvh]'} overflow-hidden flex flex-col select-none ${
+          className={`relative ${showPhoneFrame ? 'w-[360px] sm:w-[390px] h-[780px] sm:h-[844px] rounded-[43px] border-[7px] border-[var(--frame,#1e1d1b)] shadow-[0_30px_100px_rgba(20,18,15,.28)]' : 'w-full max-w-[500px] mx-auto h-[100dvh]'} overflow-hidden flex flex-col select-none ${
             isDark ? 'dark-theme-mode' : ''
           }`}
           style={{ background: globalBg, color: 'var(--ink, #242323)', fontFamily: activeFont ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif' : undefined, fontSize: `${appearance.customFontSize || 1}em` }}
@@ -452,7 +452,7 @@ export function PhoneSimulator({
         {appearance.phoneShell === 'classic-round' && (
           <div
             data-theme={isDark ? 'dark' : 'light'}
-            className={`relative ${showPhoneFrame ? 'w-[342px] sm:w-[375px] h-[740px] sm:h-[812px] rounded-[42px] border-[9px] border-[#1c1c1e] shadow-[inset_0_0_0_1px_rgba(255,255,255,.15),0_30px_100px_rgba(20,18,15,.32)]' : 'w-full h-[100dvh]'} overflow-hidden flex flex-col select-none`}
+            className={`relative ${showPhoneFrame ? 'w-[342px] sm:w-[375px] h-[740px] sm:h-[812px] rounded-[42px] border-[9px] border-[#1c1c1e] shadow-[inset_0_0_0_1px_rgba(255,255,255,.15),0_30px_100px_rgba(20,18,15,.32)]' : 'w-full max-w-[500px] mx-auto h-[100dvh]'} overflow-hidden flex flex-col select-none`}
             style={{ background: isDark ? '#171719' : '#f6f6f7', color: 'var(--ink, #242323)', fontFamily: activeFont ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif' : undefined, fontSize: `${appearance.customFontSize || 1}em` }}
           >
             {showPhoneFrame && (
@@ -560,7 +560,7 @@ export function PhoneSimulator({
         {appearance.phoneShell === 'classic-square' && (
           <div
             data-theme={isDark ? 'dark' : 'light'}
-            className={`relative ${showPhoneFrame ? 'w-[320px] sm:w-[350px] h-[665px] sm:h-[728px] rounded-[10px] border-[8px] border-[#1c1c1e] shadow-[inset_0_0_0_1px_rgba(255,255,255,.15),0_28px_85px_rgba(20,18,15,.30)]' : 'w-full h-[100dvh]'} overflow-hidden flex flex-col select-none`}
+            className={`relative ${showPhoneFrame ? 'w-[320px] sm:w-[350px] h-[665px] sm:h-[728px] rounded-[10px] border-[8px] border-[#1c1c1e] shadow-[inset_0_0_0_1px_rgba(255,255,255,.15),0_28px_85px_rgba(20,18,15,.30)]' : 'w-full max-w-[500px] mx-auto h-[100dvh]'} overflow-hidden flex flex-col select-none`}
             style={{ background: isDark ? '#171719' : '#f6f6f7', color: 'var(--ink, #242323)', fontFamily: activeFont ? 'Sane333Custom, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif' : undefined, fontSize: `${appearance.customFontSize || 1}em` }}
           >
             {showPhoneFrame && (
