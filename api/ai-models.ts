@@ -1,3 +1,7 @@
+export const config = {
+  maxDuration: 60,
+};
+
 type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
 type Body = {

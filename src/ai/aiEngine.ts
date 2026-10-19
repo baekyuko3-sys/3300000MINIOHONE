@@ -1683,7 +1683,7 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
         userPrompt: input.userPrompt,
         history,
       }),
-    }, 30000);
+    }, 90000);
     if (!response.ok) throw new Error('AI_PROXY_' + response.status + ': ' + await readError(response));
     const data = await response.json();
     const text = input.settings.provider === 'gemini' ? extractGeminiText(data).trim() : extractOpenAiText(data).trim();
