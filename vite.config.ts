@@ -39,12 +39,89 @@ function neteaseImageProxy(): Plugin {
   };
 }
 
+// Dev-only AI 代理：转发 /api/ai-models 到实际 AI 提供商，解决浏览器 CORS 问题。
+function aiProxy(): Plugin {
+  return {
+    name: 'ai-proxy',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/ai-models', (async (req: Connect.IncomingMessage, res: http.ServerResponse) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405; res.end('Method not allowed'); return;
+        }
+        try {
+          const body = await new Promise<string>((resolve, reject) => {
+            let data = '';
+            req.on('data', chunk => data += chunk);
+            req.on('end', () => resolve(data));
+            req.on('error', reject);
+          });
+          const { action, provider, baseUrl, apiKey, model, systemPrompt, userPrompt, history } = JSON.parse(body);
+
+          if (action === 'models') {
+            // 拉取模型列表
+            const endpoint = (baseUrl || '').replace(/\/+$/, '') + '/models';
+            const r = await fetch(endpoint, { headers: { 'Authorization': `Bearer ${apiKey}` } });
+            const data = await r.json();
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(data));
+            return;
+          }
+
+          if (action === 'chat') {
+            let endpoint: string;
+            let headers: Record<string, string>;
+            let reqBody: any;
+
+            if (provider === 'gemini') {
+              const base = (baseUrl || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/+$/, '');
+              endpoint = `${base}/models/${encodeURIComponent(model)}:generateContent`;
+              headers = { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey };
+              reqBody = {
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                contents: [
+                  ...(history || []).map((m: any) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+                  { role: 'user', parts: [{ text: userPrompt }] },
+                ],
+              };
+            } else {
+              // OpenAI 兼容
+              const base = (baseUrl || '').replace(/\/+$/, '');
+              endpoint = base.endsWith('/chat/completions') ? base : base + '/chat/completions';
+              headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` };
+              reqBody = {
+                model,
+                messages: [
+                  { role: 'system', content: systemPrompt },
+                  ...(history || []),
+                  { role: 'user', content: userPrompt },
+                ],
+              };
+            }
+
+            const r = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(reqBody) });
+            const data = await r.json();
+            res.statusCode = r.status;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(data));
+            return;
+          }
+
+          res.statusCode = 400; res.end('Unknown action');
+        } catch (e) {
+          res.statusCode = 500; res.end('proxy error: ' + String(e));
+        }
+      }) as Connect.NextHandleFunction);
+    },
+  };
+}
+
 export default defineConfig(() => {
   return {
     // GitHub Pages serves this project from /333oookkkkkkkkk/.
     // Vercel keeps the normal root path.
     base: process.env.GITHUB_ACTIONS === 'true' ? '/3300000MINIOHONE/' : '/',
-    plugins: [react(), tailwindcss(), neteaseImageProxy()],
+    plugins: [react(), tailwindcss(), neteaseImageProxy(), aiProxy()],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),
