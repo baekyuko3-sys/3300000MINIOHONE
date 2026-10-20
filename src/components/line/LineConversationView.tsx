@@ -6457,6 +6457,18 @@ export function LineConversationView({
                   </div>
                 );
               })()}
+              {/* 动作描写：整屏正中间，独立于气泡行 */}
+              {!isGroup && lineActionDescriptionsEnabled && msg.actionDescription && !msg.isRecalled && (
+                <div className="w-full flex justify-center my-[18px] animate-in fade-in">
+                  <div className="flex w-full items-center justify-center gap-2 px-2">
+                    <span className="h-px w-6 shrink-0 bg-[#e8e2e5]" />
+                    <span className="max-w-[75%] text-center text-[10.5px] leading-[1.6] italic tracking-[0.01em] text-[#9b9599]">
+                      {msg.actionDescription}
+                    </span>
+                    <span className="h-px w-6 shrink-0 bg-[#e8e2e5]" />
+                  </div>
+                </div>
+              )}
               <div
                 className={`w-full flex items-end gap-2 transition-transform duration-75 ease-out ${isMe ? 'justify-end' : 'justify-start'}`}
                 style={{ transform: swipingMessageId === msg.id ? `translateX(${swipeOffset}px)` : 'translateX(0)' }}
