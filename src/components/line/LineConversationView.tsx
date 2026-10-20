@@ -3,7 +3,7 @@ import { readPersistentState, usePersistentState } from '../../store/usePersiste
 import { readAndCompressImage, readFileAsDataUrl } from '../../store/imageCompress';
 import type { ImportedCharacter } from '../../data/characterImport';
 import type { ScreenType, WorldBook } from '../../types';
-import { generateCharacterReply, generateCreativeText, generateHtmlInterlude, readStoredAiSettings, resolveChannelAiSettings, listOpenAiCompatibleModels, testAiConnection, summarizeConversationMemory, mergeRecentMemoryBatch, type AiSettings } from '../../ai/aiEngine';
+import { generateCharacterReply, generateCreativeText, generateHtmlInterlude, readStoredAiSettings, resolveChannelAiSettings, listOpenAiCompatibleModels, testAiConnection, summarizeConversationMemory, mergeRecentMemoryBatch, getLastSentPrompt, type AiSettings } from '../../ai/aiEngine';
 import { generateSpeech, transcribeAudio } from '../../ai/mediaEngine';
 import { readAppSettings } from '../../store/appSettings';
 import type { ChannelAiSettings } from '../../store/appSettings';
@@ -785,6 +785,7 @@ export function LineConversationView({
   const messagesViewportRef = useRef<HTMLDivElement>(null);
   const loadingOlderMessagesRef = useRef(false);
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
+  const [showPromptViewer, setShowPromptViewer] = useState(false);
   const visibleMessages = messages.slice(-loadedMessageCount);
 
   useEffect(() => {
@@ -5715,10 +5716,10 @@ export function LineConversationView({
                   }`}>
                     {(() => {
                       const headerAvatar = isGroup
-                        ? (activeGroup?.avatar || groupAiMembers[0]?.character?.avatar || '')
+                        ? (activeGroup?.avatar || '')
                         : (importedCharacter?.avatar || '');
                       const headerName = isGroup
-                        ? (activeGroup?.avatar ? contactName : (groupAiMembers[0]?.character?.name || contactName))
+                        ? contactName
                         : characterProfile.nickname;
                       if (headerAvatar) {
                         return <img src={headerAvatar} alt={headerName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />;
@@ -10673,6 +10674,17 @@ export function LineConversationView({
                 <span className="text-[10px] text-[#aaa]">查看收藏 ›</span>
               </div>
 
+              {/* 查看最近一次发送给 AI 的完整 Prompt */}
+              <div
+                onClick={() => setShowPromptViewer(true)}
+                className="border-t border-[#f2f2f3] pt-2.5 flex items-center justify-between cursor-pointer hover:bg-neutral-50 px-1 py-1 rounded"
+              >
+                <div className="flex items-center gap-2 text-[#333]">
+                  <FileText className="w-4 h-4 text-[#555]" />
+                  <span>查看 Prompt</span>
+                </div>
+                <span className="text-[10px] text-[#ae7e89]">最近一次请求 ›</span>
+              </div>
               {/* 导出当前聊天记录（JSON，可导入） */}
               <div
                 onClick={handleExportChatJson}
@@ -13015,6 +13027,41 @@ export function LineConversationView({
           </div>
         </div>
       )}
+
+      {/* 18. 查看 Prompt */}
+      {showPromptViewer && (() => {
+        const last = getLastSentPrompt();
+        const totalChars = last ? last.system.length + last.messages.reduce((s, m) => s + m.content.length, 0) : 0;
+        return (
+          <div className="fixed inset-0 z-[999] bg-black/50 flex items-end sm:items-center justify-center" onClick={() => setShowPromptViewer(false)}>
+            <div className="bg-white w-full max-w-[560px] max-h-[85vh] rounded-t-2xl sm:rounded-2xl flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[#f0f0f1]">
+                <div>
+                  <div className="text-[14px] font-semibold text-[#222]">最近一次发送给 AI 的 Prompt</div>
+                  <div className="text-[11px] text-[#999] mt-0.5">{last ? `共 ${totalChars.toLocaleString()} 字 · ${new Date(last.at).toLocaleTimeString()}` : '还没有发送过消息'}</div>
+                </div>
+                <button onClick={() => setShowPromptViewer(false)} className="text-[#999] text-[18px] px-2">✕</button>
+              </div>
+              <div className="overflow-y-auto px-4 py-3 text-[12px] leading-[1.7] text-[#333] whitespace-pre-wrap break-words">
+                {last ? (
+                  <>
+                    <div className="text-[11px] font-semibold text-[#ae7e89] mb-1">【System Prompt · {last.system.length.toLocaleString()} 字】</div>
+                    <div className="mb-4">{last.system}</div>
+                    <div className="text-[11px] font-semibold text-[#ae7e89] mb-1">【对话历史】</div>
+                    {last.messages.filter(m => m.role !== 'system').map((m, i) => (
+                      <div key={i} className="mb-2">
+                        <span className="text-[#999]">{m.role === 'user' ? '用户' : '角色'}：</span>{m.content}
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <div className="text-[#999] text-center py-8">先发一条消息，这里会显示发给 AI 的完整内容</div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 17. TOAST */}
       {toastMsg && (

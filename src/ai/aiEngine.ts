@@ -1020,6 +1020,15 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}
   }
 }
 
+// 最近一次发送给 API 的完整 prompt（供聊天设置里的「查看 Prompt」功能读取）
+let lastSentPrompt: { system: string; messages: { role: string; content: string }[]; at: number } | null = null;
+export function getLastSentPrompt() {
+  return lastSentPrompt;
+}
+export function setLastSentPrompt(system: string, messages: { role: string; content: string }[]) {
+  lastSentPrompt = { system, messages, at: Date.now() };
+}
+
 async function callOpenAiCompatible(input: AiReplyInput): Promise<string> {
   const endpoint = normalizeOpenAiEndpoint(input.settings.apiBaseUrl);
   const macroNames = macroNamesOf(input);
@@ -1047,6 +1056,15 @@ async function callOpenAiCompatible(input: AiReplyInput): Promise<string> {
     ],
   };
 
+
+  // 保存本次发送的完整 prompt，供聊天设置里的「查看 Prompt」功能读取
+  try {
+    const plainMessages = (body.messages as any[]).map((m: any) => ({
+      role: String(m.role),
+      content: typeof m.content === 'string' ? m.content : '[多媒体消息]',
+    }));
+    setLastSentPrompt(system, plainMessages);
+  } catch {}
   const response = await fetchWithTimeout(endpoint, {
     method: 'POST',
     headers: {
