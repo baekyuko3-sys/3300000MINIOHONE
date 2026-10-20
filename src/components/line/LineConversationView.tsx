@@ -6547,18 +6547,6 @@ export function LineConversationView({
               >
                 {/* COT 小标签已按用户要求移除 */}
 
-                {!isGroup && lineActionDescriptionsEnabled && msg.actionDescription && !msg.isRecalled && (
-                  <div className="w-full flex justify-center my-[18px] animate-in fade-in" style={{textAlign:'center'}}>
-                    <div className="flex w-full items-center justify-center gap-2" style={{textAlign:'center'}}>
-                      <span className="h-px w-4 shrink-0 bg-[#eee8eb]" />
-                      <span className="max-w-[calc(100%-3rem)] text-[10.5px] leading-[1.6] italic tracking-[0.01em] text-[#9b9599]" style={{textAlign:'center'}}>
-                        {msg.actionDescription}
-                      </span>
-                      <span className="h-px w-4 shrink-0 bg-[#eee8eb]" />
-                    </div>
-                  </div>
-                )}
-
                 {/* 1.5 引用回复：让聊天真正保留上下文 */}
                 {msg.quote && !msg.isRecalled && (
                   <div
