@@ -942,7 +942,7 @@ async function callGemini(input: AiReplyInput): Promise<string> {
       'x-goog-api-key': settings.apiKey.trim(),
     },
     body: JSON.stringify(body),
-  }, 30000);
+  }, 90000);
 
   if (!response.ok) throw new Error('AI_GEMINI_' + response.status + ': ' + await readError(response));
 
@@ -1054,7 +1054,7 @@ async function callOpenAiCompatible(input: AiReplyInput): Promise<string> {
       Authorization: 'Bearer ' + input.settings.apiKey.trim(),
     },
     body: JSON.stringify(body),
-  }, 30000);
+  }, 90000);
 
   if (!response.ok) throw new Error('AI_OPENAI_' + response.status + ': ' + await readError(response));
 
@@ -1670,6 +1670,7 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
   const history = input.history || [];
 
   const proxyChat = async () => {
+    console.log('[AI] Trying proxy /api/ai-models, provider:', input.settings.provider, 'model:', input.settings.model);
     const response = await fetchWithTimeout('/api/ai-models', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
