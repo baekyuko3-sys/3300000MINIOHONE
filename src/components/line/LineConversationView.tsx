@@ -4107,6 +4107,17 @@ export function LineConversationView({
   // 清空聊天记录 (Clear Chat)
   const handleClearChat = () => {
     clearLineConversation(conversationStorageId);
+    // 同时清空角色记忆，否则角色还记得删掉的事
+    try {
+      if (isGroup) {
+        const memberIds = groupAiMembers
+          .map(({ character }) => character?.id)
+          .filter(Boolean) as string[];
+        memberIds.forEach(id => clearCharacterMemory(id, activePersona?.id));
+      } else if (importedCharacter?.id) {
+        clearCharacterMemory(importedCharacter.id, activePersona?.id);
+      }
+    } catch {}
     setMessages([]);
     setLoadedMessageCount(LINE_PAGE_SIZE);
     setShowClearConfirm(false);
