@@ -3901,7 +3901,18 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                         setOpeningGreetingIndex(0);
                         setAddCharacterChatFriend(friendProfile);
                       } else {
-                        showToast('这是普通联系人，请先保存为聊天联系人');
+                        // 兜底：按名称找角色卡
+                        const c = importedCharacters.find(x => x.name === friendProfile.name);
+                        if (c) {
+                          setNewChatRelationship('new-friend');
+                          setReaddedReason('deleted');
+                          setRelationshipContext('');
+                          setOpeningMode('none');
+                          setOpeningGreetingIndex(0);
+                          setAddCharacterChatFriend({ ...friendProfile, characterId: c.id, kind: 'character' });
+                        } else {
+                          showToast('这是普通联系人，请先保存为聊天联系人');
+                        }
                       }
                     }}
                     className="h-11 rounded-xl bg-[#292724] text-white text-xs font-semibold"
