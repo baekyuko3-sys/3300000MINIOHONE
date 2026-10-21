@@ -6545,12 +6545,16 @@ export function LineConversationView({
                   </div>
                 );
               })()}
-              {/* 动作描写：内联显示，紧贴气泡上方、与气泡左对齐 */}
+              {/* 动作描写：整屏居中分隔条 —— 文字 —— */}
               {!isGroup && lineActionDescriptionsEnabled && msg.actionDescription && !msg.isRecalled && (
-                <div className="w-full flex justify-start mb-1 animate-in fade-in" style={{ paddingLeft: '39px' }}>
-                  <span className="text-[10.5px] leading-[1.6] italic tracking-[0.01em] text-[#9b9599]">
-                    {msg.actionDescription}
-                  </span>
+                <div className="w-full flex justify-center my-[18px] animate-in fade-in">
+                  <div className="flex w-full items-center justify-center gap-2 px-2">
+                    <span className="h-px w-6 shrink-0 bg-[#e8e2e5]" />
+                    <span className="max-w-[75%] text-center text-[10.5px] leading-[1.6] italic tracking-[0.01em] text-[#9b9599]">
+                      {msg.actionDescription}
+                    </span>
+                    <span className="h-px w-6 shrink-0 bg-[#e8e2e5]" />
+                  </div>
                 </div>
               )}
               <div
