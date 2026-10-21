@@ -5999,7 +5999,7 @@ export function LineConversationView({
         className="h-full w-full overflow-y-auto overscroll-y-auto touch-pan-y px-3.5 py-4 relative"
         style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'thin', scrollbarColor: '#d8cbd0 transparent' }}
       >
-        <div className="min-h-full flex flex-col justify-end gap-1">
+        <div className={isGroup ? "min-h-full flex flex-col gap-1" : "min-h-full flex flex-col justify-end gap-1"}>
 
 
         {showUnreadJump && unreadAnchorId !== null && (
