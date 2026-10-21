@@ -11925,39 +11925,23 @@ export function LineConversationView({
       )}
       {/* LINE / 微信风格：邀请成员（角色卡 + NPC App 已绑定角色） */}
       {showGroupInvitePicker && isGroup && (() => {
-        const selectedMeta = groupInviteSelected.map(key => {
-          if (key.startsWith('char:')) {
-            const c = importedCharacters.find(item => item.id === key.slice(5));
-            return c ? { key, name: c.name, avatar: c.avatar || '', kind: '角色' as const } : null;
-          }
-          const npc = allNpcs.find(item => item.id === key.slice(4));
-          if (!npc) return null;
-          const bound = importedCharacters.find(item => item.id === npc.boundCharacterId);
-          const npcAv = npc.avatar || (bound ? bound.avatar : '') || '';
-          return { key, name: npc.name, avatar: npcAv, kind: 'NPC' as const };
-        }).filter(Boolean) as Array<{ key: string; name: string; avatar: string; kind: '角色' | 'NPC' }>;
-
-        const inviteableCharacters = importedCharacters.filter(c =>
-          !(activeGroup?.members || []).some(m => m.characterId === c.id || (m.kind !== 'npc' && !m.npcId && m.name === c.name))
-        ).filter(c => {
+        // 只显示已添加的好友
+        const inviteableFriends = lineFriends.filter(f => {
           const q = groupInviteSearch.trim().toLowerCase();
-          return !q || String(c.name || '').toLowerCase().includes(q);
+          if (q && !String(f.name || '').toLowerCase().includes(q) && !String(f.note || '').toLowerCase().includes(q)) return false;
+          // 已在群里的不显示
+          const members = activeGroup?.members || [];
+          return !members.some(m => m.name === f.name || (f.characterId && m.characterId === f.characterId));
         });
 
-        const inviteableNpcs = allNpcs
-          .filter(npc => npc.active !== false)
-          .filter(npc => !(activeGroup?.members || []).some(m => m.npcId === npc.id))
-          .filter(npc => {
-            const q = groupInviteSearch.trim().toLowerCase();
-            if (!q) return true;
-            return [npc.name, npc.boundCharacterName, npc.identity].filter(Boolean).some(v => String(v).toLowerCase().includes(q));
-          });
+        const selectedMeta = groupInviteSelected.map(key => {
+          const f = lineFriends.find(x => 'friend:' + x.name === key);
+          if (!f) return null;
+          const c = f.characterId ? importedCharacters.find(item => item.id === f.characterId) : null;
+          return { key, name: f.name, avatar: c?.avatar || '', kind: '好友' as const };
+        }).filter(Boolean) as Array<{ key: string; name: string; avatar: string; kind: '好友' }>;
 
-        const toggleInviteKey = (key: string, allowed = true) => {
-          if (!allowed) {
-            showToast('请先在 NPC App 绑定角色后再邀请');
-            return;
-          }
+        const toggleInviteKey = (key: string) => {
           setGroupInviteSelected(prev => prev.includes(key) ? prev.filter(x => x !== key) : [...prev, key]);
         };
 
@@ -11967,7 +11951,7 @@ export function LineConversationView({
               <button type="button" onClick={() => { setShowGroupInvitePicker(false); setGroupInviteSelected([]); }} className="text-[13px] text-[#888] px-2">取消</button>
               <div className="text-center">
                 <div className="font-semibold text-sm text-[#333]">邀请成员</div>
-                <div className="text-[10px] text-[#999]">选择角色或已绑定的 NPC</div>
+                <div className="text-[10px] text-[#999]">只能邀请已添加的好友</div>
               </div>
               <button
                 type="button"
@@ -11977,42 +11961,33 @@ export function LineConversationView({
                   const members = [...activeGroup.members];
                   let added = 0;
                   for (const key of groupInviteSelected) {
-                    if (key.startsWith('char:')) {
-                      const id = key.slice(5);
-                      const c = importedCharacters.find(item => item.id === id);
-                      if (!c) continue;
-                      if (members.some(m => m.characterId === c.id || (m.kind !== 'npc' && m.name === c.name))) continue;
-                      members.push({ id: c.id, kind: 'character', characterId: c.id, npcId: null, name: c.name, nickname: c.name, role: 'member', muted: false, avatar: c.avatar });
-                      added += 1;
-                    } else if (key.startsWith('npc:')) {
-                      const id = key.slice(4);
-                      const npc = allNpcs.find(item => item.id === id);
-                      if (!npc || !npc.boundCharacterId) continue;
-                      if (members.some(m => m.npcId === npc.id)) continue;
-                      const bound = importedCharacters.find(item => item.id === npc.boundCharacterId);
-                      const av = npc.avatar || (bound ? bound.avatar : '') || '';
-                      members.push({
-                        id: npc.id,
-                        kind: 'npc',
-                        npcId: npc.id,
-                        characterId: npc.boundCharacterId,
-                        name: npc.name,
-                        nickname: npc.name,
-                        role: 'member',
-                        muted: false,
-                        avatar: av,
-                      });
-                      added += 1;
-                    }
+                    if (!key.startsWith('friend:')) continue;
+                    const friendName = key.slice(7);
+                    const f = lineFriends.find(x => x.name === friendName);
+                    if (!f) continue;
+                    if (members.some(m => m.name === f.name)) continue;
+                    const c = f.characterId ? importedCharacters.find(item => item.id === f.characterId) : null;
+                    members.push({
+                      id: f.characterId || f.name,
+                      kind: 'character',
+                      characterId: f.characterId || null,
+                      npcId: null,
+                      name: f.name,
+                      nickname: f.note || f.name,
+                      role: 'member',
+                      muted: false,
+                      avatar: c?.avatar || '',
+                    });
+                    added += 1;
                   }
                   if (added === 0) {
-                    showToast('所选成员已在群里，或 NPC 尚未绑定角色');
+                    showToast('所选好友已在群里');
                     return;
                   }
                   saveGroupUpdate({ ...activeGroup, members, updatedAt: new Date().toISOString() });
                   setShowGroupInvitePicker(false);
                   setGroupInviteSelected([]);
-                  showToast(`已邀请 ${added} 位成员进群`);
+                  showToast(`已邀请 ${added} 位好友进群`);
                 }}
                 className="min-w-[52px] text-[13px] font-semibold text-[#06C755] px-2 disabled:opacity-35"
               >{groupInviteSelected.length ? `完成(${groupInviteSelected.length})` : '完成'}</button>
@@ -12035,87 +12010,43 @@ export function LineConversationView({
             )}
 
             <div className="shrink-0 bg-white px-3 pt-2 pb-3 space-y-2 border-b border-[#f0f0f1]">
-              <div className="flex p-1 rounded-full bg-[#f4f2f3] gap-1">
-                <button type="button" onClick={() => { setGroupInviteTab('character'); setGroupInviteSearch(''); }} className={'flex-1 py-2 rounded-full text-[11px] ' + (groupInviteTab === 'character' ? 'bg-white text-[#333] shadow-sm font-medium' : 'text-[#888]')}>角色 ({inviteableCharacters.length})</button>
-                <button type="button" onClick={() => { setGroupInviteTab('npc'); setGroupInviteSearch(''); }} className={'flex-1 py-2 rounded-full text-[11px] ' + (groupInviteTab === 'npc' ? 'bg-white text-[#333] shadow-sm font-medium' : 'text-[#888]')}>NPC ({inviteableNpcs.length})</button>
-              </div>
               <input
                 value={groupInviteSearch}
                 onChange={e => setGroupInviteSearch(e.target.value)}
-                placeholder={groupInviteTab === 'character' ? '搜索角色名称…' : '搜索 NPC 或绑定角色…'}
+                placeholder="搜索好友名称或备注…"
                 className="w-full p-2.5 rounded-[12px] bg-[#f4f4f5] border-0 text-[11px] outline-none"
               />
               <div className="text-[9px] text-[#aaa] px-0.5">
-                {groupInviteTab === 'character'
-                  ? '从已导入角色卡邀请，进群后可参与回复。'
-                  : '仅可邀请 NPC App 中已绑定角色的人物；未绑定的不能进群。'}
+                只能邀请已添加的好友进群。
               </div>
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto">
-              {groupInviteTab === 'character' ? (
-                <div className="divide-y divide-[#f2f2f3] bg-white">
-                  {inviteableCharacters.map(c => {
-                    const key = 'char:' + c.id;
-                    const checked = groupInviteSelected.includes(key);
-                    return (
-                      <button key={c.id} type="button" onClick={() => toggleInviteKey(key)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-[#f5f0f2]">
-                        <div className={`w-5 h-5 rounded-full border-2 grid place-items-center shrink-0 ${checked ? 'border-[#06C755] bg-[#06C755]' : 'border-[#ccc]'}`}>
-                          {checked ? <Check className="w-3 h-3 text-white" /> : null}
-                        </div>
-                        <div className="w-11 h-11 rounded-full overflow-hidden bg-[#f5f2f3] border border-[#eee7e9] shrink-0 grid place-items-center">
-                          {c.avatar ? <VroomImage src={c.avatar} alt="" className="w-full h-full object-cover" /> : <span className="text-[12px] text-[#999]">{(c.name || '?').slice(0, 1)}</span>}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[13px] font-medium text-[#333] truncate">{c.name}</div>
-                          <div className="text-[10px] text-[#aaa] mt-0.5">角色卡</div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {inviteableCharacters.length === 0 && (
-                    <div className="p-8 text-center text-[11px] text-[#aaa]">{groupInviteSearch.trim() ? '没有匹配的角色' : '没有可邀请的角色了'}</div>
-                  )}
-                </div>
-              ) : (
-                <div className="divide-y divide-[#f2f2f3] bg-white">
-                  {inviteableNpcs.map(npc => {
-                    const key = 'npc:' + npc.id;
-                    const checked = groupInviteSelected.includes(key);
-                    const bound = importedCharacters.find(item => item.id === npc.boundCharacterId);
-                    const isBound = Boolean(npc.boundCharacterId && (bound || npc.boundCharacterName));
-                    const av = npc.avatar || (bound ? bound.avatar : '');
-                    return (
-                      <button
-                        key={npc.id}
-                        type="button"
-                        onClick={() => toggleInviteKey(key, isBound)}
-                        className={`w-full flex items-center gap-3 px-4 py-3 text-left ${isBound ? 'active:bg-[#f5f0f2]' : 'opacity-45'}`}
-                      >
-                        <div className={`w-5 h-5 rounded-full border-2 grid place-items-center shrink-0 ${checked ? 'border-[#06C755] bg-[#06C755]' : 'border-[#ccc]'}`}>
-                          {checked ? <Check className="w-3 h-3 text-white" /> : null}
-                        </div>
-                        <div className="w-11 h-11 rounded-full overflow-hidden bg-[#f0f3f8] border border-[#e4e9f0] shrink-0 grid place-items-center">
-                          {av ? <VroomImage src={av} alt="" className="w-full h-full object-cover" /> : <span className="text-[12px] text-[#7a8aa0]">{(npc.name || '?').slice(0, 1)}</span>}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[13px] font-medium text-[#333] truncate">{npc.name}</div>
-                          <div className="text-[10px] mt-0.5 truncate">
-                            {isBound ? (
-                              <span className="text-[#aaa]">NPC · 绑定 {npc.boundCharacterName || bound?.name}{npc.relationship ? ` · ${npc.relationship}` : ''}</span>
-                            ) : (
-                              <span className="text-[#c07a88]">未绑定角色 · 请先在 NPC App 绑定</span>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {inviteableNpcs.length === 0 && (
-                    <div className="p-8 text-center text-[11px] text-[#aaa]">NPC App 暂无可邀请的人物<br /><span className="text-[10px]">请先在 NPC App 创建并绑定角色</span></div>
-                  )}
-                </div>
-              )}
+              <div className="divide-y divide-[#f2f2f3] bg-white">
+                {inviteableFriends.map(f => {
+                  const key = 'friend:' + f.name;
+                  const checked = groupInviteSelected.includes(key);
+                  const c = f.characterId ? importedCharacters.find(item => item.id === f.characterId) : null;
+                  return (
+                    <button key={f.name} type="button" onClick={() => toggleInviteKey(key)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-[#f5f0f2]">
+                      <div className={`w-5 h-5 rounded-full border-2 grid place-items-center shrink-0 ${checked ? 'border-[#06C755] bg-[#06C755]' : 'border-[#ccc]'}`}>
+                        {checked ? <Check className="w-3 h-3 text-white" /> : null}
+                      </div>
+                      <div className="w-11 h-11 rounded-full overflow-hidden bg-[#f5f2f3] border border-[#eee7e9] shrink-0 grid place-items-center">
+                        {c?.avatar ? <VroomImage src={c.avatar} alt="" className="w-full h-full object-cover" /> : <span className="text-[12px] text-[#999]">{(f.name || '?').slice(0, 1)}</span>}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-medium text-[#333] truncate">{f.note || f.name}</div>
+                        {f.note && f.note !== f.name && <div className="text-[10px] text-[#aaa] truncate">{f.name}</div>}
+                        <div className="text-[10px] text-[#aaa] mt-0.5">好友{f.online === false ? ' · 离线' : ''}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+                {inviteableFriends.length === 0 && (
+                  <div className="p-8 text-center text-[11px] text-[#aaa]">{groupInviteSearch.trim() ? '没有匹配的好友' : '没有可邀请的好友了<br />请先添加好友'}</div>
+                )}
+              </div>
             </div>
           </div>
         );
