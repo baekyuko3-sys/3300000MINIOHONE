@@ -935,6 +935,15 @@ async function callGemini(input: AiReplyInput): Promise<string> {
     },
   };
 
+  // 保存本次发送的完整 prompt，供「查看 Prompt」功能读取
+  try {
+    const plainMessages = (body.contents as any[]).map((m: any) => ({
+      role: m.role === 'model' ? 'assistant' : 'user',
+      content: m.parts?.map((p: any) => p.text || '[多媒体]').join('') || '',
+    }));
+    setLastSentPrompt(system, [{ role: 'system', content: '[systemInstruction]' }, ...plainMessages]);
+  } catch {}
+
   const response = await fetchWithTimeout(endpoint, {
     method: 'POST',
     headers: {
@@ -1688,7 +1697,6 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
   const history = input.history || [];
 
   const proxyChat = async () => {
-    console.log('[AI] Trying proxy /api/ai-models, provider:', input.settings.provider, 'model:', input.settings.model);
     const response = await fetchWithTimeout('/api/ai-models', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1740,7 +1748,7 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
           ],
           generationConfig: { temperature, maxOutputTokens: 2200 },
         }),
-      }, input.timeoutMs ?? 30000);
+      }, input.timeoutMs ?? 90000);
       if (!response.ok) throw new Error('AI_GEMINI_' + response.status + ': ' + await readError(response));
       if (input.settings.streaming) return parseSseResponse(response, extractGeminiText, input.onDelta);
       const data = await response.json();
@@ -1767,7 +1775,7 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
           { role: 'user', content: input.userPrompt },
         ],
       }),
-    }, input.timeoutMs ?? 30000);
+    }, input.timeoutMs ?? 90000);
     if (!response.ok) throw new Error('AI_OPENAI_' + response.status + ': ' + await readError(response));
     if (input.settings.streaming) return parseSseResponse(response, extractOpenAiText, input.onDelta);
     const data = await response.json();
