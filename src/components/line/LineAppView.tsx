@@ -3893,31 +3893,45 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                         setActiveChatId(chat.id);
                         return;
                       }
-                      if (friendProfile.npcId || friendProfile.characterId) {
-                        setNewChatRelationship('new-friend');
-                        setReaddedReason('deleted');
-                        setRelationshipContext('');
-                        setOpeningMode('none');
-                        setOpeningGreetingIndex(0);
-                        setAddCharacterChatFriend(friendProfile);
-                      } else {
-                        // 兜底：按名称找角色卡
-                        const c = importedCharacters.find(x => x.name === friendProfile.name);
-                        if (c) {
-                          setNewChatRelationship('new-friend');
-                          setReaddedReason('deleted');
-                          setRelationshipContext('');
-                          setOpeningMode('none');
-                          setOpeningGreetingIndex(0);
-                          setAddCharacterChatFriend({ ...friendProfile, characterId: c.id, kind: 'character' });
-                        } else {
-                          showToast('这是普通联系人，请先保存为聊天联系人');
-                        }
-                      }
+                      // 已是好友，直接建聊天并进入（不走添加好友流程）
+                      const newChatId = `c_${Date.now()}`;
+                      const characterId = friendProfile.characterId || importedCharacters.find(x => x.name === friendProfile.name)?.id;
+                      const newChat: LineChatItem = {
+                        id: newChatId,
+                        name: friendProfile.name,
+                        characterId: characterId || undefined,
+                        npcId: friendProfile.npcId || undefined,
+                        personaId: effectivePersonaId || undefined,
+                        time: '刚刚',
+                        preview: '打个招呼吧',
+                        unread: 0,
+                        isPinned: false,
+                        isMuted: false,
+                        draft: '',
+                        isGroup: false,
+                        relationshipContext: '',
+                        openingMode: 'none',
+                        relationship: 'new-friend',
+                      };
+                      setChatItems(prev => [newChat, ...prev]);
+                      // 新好友系统提示
+                      import('../../store/lineRuntime').then(({ appendLineMessage }) => {
+                        appendLineMessage(newChatId, {
+                          id: `system-friend-${Date.now()}`,
+                          sender: 'system',
+                          senderType: 'system',
+                          kind: 'system',
+                          text: '你们已经是好友了，开始聊天吧',
+                          createdAt: new Date().toISOString(),
+                        });
+                      });
+                      setFriendProfile(null);
+                      setActiveChatId(newChatId);
+                      showToast(`已和「${friendProfile.name}」开始聊天`);
                     }}
                     className="h-11 rounded-xl bg-[#292724] text-white text-xs font-semibold"
                   >
-                    {chat ? '进入聊天' : '添加聊天'}
+                    {chat ? '进入聊天' : '发起聊天'}
                   </button>
                   <button
                     onClick={() => {
