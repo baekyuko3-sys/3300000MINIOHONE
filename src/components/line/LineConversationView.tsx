@@ -3191,7 +3191,8 @@ export function LineConversationView({
           persona: activePersona ? { ...activePersona, weather: personaLiveWeather ? formatLineWeather(personaLiveWeather) : activePersona.weather } : activePersona,
           characterWeather: characterWeather ? formatLineWeather(characterWeather) : '',
           worldbooks: groupWorldbooks,
-          memory: primaryMemory,
+          // 群聊不读角色个人记忆：NPC 在群里只知道群聊记录
+          memory: { characterId: '', characterName: '', summary: '', items: [], updatedAt: new Date().toISOString() },
           project: projectManifest,
           messages: [...messages, newMsg].map(message => ({ ...message, sender: message.sender || 'other' })),
           userMessage: userText,
@@ -4880,7 +4881,8 @@ export function LineConversationView({
           persona: activePersona ? { ...activePersona, weather: personaLiveWeather ? formatLineWeather(personaLiveWeather) : activePersona.weather } : activePersona,
           characterWeather: characterWeather ? formatLineWeather(characterWeather) : '',
           worldbooks: groupWorldbooks,
-          memory,
+          // 群聊不读角色个人记忆：NPC 在群里只知道群聊记录
+          memory: { characterId: '', characterName: '', summary: '', items: [], updatedAt: new Date().toISOString() },
           project: projectManifest,
           messages: messages.map(message => ({ ...message, sender: message.sender || 'other' })),
           userMessage: '请根据最近群聊内容自然继续整个群聊回合。由你综合情境决定哪些成员发言、发几条、如何接话或插话；不要求任何固定成员发言，也不要求固定人数。若当前没有自然回应，可以暂时不发言。不要重复已有内容。',
