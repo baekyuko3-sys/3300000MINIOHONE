@@ -3559,7 +3559,7 @@ export function LineConversationView({
         messages: [...messages, newMsg].map(message => ({ ...message, sender: message.sender || 'other' })),
         userMessage: userText,
         isGroup,
-        presetOutputEnabled: true,
+        presetOutputEnabled: isGroup,
         groupName: '',
         stylePreset: selectedPreset,
         cotTarget: isGroup ? 'group' : 'line',
@@ -5005,7 +5005,7 @@ export function LineConversationView({
         // Keeping the full history preserves the last assistant reply in its correct order.
         userMessage: '请接着角色上一条消息自然继续，不要重复已经说过的内容。',
         isGroup,
-        presetOutputEnabled: true,
+        presetOutputEnabled: isGroup,
         groupName: isGroup ? (activeGroup?.name || '') : '',
         authorNote: [
           lineConversationRules,
