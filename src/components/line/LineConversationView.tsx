@@ -3667,6 +3667,25 @@ export function LineConversationView({
         });
       }
 
+      // 主动线下邀约：聊到约见面/吃饭/看电影等话题时，角色有概率主动发小票邀约
+      if (!isGroup && allowOfflineInvite && importedCharacter) {
+        try {
+          const inviteKeywords = ['见面', '约', '吃饭', '喝', '咖啡', '奶茶', '电影', '逛街', '散步', '公园', '餐厅', '火锅', '烧烤', '出来', '碰面', '聚', '玩', '去哪', '哪家', '好吃', '好玩'];
+          const recentText = (userText + ' ' + finalReplyText).slice(-600);
+          const hitKeyword = inviteKeywords.some(kw => recentText.includes(kw));
+          const lastInviteKey = `line:last-offline-invite:${conversationStorageId}`;
+          const lastInviteAt = Number(localStorage.getItem(lastInviteKey) || 0);
+          const cooldownPassed = Date.now() - lastInviteAt > 24 * 60 * 60 * 1000; // 24小时冷却
+          if (hitKeyword && cooldownPassed && Math.random() < 0.35) {
+            localStorage.setItem(lastInviteKey, String(Date.now()));
+            // 延迟几秒再发，像真人思考后决定约你
+            setTimeout(() => {
+              void generateRoleOfflineInvite(true);
+            }, 3000 + Math.random() * 4000);
+          }
+        } catch {}
+      }
+
       window.dispatchEvent(new CustomEvent('sane333:play-sound', { detail: { kind: 'message' } }));
 
       // Status snapshots are created by the delivered-message observer so normal,
