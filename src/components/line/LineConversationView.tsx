@@ -5977,9 +5977,12 @@ export function LineConversationView({
             loadOlderMessages();
           }
         }}
-        className="h-full w-full overflow-y-auto overscroll-y-auto touch-pan-y px-3.5 py-4 space-y-1 relative"
+        className="h-full w-full overflow-y-auto overscroll-y-auto touch-pan-y px-3.5 py-4 relative flex flex-col gap-1"
         style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'thin', scrollbarColor: '#d8cbd0 transparent' }}
       >
+
+        {/* uwu 风格：消息沉底的弹性 spacer */}
+        <div className="flex-1 min-h-[2rem]" aria-hidden="true" />
         {showUnreadJump && unreadAnchorId !== null && (
           <button
             onClick={() => {
