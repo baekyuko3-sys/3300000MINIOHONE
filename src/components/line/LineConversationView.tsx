@@ -454,8 +454,9 @@ function resolveSpeakerIndex(
 }
 
 function spliceExpandedLineReply(prev: any[], replyMsgId: any, expanded: any[]) {
-  const targetIndex = prev.findIndex((m: any) => m.id === replyMsgId);
-  const withoutStreaming = prev.filter((m: any) => m.id !== replyMsgId);
+  const streamPrefix = String(replyMsgId) + '-s';
+  const targetIndex = prev.findIndex((m: any) => m.id === replyMsgId || String(m.id).startsWith(streamPrefix));
+  const withoutStreaming = prev.filter((m: any) => m.id !== replyMsgId && !String(m.id).startsWith(streamPrefix));
   const insertAt = targetIndex >= 0 ? Math.min(targetIndex, withoutStreaming.length) : withoutStreaming.length;
   withoutStreaming.splice(insertAt, 0, ...expanded);
   return withoutStreaming;
@@ -477,6 +478,30 @@ function splitGeneratedLineMessages(text: string, groupMode = false): string[] {
     .filter(Boolean);
   if (explicitBlocks.length) return explicitBlocks;
   return [cleanGroupGeneratedText(normalized)].filter(Boolean);
+}
+
+/**
+ * 流式逐条显示：从累积的流式文本中提取"可显示"的消息列表。
+ * 剥离 preset_flow/action/think 等非正文标签，只保留聊天正文，
+ * 然后用和最终分条相同的规则切分。最后一个元素是"进行中"的，其余是已完成的。
+ */
+function extractStreamingDisplayMessages(rawText: string): string[] {
+  let text = String(rawText || '');
+  // 去掉 preset_flow 块（含未闭合的）
+  text = text.replace(/<preset_flow[\s\S]*?(<\/preset_flow\s*>|$)/gi, '');
+  // 去掉 action 块（含未闭合的）
+  text = text.replace(/<action[\s\S]*?(<\/action\s*>|$)/gi, '');
+  // 去掉 think/cot/thought 等思维标签（含未闭合的）
+  text = text.replace(/<(think|cot|thought|thinking|summary|decision)[^>]*>[\s\S]*?(<\/\1\s*>|$)/gi, '');
+  // 去掉 statusbar 块（含未闭合的）
+  text = text.replace(/<(statusbar|status)[^>]*>[\s\S]*?(<\/\1\s*>|$)/gi, '');
+  // 剥离 <message> 外壳
+  text = text.replace(/<\/?message[^>]*>/gi, '');
+  // 去掉贴纸/媒体标签（流式中不展开，只显示占位）
+  text = text.replace(/<(sticker|text-image|text-video)(\s+[^>]*)?>[\s\S]*?(<\/\1\s*>|$)/gi, '[\u5a92\u4f53\u5185\u5bb9]');
+  text = text.trim();
+  if (!text) return [];
+  return splitGeneratedLineMessages(text);
 }
 
 function formatReplyReasonStatus(message: any): { icon: string; label: string; tone: 'wait' | 'muted' } | null {
@@ -3458,6 +3483,65 @@ export function LineConversationView({
       replyMessageCreated = true;
     };
 
+    // 流式逐条显示：delta 到达时解析已累积文本，已完成的消息逐条成气泡，
+    // 最后一个"进行中"的消息继续在占位气泡里流式显示。
+    const updateStreamingBubbles = (rawText: string) => {
+      const parts = extractStreamingDisplayMessages(rawText);
+      if (!parts.length) return;
+      const completed = parts.slice(0, -1);
+      const streaming = parts[parts.length - 1];
+      const streamPrefix = String(replyMsgId) + '-s';
+      setMessages((prev) => {
+        let next = [...prev];
+        // 已完成的消息：逐条确保气泡存在
+        completed.forEach((text, idx) => {
+          const bid = streamPrefix + idx;
+          const bi = next.findIndex((m: any) => m.id === bid);
+          if (bi >= 0) {
+            if (next[bi].text !== text) next[bi] = { ...next[bi], text, content: text };
+          } else {
+            const bubble: any = {
+              id: bid,
+              sender: 'other',
+              text, content: text,
+              time: '刚刚',
+              type: 'ai-reply',
+              showThinking: false,
+            };
+            const phIdx = next.findIndex((m: any) => m.id === replyMsgId);
+            if (phIdx >= 0) next.splice(phIdx, 0, bubble);
+            else next.push(bubble);
+          }
+        });
+        // 进行中的消息：更新占位气泡
+        const phIdx = next.findIndex((m: any) => m.id === replyMsgId);
+        if (phIdx >= 0) {
+          if (next[phIdx].text !== streaming) next[phIdx] = { ...next[phIdx], text: streaming, content: streaming, time: '刚刚' };
+        } else {
+          next.push({
+            id: replyMsgId,
+            sender: 'other',
+            text: streaming, content: streaming,
+            time: '刚刚',
+            type: 'ai-reply',
+            showThinking: false,
+          });
+        }
+        // 清理多余的旧流式气泡（parts 变少时的回退保护）
+        const maxIdx = completed.length - 1;
+        next = next.filter((m: any) => {
+          const idStr = String(m.id);
+          if (idStr.startsWith(streamPrefix)) {
+            const n = parseInt(idStr.slice(streamPrefix.length), 10);
+            return !Number.isNaN(n) && n <= maxIdx;
+          }
+          return true;
+        });
+        return next;
+      });
+      replyMessageCreated = true;
+    };
+
     let streamedText = '';
 
     try {
@@ -3503,7 +3587,7 @@ export function LineConversationView({
         debugConversationId: conversationStorageId,
         onDelta: (delta) => {
           streamedText += delta;
-          ensureReplyMessage(streamedText);
+          updateStreamingBubbles(streamedText);
         },
       });
 
@@ -6458,16 +6542,12 @@ export function LineConversationView({
                   </div>
                 );
               })()}
-              {/* 动作描写：整屏正中间，独立于气泡行 */}
+              {/* 动作描写：内联显示，紧贴气泡上方、与气泡左对齐 */}
               {!isGroup && lineActionDescriptionsEnabled && msg.actionDescription && !msg.isRecalled && (
-                <div className="w-full flex justify-center my-[18px] animate-in fade-in">
-                  <div className="flex w-full items-center justify-center gap-2 px-2">
-                    <span className="h-px w-6 shrink-0 bg-[#e8e2e5]" />
-                    <span className="max-w-[75%] text-center text-[10.5px] leading-[1.6] italic tracking-[0.01em] text-[#9b9599]">
-                      {msg.actionDescription}
-                    </span>
-                    <span className="h-px w-6 shrink-0 bg-[#e8e2e5]" />
-                  </div>
+                <div className="w-full flex justify-start mb-1 animate-in fade-in" style={{ paddingLeft: '39px' }}>
+                  <span className="text-[10.5px] leading-[1.6] italic tracking-[0.01em] text-[#9b9599]">
+                    {msg.actionDescription}
+                  </span>
                 </div>
               )}
               <div
