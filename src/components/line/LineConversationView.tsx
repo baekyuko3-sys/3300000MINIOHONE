@@ -5977,12 +5977,12 @@ export function LineConversationView({
             loadOlderMessages();
           }
         }}
-        className="h-full w-full overflow-y-auto overscroll-y-auto touch-pan-y px-3.5 py-4 relative flex flex-col gap-1"
+        className="h-full w-full overflow-y-auto overscroll-y-auto touch-pan-y px-3.5 py-4 relative"
         style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'thin', scrollbarColor: '#d8cbd0 transparent' }}
       >
+        <div className="min-h-full flex flex-col justify-end gap-1">
 
-        {/* uwu 风格：消息沉底的弹性 spacer */}
-        <div className="flex-1 min-h-[2rem]" aria-hidden="true" />
+
         {showUnreadJump && unreadAnchorId !== null && (
           <button
             onClick={() => {
@@ -7769,6 +7769,7 @@ export function LineConversationView({
           <span>最新消息</span>
         </button>
       )}
+        </div>{/* 沉底 wrapper 结束 */}
       </div>
 
       {/* 3–4. 录音条叠在输入栏上（不卸载麦克风，避免长按松手丢失） */}
