@@ -4978,6 +4978,19 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                     setAddCharacterChatFriend(null);
                     setFriendSearchQuery('');
                     setActiveChatId(targetChatId);
+                    // 新好友系统提示：你们已经是好友了，开始聊天吧
+                    if (!existingChat) {
+                      import('../../store/lineRuntime').then(({ appendLineMessage }) => {
+                        appendLineMessage(targetChatId, {
+                          id: `system-friend-${Date.now()}`,
+                          sender: 'system',
+                          senderType: 'system',
+                          kind: 'system',
+                          text: '你们已经是好友了，开始聊天吧',
+                          createdAt: new Date().toISOString(),
+                        });
+                      });
+                    }
                     showToast(`已添加 NPC「${npcFriend.name}」并建立聊天`);
                   }}
                   className="w-full py-3 rounded-2xl bg-[#292724] text-white text-xs font-semibold"
@@ -5119,7 +5132,21 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   setChatItems(prev => prev.some(chat => !chat.npcId && chat.characterId === character.id && chat.personaId === effectivePersonaId)
                     ? prev
                     : [{ id: newChatId, name: character.name, characterId: character.id, personaId: effectivePersonaId || undefined, time: '刚刚', preview: '打个招呼吧', unread: 0, isPinned: false, isMuted: false, draft: '', isGroup: false, relationshipContext: context, openingMode, openingGreeting: openingMode === 'context' ? greeting : '', relationship }, ...prev]);
-                  setAddCharacterChatFriend(null); setFriendSearchQuery(''); setActiveChatId(targetChatId); showToast(`已添加「${character.name}」并建立聊天`);
+                  setAddCharacterChatFriend(null); setFriendSearchQuery(''); setActiveChatId(targetChatId);
+                  // 新好友系统提示：你们已经是好友了，开始聊天吧
+                  if (!existingChat) {
+                    import('../../store/lineRuntime').then(({ appendLineMessage }) => {
+                      appendLineMessage(targetChatId, {
+                        id: `system-friend-${Date.now()}`,
+                        sender: 'system',
+                        senderType: 'system',
+                        kind: 'system',
+                        text: '你们已经是好友了，开始聊天吧',
+                        createdAt: new Date().toISOString(),
+                      });
+                    });
+                  }
+                  showToast(`已添加「${character.name}」并建立聊天`);
                 }} className="w-full py-3 rounded-2xl bg-[#292724] text-white text-xs font-semibold">添加为好友并进入聊天</button>
               )}
             </div>
