@@ -2960,9 +2960,16 @@ export function LineConversationView({
     if (!userText) return;
     // 上一轮还在生成时直接 return 会让用户觉得"点了发送没反应"——给个提示，
     // 且输入框内容保留，等这轮结束再发。
+    // 防卡死：如果 isTyping 超过 3 分钟，强制重置（可能是上次异常没重置）
     if (shouldReply && isTyping) {
-      showToast('上一轮回复还在生成中，稍等一下再发');
-      return;
+      const typingStart = (window as any).__lineTypingStart || 0;
+      if (Date.now() - typingStart > 3 * 60 * 1000) {
+        setIsTyping(false);
+        (window as any).__lineTypingStart = 0;
+      } else {
+        showToast('上一轮回复还在生成中，稍等一下再发');
+        return;
+      }
     }
     if (characterProfile.isBlockedByCharacter) { showToast('你已被对方拉黑，暂时无法发送消息'); return; }
 
@@ -3064,6 +3071,7 @@ export function LineConversationView({
     }
 
     setIsTyping(true);
+    (window as any).__lineTypingStart = Date.now();
 
     // LINE read state: once the role starts processing the message, it has been seen.
     // A later role message upgrades the footer from “已读 · 暂未回复” to “已读”.
