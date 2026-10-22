@@ -6052,7 +6052,10 @@ export function LineConversationView({
           if (!msg || msg.deletedAt || msg.isDeleted) return null;
           const previousMessage = visibleMessages[messageIndex - 1];
           const nextMessage = visibleMessages[messageIndex + 1];
-          const isMe = msg.sender === 'me';
+          // 防御性修复：有 characterId/npcId 的消息一定是角色消息，强制放左边
+          // 防止 sender 字段存错导致角色消息跑到右边
+          const hasCharacterIdentity = Boolean(msg.characterId || msg.npcId || msg.metadata?.characterId);
+          const isMe = msg.sender === 'me' && !hasCharacterIdentity;
           const bilingualTextParts = String(msg.text || '').split('[[ZH_TRANSLATION]]');
           const bilingualOriginalText = bilingualTextParts[0].trim();
           const bilingualTranslationText = bilingualTextParts.slice(1).join('[[ZH_TRANSLATION]]').trim();
