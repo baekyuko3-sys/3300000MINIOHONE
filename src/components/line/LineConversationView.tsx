@@ -6590,13 +6590,13 @@ export function LineConversationView({
               })()}
               {/* 动作描写：整屏居中分隔条 —— 文字 —— */}
               {!isGroup && lineActionDescriptionsEnabled && msg.actionDescription && !msg.isRecalled && (
-                <div className="w-full flex justify-center my-[18px] animate-in fade-in">
-                  <div className="flex w-full items-center justify-center gap-2 px-2">
-                    <span className="h-px w-6 shrink-0 bg-[#e8e2e5]" />
-                    <span className="max-w-[75%] text-center text-[10.5px] leading-[1.6] italic tracking-[0.01em] text-[#9b9599]">
+                <div style={{ width: '100%', display: 'flex', justifyContent: 'center', margin: '18px 0' }} className="animate-in fade-in">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '0 8px', maxWidth: '100%' }}>
+                    <span style={{ height: '1px', width: '24px', flexShrink: 0, background: '#e8e2e5' }} />
+                    <span style={{ maxWidth: '75%', textAlign: 'center', fontSize: '10.5px', lineHeight: 1.6, fontStyle: 'italic', letterSpacing: '0.01em', color: '#9b9599' }}>
                       {msg.actionDescription}
                     </span>
-                    <span className="h-px w-6 shrink-0 bg-[#e8e2e5]" />
+                    <span style={{ height: '1px', width: '24px', flexShrink: 0, background: '#e8e2e5' }} />
                   </div>
                 </div>
               )}
