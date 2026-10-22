@@ -7746,8 +7746,8 @@ export function LineConversationView({
                     const readLabel = isRead ? '已读' : '未读';
                     return <span className={isRead ? "text-[#ae7e89] font-medium" : "text-[#b8b8bb] font-medium"}>{readLabel}</span>;
                   })() : (
-                    // 群聊里他人的消息不显示"已读"（无意义），只留时间；单聊保持原样。
-                    isGroup ? null : <span className="text-[#ae7e89] font-medium">已读</span>
+                    // 他人的消息不显示"已读"，只留时间
+                    null
                   )}
                   <span>{formatLineMessageClock(msg, chatTimezone, lineTimeDisplayLocale)}</span>
                 </div>
