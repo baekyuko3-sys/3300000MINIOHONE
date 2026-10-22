@@ -6053,9 +6053,12 @@ export function LineConversationView({
           const previousMessage = visibleMessages[messageIndex - 1];
           const nextMessage = visibleMessages[messageIndex + 1];
           // 防御性修复：角色消息强制放左边，防止 sender 存错
+          // AI 回复、带角色身份的消息一律放左边
           const charName = characterProfile.nickname || importedCharacter?.name || '';
           const senderNameStr = String(msg.senderName || '');
+          const isAiReply = msg.type === 'ai-reply';
           const hasCharacterIdentity = Boolean(
+            isAiReply ||
             msg.characterId || msg.npcId || msg.metadata?.characterId ||
             (senderNameStr && charName && senderNameStr === charName)
           );
