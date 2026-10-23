@@ -11416,6 +11416,33 @@ export function LineConversationView({
             </div>
 
             <button
+              onClick={() => {
+                const charName = characterProfile.nickname || importedCharacter?.name || '';
+                const userName = String(activePersona?.name || '').trim();
+                let fixed = 0;
+                setMessages((prev: any[]) => {
+                  const next = prev.map((m: any) => {
+                    if (!m || m.sender !== 'me') return m;
+                    const senderNameStr = String(m.senderName || '');
+                    const isAiReply = m.type === 'ai-reply';
+                    const hasCharId = Boolean(m.characterId || m.npcId || m.metadata?.characterId);
+                    const nameIsChar = Boolean(senderNameStr && (senderNameStr === charName || (userName && senderNameStr !== userName)));
+                    if (isAiReply || hasCharId || nameIsChar) {
+                      fixed++;
+                      return { ...m, sender: 'other' };
+                    }
+                    return m;
+                  });
+                  return next;
+                });
+                setTimeout(() => showToast(fixed > 0 ? `已修复 ${fixed} 条错位消息` : '没有发现错位消息'), 100);
+              }}
+              className="w-full py-3 bg-white text-[#ae7e89] rounded-[14px] border border-[#f0f0f1] font-medium cursor-pointer hover:bg-[#faf1f3] transition-colors"
+            >
+              修复消息错位
+            </button>
+
+            <button
               onClick={() => setShowClearConfirm(true)}
               className="w-full py-3 bg-white text-rose-500 rounded-[14px] border border-[#f0f0f1] font-medium cursor-pointer hover:bg-rose-50/30 transition-colors"
             >
