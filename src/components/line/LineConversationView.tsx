@@ -6084,12 +6084,18 @@ export function LineConversationView({
           // 防御性修复：角色消息强制放左边，防止 sender 存错
           // AI 回复、带角色身份的消息一律放左边
           const charName = characterProfile.nickname || importedCharacter?.name || '';
+          const userName = String(activePersona?.name || '').trim();
           const senderNameStr = String(msg.senderName || '');
           const isAiReply = msg.type === 'ai-reply';
+          // senderName 是角色名（不是用户名）→ 角色消息
+          const senderNameIsCharacter = Boolean(
+            senderNameStr && 
+            (senderNameStr === charName || (userName && senderNameStr !== userName))
+          );
           const hasCharacterIdentity = Boolean(
             isAiReply ||
             msg.characterId || msg.npcId || msg.metadata?.characterId ||
-            (senderNameStr && charName && senderNameStr === charName)
+            senderNameIsCharacter
           );
           const isMe = msg.sender === 'me' && !hasCharacterIdentity;
           const bilingualTextParts = String(msg.text || '').split('[[ZH_TRANSLATION]]');
