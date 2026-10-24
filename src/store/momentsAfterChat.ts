@@ -51,11 +51,13 @@ async function makeMomentText(character: ImportedCharacter, hint: string): Promi
       '你是' + character.name + '，正在发一条自己的朋友圈。',
       (character.personality || '') + '\n' + (character.scenario || ''),
       '只输出动态正文，30-120字，有生活感，不要@用户，不要解释，不要自称AI。',
+      '绝对不要输出【朋友圈配图：...】或[图片描述]之类的括号说明文字，直接写动态内容本身。',
     ].join('\n'),
     userPrompt: hint || '按你最近的生活发一条朋友圈。',
     temperature: (settings.temperature ?? 0.85),
   });
-  return raw.trim();
+  // 兜底：去掉 AI 可能输出的配图描述括号
+  return raw.trim().replace(/【朋友圈配图[：:][^】]*】/g, '').replace(/\[朋友圈配图[：:][^\]]*\]/g, '').trim();
 }
 
 /** 单聊/群聊回复后：off=不发 always=每次发 decide=角色自己判定 */
@@ -137,11 +139,13 @@ async function makeNpcMomentText(npc: SaneNpc, hint: string): Promise<string> {
       '近况：' + (npc.recentLife || ''),
       buildNpcRuntimeContext(npc, 'online-chat'),
       '只输出动态正文，30-120字，有生活感，不要@用户，不要解释，不要自称AI/NPC。',
+      '绝对不要输出【朋友圈配图：...】或[图片描述]之类的括号说明文字，直接写动态内容本身。',
     ].join('\n'),
     userPrompt: hint || '按你最近的生活发一条朋友圈。',
     temperature: (settings.temperature ?? 0.85),
   });
-  return raw.trim();
+  // 兜底：去掉 AI 可能输出的配图描述括号
+  return raw.trim().replace(/【朋友圈配图[：:][^】]*】/g, '').replace(/\[朋友圈配图[：:][^\]]*\]/g, '').trim();
 }
 
 /** 一键生成：随机挑一个允许发帖的角色或 NPC 发一条 */

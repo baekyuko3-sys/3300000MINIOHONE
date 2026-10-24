@@ -181,7 +181,7 @@ async function generateLifeText(
       '最近聊天：\n' + recentMessages.map(m => (m.sender === 'other' ? character.name : '我') + ': ' + (m.text || '[媒体]')).join('\n'),
       '朋友圈动态必须是角色自己的生活，不要伪装成聊天消息。',
     ].join('\n'),
-    userPrompt: '请写一条角色自己的朋友圈动态。像真实生活记录，不要向用户提问，不要替用户说话，不要解释这是 AI。可以是照片感、正在做的事、看到的东西或一句自然的话。控制在手机朋友圈适合的长度。\n日程：' + schedule.time + ' · ' + schedule.title,
+    userPrompt: '请写一条角色自己的朋友圈动态。像真实生活记录，不要向用户提问，不要替用户说话，不要解释这是 AI。可以是照片感、正在做的事、看到的东西或一句自然的话。控制在手机朋友圈适合的长度。绝对不要输出【朋友圈配图：...】之类的括号说明，直接写动态内容。\n日程：' + schedule.time + ' · ' + schedule.title,
     temperature: settings.temperature ?? 0.85,
   });
 }

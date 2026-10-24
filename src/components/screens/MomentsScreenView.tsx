@@ -26,7 +26,9 @@ function postAuthor(post: any): string {
 }
 
 function postText(post: any): string {
-  return String(post?.text || post?.content || '').trim();
+  const raw = String(post?.text || post?.content || '').trim();
+  // 兜底：去掉 AI 误输出的配图描述括号
+  return raw.replace(/【朋友圈配图[：:][^】]*】/g, '').replace(/\[朋友圈配图[：:][^\]]*\]/g, '').trim();
 }
 
 function postImages(post: any): string[] {
