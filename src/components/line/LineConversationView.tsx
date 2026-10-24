@@ -82,7 +82,7 @@ import {
   Edit3, Brain, Play, Check, Trash2, Copy, Sparkle, Terminal,
   Phone, Search, CornerUpLeft, Share2, Download, AlertCircle, VolumeX,
   CheckSquare, Square, Pin, PinOff, Bell, BellOff, Bookmark, BookmarkCheck,
-  FileDown, FileUp, MessageCircle, Heart, Music2, Headphones, MoreHorizontal
+  FileDown, FileUp, MessageCircle, Heart, Music2, Headphones, MoreHorizontal, ArrowLeft
 } from 'lucide-react';
 
 const SONG_INVITE_COLOR_SETS: Array<[string, string, string]> = [
@@ -12487,6 +12487,7 @@ export function LineConversationView({
 
               {/* 撤回 (我发的可撤回，角色发的也可令其撤回) */}
               {contextMenuMsg.sender === 'me' ? (
+                <>
                 <div
                   onClick={() => handleRecallMessage(contextMenuMsg.id)}
                   className="py-3 flex items-center gap-3 cursor-pointer hover:bg-neutral-50 px-2 text-[#ae7e89]"
@@ -12494,6 +12495,21 @@ export function LineConversationView({
                   <RefreshCw className="w-4 h-4" />
                   <span>撤回我的消息</span>
                 </div>
+                <div
+                  onClick={() => {
+                    const targetId = contextMenuMsg.id;
+                    setMessages((prev: any[]) => prev.map((m: any) => 
+                      String(m.id) === String(targetId) ? { ...m, sender: 'other' } : m
+                    ));
+                    setContextMenuMsg(null);
+                    showToast('已移到左边');
+                  }}
+                  className="py-3 flex items-center gap-3 cursor-pointer hover:bg-neutral-50 px-2 text-[#ae7e89]"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span className="text-[#333]">移到左边（修正错位）</span>
+                </div>
+                </>
               ) : (
                 <div
                   onClick={() => handleOtherRecallMessage(contextMenuMsg.id, true)}
