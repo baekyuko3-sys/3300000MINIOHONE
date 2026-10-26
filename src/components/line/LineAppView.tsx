@@ -4884,8 +4884,11 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                     <div className="grid grid-cols-2 gap-2">
                       <button onClick={() => { respondToNpcFriendRequest(request.id, 'declined'); setNpcRequestRevision(value => value + 1); }} className="h-10 rounded-xl border border-[#e6e6e8] text-[11px] text-[#666]">暂时不接受</button>
                       <button onClick={() => {
-                        respondToNpcFriendRequest(request.id, 'accepted');
-                        setNpcFriendship(npc.id, request.personaId, true);
+                        const acceptedRequest = respondToNpcFriendRequest(request.id, 'accepted');
+                        if (!acceptedRequest) {
+                          setNpcRequestRevision(value => value + 1);
+                          return;
+                        }
                         const friend: LineFriend = {
                           name: npc.name, characterId: npc.boundCharacterId, npcId: npc.id, personaId: request.personaId, kind: 'npc',
                           note: 'NPC · 绑定 ' + (npc.boundCharacterName || bound?.name || '角色'),
