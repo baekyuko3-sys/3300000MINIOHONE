@@ -146,13 +146,31 @@ export function useSyncedPersistentState<T>(
   return [value, setValue];
 }
 
+function preserveCorruptStorageValue(key: string, raw: string): void {
+  if (typeof window === 'undefined' || !raw || raw.length > 1_000_000) return;
+  try {
+    const recoveryKey = 'sane333:recovery:corrupt:' + encodeURIComponent(key);
+    if (window.localStorage.getItem(recoveryKey) === null) {
+      window.localStorage.setItem(recoveryKey, JSON.stringify({
+        key,
+        capturedAt: new Date().toISOString(),
+        raw,
+      }));
+    }
+  } catch (error) {
+    reportPersistenceIssue('recovery:' + key, '无法保存损坏数据的恢复副本；请尽快导出本地数据', error);
+  }
+}
+
 export function readPersistentState<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
+  let raw: string | null = null;
   try {
-    const raw = window.localStorage.getItem(key);
+    raw = window.localStorage.getItem(key);
     return raw === null ? fallback : JSON.parse(raw) as T;
   } catch (error) {
-    reportPersistenceIssue('read:' + key, '本地数据读取或 JSON 解析失败，已使用备用值', error);
+    if (raw !== null) preserveCorruptStorageValue(key, raw);
+    reportPersistenceIssue('read:' + key, '本地数据读取或 JSON 解析失败，已使用备用值；已尝试保留原始内容', error);
     return fallback;
   }
 }
