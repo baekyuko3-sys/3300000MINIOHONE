@@ -168,8 +168,11 @@ async function generateLifeText(
   const settings = readStoredAiSettings();
   if (!settings.apiKey.trim()) throw new Error('AI_NOT_CONFIGURED');
   const profile = getCharacterProfile(character.name, character.id);
-  const memory = getCharacterMemory(character.id, character.name);
-  const recentMessages = getLineConversationMessages(character.id || character.name).slice(-10);
+  const persona = getProactivePersona();
+  const personaId = persona?.id ? String(persona.id) : undefined;
+  const memory = getCharacterMemory(character.id, character.name, personaId);
+  const target = resolveProactiveConversation(character, personaId);
+  const recentMessages = target.conversationId ? getLineConversationMessages(target.conversationId).slice(-10) : [];
   return generateCreativeText({
     settings,
     systemPrompt: [
@@ -194,8 +197,11 @@ async function generateOfflineInviteFields(
   const settings = readStoredAiSettings();
   if (!settings.apiKey.trim()) throw new Error('AI_NOT_CONFIGURED');
   const profile = getCharacterProfile(character.name, character.id);
-  const memory = getCharacterMemory(character.id, character.name);
-  const recentMessages = getLineConversationMessages(character.id || character.name).slice(-12);
+  const persona = getProactivePersona();
+  const personaId = persona?.id ? String(persona.id) : undefined;
+  const memory = getCharacterMemory(character.id, character.name, personaId);
+  const target = resolveProactiveConversation(character, personaId);
+  const recentMessages = target.conversationId ? getLineConversationMessages(target.conversationId).slice(-12) : [];
   const raw = await generateCreativeText({
     settings,
     systemPrompt: offlineInviteSystemPrompt(character.name),
@@ -567,6 +573,8 @@ export async function runProactiveCatchup() {
           id: 'offline-proactive-' + Date.now().toString(36),
           characterId: character.id,
           characterName: character.name,
+          ...(getProactivePersona()?.id ? { personaId: String(getProactivePersona()!.id) } : {}),
+          ...(candidate.item.conversationId ? { conversationId: candidate.item.conversationId } : {}),
           title: fields.theme,
           location: fields.location,
           time: fields.time,
@@ -584,13 +592,17 @@ export async function runProactiveCatchup() {
           characterName: character.name,
           fields,
         });
-        appendLineMessage(character.id || character.name, {
+        const invitePersona = getProactivePersona();
+        const invitePersonaId = invitePersona?.id ? String(invitePersona.id) : undefined;
+        const inviteTarget = resolveProactiveConversation(character, invitePersonaId);
+        if (inviteTarget.conversationId) appendLineMessage(inviteTarget.conversationId, {
           ...card,
           createdAt: event.createdAt,
           status: 'delivered',
           metadata: {
             ...card.metadata,
             offlineEventId: event.id,
+            ...(invitePersonaId ? { personaId: invitePersonaId } : {}),
           },
         });
         emitWorldEvent('offline.invite', { characterId: character.id, characterName: character.name, data: { eventId: event.id, ...(event as unknown as Record<string, unknown>) } });
