@@ -55,19 +55,35 @@ function readState(): WorldRuntimeState {
     characters: {},
     events: [],
   };
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as WorldRuntimeState;
-  } catch {
-    // Recover with a clean runtime.
-  }
-  return {
+  const fallback: WorldRuntimeState = {
     version: 1,
     updatedAt: new Date().toISOString(),
     currentScene: null,
     characters: {},
     events: [],
   };
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<WorldRuntimeState> | null;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return fallback;
+    const characters = parsed.characters && typeof parsed.characters === 'object' && !Array.isArray(parsed.characters)
+      ? parsed.characters
+      : {};
+    const events = Array.isArray(parsed.events) ? parsed.events.slice(-MAX_EVENTS) : [];
+    return {
+      ...fallback,
+      ...parsed,
+      version: 1,
+      updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : fallback.updatedAt,
+      currentScene: typeof parsed.currentScene === 'string' ? parsed.currentScene : null,
+      characters,
+      events,
+    } as WorldRuntimeState;
+  } catch {
+    // Recover with a clean runtime if local JSON is malformed.
+    return fallback;
+  }
 }
 
 function writeState(state: WorldRuntimeState) {
@@ -230,7 +246,7 @@ export function syncCharacterRoutine(
   const runtime = ensureCharacter(state, character);
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const parse = (value: string) => {
-    const match = value.match(/(\\d{1,2}):(\\d{2})/);
+    const match = value.match(/(\d{1,2}):(\d{2})/);
     if (!match) return null;
     const h = Number(match[1]);
     const m = Number(match[2]);
@@ -296,7 +312,7 @@ export function readSchedulesForCharacter(character: { id?: string; name?: strin
     const chats = rawChats ? JSON.parse(rawChats) : [];
     if (Array.isArray(chats)) {
       for (const chat of chats) {
-        if (chat && !chat.isGroup && chat.id && chat.characterId
+        if (chat && !chat.isGroup && !chat.npcId && chat.id && chat.characterId
           && String(chat.characterId) === String(character.id)) {
           keys.add(`line:schedule:${chat.id}`);
         }
