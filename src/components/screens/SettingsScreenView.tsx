@@ -200,8 +200,42 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
         source: 'pre-github-restore',
         data: collectLocalData(false),
       });
-      for (const [key, value] of Object.entries(result.data as Record<string, unknown>)) {
-        if (key.startsWith('phone:') || key.startsWith('line:')) localStorage.setItem(key, JSON.stringify(value));
+      // Validate the complete restore payload before touching local data.
+      // Only JSON-serializable app stores are accepted; secrets/config outside these
+      // namespaces are intentionally not imported from a backup.
+      const entries = Object.entries(result.data as Record<string, unknown>)
+        .filter(([key]) => key.startsWith('phone:') || key.startsWith('line:'));
+      const serialized = entries.map(([key, value]) => {
+        const json = JSON.stringify(value);
+        if (json === undefined) throw new Error('GITHUB_RESTORE_VALUE_INVALID: ' + key);
+        return [key, json] as const;
+      });
+      // Keep a transaction snapshot in memory so any quota/write error can roll back
+      // every key already changed in this restore attempt.
+      const before = new Map<string, string | null>();
+      for (const [key] of serialized) before.set(key, localStorage.getItem(key));
+      const applied: string[] = [];
+      try {
+        for (const [key, json] of serialized) {
+          localStorage.setItem(key, json);
+          applied.push(key);
+        }
+      } catch (writeError) {
+        let rollbackFailed = false;
+        for (const key of applied.reverse()) {
+          try {
+            const previous = before.get(key);
+            if (previous === null || previous === undefined) localStorage.removeItem(key);
+            else localStorage.setItem(key, previous);
+          } catch {
+            rollbackFailed = true;
+          }
+        }
+        if (rollbackFailed) {
+          reportPersistenceIssue('github-restore-rollback', 'GitHub 恢复失败且部分本地数据无法自动回滚；请保留下载的恢复快照', writeError);
+          throw new Error('GITHUB_RESTORE_PARTIAL_ROLLBACK: 恢复写入失败，且自动回滚未能完全完成。请保留刚才下载的恢复快照。');
+        }
+        throw new Error('GITHUB_RESTORE_ROLLED_BACK: 恢复写入失败，已撤销本次已完成的写入；原有数据未被有意覆盖。' + (writeError instanceof Error ? ' ' + writeError.message : ''));
       }
       notify('GitHub 数据已恢复；正在重新载入项目');
       window.setTimeout(() => window.location.reload(), 500);
