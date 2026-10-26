@@ -304,7 +304,9 @@ export function touchLineConversation(id: string, patch: Partial<LineConversatio
   };
   all[id] = { ...current, ...patch, id, updatedAt: new Date().toISOString() };
   writeJson(META_KEY, all);
-  window.dispatchEvent(new CustomEvent('sane333:line-runtime-changed', { detail: all[id] }));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('sane333:line-runtime-changed', { detail: all[id] }));
+  }
   return all[id];
 }
 
@@ -437,6 +439,7 @@ export function removeLineConversationData(id: string, options: { removeChatItem
     `line:status-bar-active:${id}`,
     `line:offline-draft:${id}`,
     `line:offline-css:${id}`,
+    `line:allow-role-message:${id}`,
   ]) {
     try { window.localStorage.removeItem(key); } catch { /* ignore */ }
   }
