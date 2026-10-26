@@ -7874,7 +7874,7 @@ export function LineConversationView({
         {/* AI 正在生成时，固定显示在消息流最底部，而不是顶栏。
             群聊里只留点点点，不要头像圈（单聊的角色头像在群里会显示成奇怪的 fallback）。 */}
         {/* 底部 typing 省略号：已有占位气泡显示省略号时不再重复显示，避免双省略号 */}
-        {isTyping && !messages.some((m: any) => m.sender !== 'me' && m.type === 'ai-reply' && !String(m.text || m.content || '').trim()) && (
+        {isTyping && (
           <div className="flex items-end gap-2 px-0.5 py-1.5 animate-in fade-in">
             {!isGroup && (
               <div className="w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 border border-white">
