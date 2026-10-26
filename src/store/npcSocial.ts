@@ -30,7 +30,11 @@ export function getNpcFriendRequests(): NpcFriendRequest[] {
 
 function saveRequests(items: NpcFriendRequest[]) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(REQUESTS_KEY, JSON.stringify(items.slice(0, 200)));
+  const serialized = JSON.stringify(items.slice(0, 200));
+  window.localStorage.setItem(REQUESTS_KEY, serialized);
+  if (window.localStorage.getItem(REQUESTS_KEY) !== serialized) {
+    throw new Error('NPC_FRIEND_REQUEST_PERSISTENCE_MISMATCH');
+  }
   window.dispatchEvent(new CustomEvent('sane333:npc-friend-requests-updated'));
 }
 
@@ -87,9 +91,20 @@ export function respondToNpcFriendRequest(id: string, status: 'accepted' | 'decl
       unique.push({ npcId: current.npcId, personaId: current.personaId });
       // Persist the friendship and request status as one guarded operation.
       // If either write fails, restore both prior values to avoid a half-accepted request.
-      window.localStorage.setItem(FRIENDSHIP_KEY, JSON.stringify(unique));
+      const serializedFriendships = JSON.stringify(unique);
+      window.localStorage.setItem(FRIENDSHIP_KEY, serializedFriendships);
+      if (window.localStorage.getItem(FRIENDSHIP_KEY) !== serializedFriendships) {
+        throw new Error('NPC_FRIENDSHIP_PERSISTENCE_MISMATCH');
+      }
     }
     saveRequests(requests.map(item => item.id === id ? next : item));
+    const persistedRequest = getNpcFriendRequests().find(item => item.id === id);
+    if (!persistedRequest || persistedRequest.status !== status) {
+      throw new Error('NPC_FRIEND_REQUEST_STATUS_PERSISTENCE_MISMATCH');
+    }
+    if (status === 'accepted' && !hasNpcFriendship(current.npcId, current.personaId)) {
+      throw new Error('NPC_FRIENDSHIP_PERSISTENCE_MISMATCH');
+    }
     return next;
   } catch (error) {
     try {
