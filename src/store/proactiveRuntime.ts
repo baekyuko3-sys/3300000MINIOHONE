@@ -407,8 +407,10 @@ async function runNpcPrivateProactive(today: string, state: ProactiveState) {
         metadata: { proactive: true, npcId: npc.id, personaId, reason: 'npc-autonomous-private-message' },
       });
       const updatedChats = readLocal<any[]>('line:chat-items', []);
+      // appendLineMessage already updates the exact chat's unread count.
+      // Only refresh preview/time here; incrementing unread again double-counts it.
       saveLocal('line:chat-items', updatedChats.map(item => item.id === chat.id
-        ? { ...item, time: '刚刚', preview: text.slice(0, 100), unread: Number(item.unread || 0) + 1 }
+        ? { ...item, time: '刚刚', preview: text.slice(0, 100) }
         : item));
       window.dispatchEvent(new CustomEvent('sane333:proactive-message', {
         detail: {

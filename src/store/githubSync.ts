@@ -99,6 +99,9 @@ export async function testGitHubSync(config = getGitHubSyncConfig(), token = get
     'https://api.github.com/repos/' + encodeURIComponent(cleanOwner) + '/' + encodeURIComponent(cleanRepo),
     cleanToken,
   );
+  if (repository?.private !== true) {
+    throw new Error('GITHUB_BACKUP_REPO_MUST_BE_PRIVATE: 为保护聊天记录和个人数据，GitHub 备份目标必须是私有仓库');
+  }
   const targetBranch = cleanBranch || repository.default_branch || 'main';
   await githubRequest(
     'https://api.github.com/repos/' + encodeURIComponent(cleanOwner) + '/' + encodeURIComponent(cleanRepo) +
@@ -119,6 +122,13 @@ export async function testGitHubSync(config = getGitHubSyncConfig(), token = get
 export async function syncSnapshotToGitHub(snapshot: unknown, config = getGitHubSyncConfig(), token = getGitHubToken()): Promise<{ sha: string; syncedAt: string }> {
   if (!token.trim()) throw new Error('GITHUB_TOKEN_MISSING');
   const url = apiUrl(config);
+  const repository = await githubRequest(
+    'https://api.github.com/repos/' + encodeURIComponent(config.owner.trim()) + '/' + encodeURIComponent(config.repo.trim()),
+    token,
+  );
+  if (repository?.private !== true) {
+    throw new Error('GITHUB_BACKUP_REPO_MUST_BE_PRIVATE: 拒绝把聊天记录和个人数据写入公开仓库');
+  }
   let existingSha: string | undefined;
   try {
     const existing = await githubRequest(url + '?ref=' + encodeURIComponent(config.branch), token);

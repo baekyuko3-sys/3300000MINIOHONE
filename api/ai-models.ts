@@ -16,11 +16,69 @@ type Body = {
 };
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  // This endpoint is same-origin for the Vercel app. Do not expose a wildcard
+  // CORS policy that lets arbitrary websites use it as an AI proxy.
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
   'Content-Type': 'application/json',
 };
+
+const DEFAULT_ALLOWED_HOSTS = new Set([
+  'generativelanguage.googleapis.com',
+  'api.openai.com',
+  'api.deepseek.com',
+  'api.siliconflow.cn',
+  'api.moonshot.cn',
+  'dashscope.aliyuncs.com',
+  'api.minimax.chat',
+  'api.minimaxi.com',
+  'openrouter.ai',
+  'api.groq.com',
+  'api.together.xyz',
+  'api.mistral.ai',
+  'api.perplexity.ai',
+  'api.x.ai',
+  'api.lingyiwanwu.com',
+  'api.stepfun.com',
+]);
+
+function validateBaseUrl(value: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error('Invalid API base URL');
+  }
+  if (parsed.protocol !== 'https:') throw new Error('AI proxy only allows HTTPS upstream URLs');
+  if (parsed.port && parsed.port !== '443') throw new Error('AI proxy only allows the standard HTTPS port');
+  if (parsed.username || parsed.password) throw new Error('Credentials must not be embedded in the API base URL');
+  if (parsed.search || parsed.hash) throw new Error('API base URL must not include query parameters or a fragment');
+
+  const runtime = globalThis as typeof globalThis & { process?: { env?: Record<string, string | undefined> } };
+  const configuredHosts = String(runtime.process?.env?.AI_PROXY_ALLOWED_HOSTS || '')
+    .split(',')
+    .map(host => host.trim().toLowerCase())
+    .filter(Boolean);
+  const allowedHosts = new Set([...DEFAULT_ALLOWED_HOSTS, ...configuredHosts]);
+  if (!allowedHosts.has(parsed.hostname.toLowerCase())) {
+    throw new Error('API host is not allowed by the server proxy. Add its exact hostname to AI_PROXY_ALLOWED_HOSTS in Vercel if you trust this provider.');
+  }
+  return cleanBaseUrl(parsed.toString());
+}
+
+async function fetchUpstream(input: string, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000);
+  try {
+    return await fetch(input, {
+      ...init,
+      redirect: 'error',
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function json(data: unknown, status = 200, extra: Record<string, string> = {}) {
   return new Response(JSON.stringify(data), {
@@ -60,13 +118,14 @@ async function handleRequest(request: Request) {
     const body = await request.json() as Body;
     const provider = String(body.provider || 'openai-compatible');
     const apiKey = String(body.apiKey || '').trim();
-    const baseUrl = cleanBaseUrl(String(body.baseUrl || ''));
+    const rawBaseUrl = cleanBaseUrl(String(body.baseUrl || ''));
 
     if (!apiKey) return json({ error: 'API key is required' }, 400);
-    if (!baseUrl) return json({ error: 'API base URL is required' }, 400);
+    if (!rawBaseUrl) return json({ error: 'API base URL is required' }, 400);
+    const baseUrl = validateBaseUrl(rawBaseUrl);
 
     if (body.action === 'models') {
-      const response = await fetch(
+      const response = await fetchUpstream(
         provider === 'gemini' ? baseUrl + '/models' : baseUrl + '/models',
         {
           method: 'GET',
@@ -86,7 +145,7 @@ async function handleRequest(request: Request) {
     if (!model) return json({ error: 'Model is required' }, 400);
 
     if (provider === 'gemini') {
-      const response = await fetch(
+      const response = await fetchUpstream(
         baseUrl + '/models/' + encodeURIComponent(model) + ':generateContent',
         {
           method: 'POST',
@@ -113,7 +172,7 @@ async function handleRequest(request: Request) {
       return upstreamJson(response);
     }
 
-    const response = await fetch(baseUrl + '/chat/completions', {
+    const response = await fetchUpstream(baseUrl + '/chat/completions', {
       method: 'POST',
       headers: {
         Accept: 'application/json',

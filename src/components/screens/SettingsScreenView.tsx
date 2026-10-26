@@ -35,18 +35,20 @@ function collectLocalData(includeSecrets = true) {
     catch { data[key] = localStorage.getItem(key); }
   }
 
-  if (!includeSecrets && data['phone:settings'] && typeof data['phone:settings'] === 'object') {
-    const safe = { ...(data['phone:settings'] as Record<string, unknown>) };
-    for (const key of ['apiKey', 'voiceApiKey', 'sttApiKey', 'imageApiKey']) safe[key] = '';
-    for (const key of ['chatApiOverride', 'momentsApiOverride']) {
-      if (safe[key] && typeof safe[key] === 'object') {
-        safe[key] = { ...(safe[key] as Record<string, unknown>), apiKey: '' };
+  if (!includeSecrets) {
+    // Redact credentials recursively across every exported phone:/line: store.
+    // This includes phone:api-presets, which previously escaped the sanitizer.
+    const secretField = /^(?:apiKey|voiceApiKey|sttApiKey|imageApiKey|accessToken|refreshToken|githubToken|authorization|password|clientSecret|secret)$/i;
+    const redact = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(redact);
+      if (!value || typeof value !== 'object') return value;
+      const result: Record<string, unknown> = {};
+      for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+        result[key] = secretField.test(key) ? '' : redact(child);
       }
-    }
-    data['phone:settings'] = safe;
-    if (Array.isArray(data['phone:character-ai-profiles'])) {
-      data['phone:character-ai-profiles'] = (data['phone:character-ai-profiles'] as Array<Record<string, unknown>>).map(profile => ({ ...profile, apiKey: '' }));
-    }
+      return result;
+    };
+    for (const key of Object.keys(data)) data[key] = redact(data[key]);
   }
 
   return data;
@@ -189,6 +191,15 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
       saveGitHubToken(githubToken);
       const result = await pullSnapshotFromGitHub(githubConfig, githubToken);
       if (!result.data || typeof result.data !== 'object') throw new Error('GITHUB_DATA_EMPTY');
+      // Preserve the current local state before a remote restore overwrites keys.
+      // Secrets are deliberately excluded from this safety snapshot.
+      const safetyStamp = new Date().toISOString().replace(/[:.]/g, '-');
+      downloadJson('sane333-before-github-restore-' + safetyStamp + '.json', {
+        version: 1,
+        savedAt: new Date().toISOString(),
+        source: 'pre-github-restore',
+        data: collectLocalData(false),
+      });
       for (const [key, value] of Object.entries(result.data as Record<string, unknown>)) {
         if (key.startsWith('phone:') || key.startsWith('line:')) localStorage.setItem(key, JSON.stringify(value));
       }

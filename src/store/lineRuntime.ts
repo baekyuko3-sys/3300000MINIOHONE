@@ -142,12 +142,28 @@ export function appendLineMessage(id: string, message: LineRuntimeMessage): Line
           (nextMessage.kind === 'file' ? '[文件]' : '') ||
           '[新消息]'
         ).replace(/\s+/g, ' ').slice(0, 80);
-        const nextChats = chats.map((item: any) =>
-          item.id === id || item.characterId === id
-            ? { ...item, preview, time: '刚刚', unread: nextUnread }
-            : item
-        );
-        window.localStorage.setItem('line:chat-items', JSON.stringify(nextChats));
+        // Prefer the exact conversation ID. Legacy callers sometimes pass a
+        // character ID instead; only use that fallback when exactly one ordinary
+        // chat matches, otherwise never mutate multiple persona conversations.
+        const exactMatches = chats.filter((item: any) => String(item?.id || '') === String(id));
+        const legacyMatches = exactMatches.length
+          ? []
+          : chats.filter((item: any) =>
+              item && !item.isGroup && !item.npcId &&
+              String(item.characterId || '') === String(id)
+            );
+        const targetIds = new Set<string>();
+        if (exactMatches.length === 1 && exactMatches[0]?.id) {
+          targetIds.add(String(exactMatches[0].id));
+        } else if (exactMatches.length === 0 && legacyMatches.length === 1 && legacyMatches[0]?.id) {
+          targetIds.add(String(legacyMatches[0].id));
+        }
+        const nextChats = targetIds.size
+          ? chats.map((item: any) => targetIds.has(String(item?.id || ''))
+              ? { ...item, preview, time: '刚刚', unread: nextUnread }
+              : item)
+          : chats;
+        if (nextChats !== chats) window.localStorage.setItem('line:chat-items', JSON.stringify(nextChats));
       }
     } catch {
       // Chat-list synchronization is best-effort.
