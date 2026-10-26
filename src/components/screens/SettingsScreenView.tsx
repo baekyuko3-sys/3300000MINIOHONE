@@ -191,6 +191,15 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
       saveGitHubToken(githubToken);
       const result = await pullSnapshotFromGitHub(githubConfig, githubToken);
       if (!result.data || typeof result.data !== 'object') throw new Error('GITHUB_DATA_EMPTY');
+      // Preserve the current local state before a remote restore overwrites keys.
+      // Secrets are deliberately excluded from this safety snapshot.
+      const safetyStamp = new Date().toISOString().replace(/[:.]/g, '-');
+      downloadJson('sane333-before-github-restore-' + safetyStamp + '.json', {
+        version: 1,
+        savedAt: new Date().toISOString(),
+        source: 'pre-github-restore',
+        data: collectLocalData(false),
+      });
       for (const [key, value] of Object.entries(result.data as Record<string, unknown>)) {
         if (key.startsWith('phone:') || key.startsWith('line:')) localStorage.setItem(key, JSON.stringify(value));
       }
