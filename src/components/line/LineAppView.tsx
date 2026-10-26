@@ -4882,11 +4882,28 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                     </div>
                     <div className="rounded-xl bg-[#f7f7f8] p-3 text-[11px] leading-5 text-[#555]">{request.message || '想认识你多一点。'}</div>
                     <div className="grid grid-cols-2 gap-2">
-                      <button onClick={() => { respondToNpcFriendRequest(request.id, 'declined'); setNpcRequestRevision(value => value + 1); }} className="h-10 rounded-xl border border-[#e6e6e8] text-[11px] text-[#666]">暂时不接受</button>
                       <button onClick={() => {
-                        const acceptedRequest = respondToNpcFriendRequest(request.id, 'accepted');
+                        try {
+                          respondToNpcFriendRequest(request.id, 'declined');
+                          setNpcRequestRevision(value => value + 1);
+                          showToast('已忽略好友申请');
+                        } catch {
+                          setNpcRequestRevision(value => value + 1);
+                          showToast('保存失败：好友申请状态未能更新，请检查浏览器存储空间');
+                        }
+                      }} className="h-10 rounded-xl border border-[#e6e6e8] text-[11px] text-[#666]">暂时不接受</button>
+                      <button onClick={() => {
+                        let acceptedRequest;
+                        try {
+                          acceptedRequest = respondToNpcFriendRequest(request.id, 'accepted');
+                        } catch {
+                          setNpcRequestRevision(value => value + 1);
+                          showToast('保存失败：好友关系未能确认，请检查浏览器存储空间');
+                          return;
+                        }
                         if (!acceptedRequest) {
                           setNpcRequestRevision(value => value + 1);
+                          showToast('这条好友申请已处理或已失效，请刷新后重试');
                           return;
                         }
                         const friend: LineFriend = {
