@@ -370,11 +370,8 @@ async function runNpcPrivateProactive(today: string, state: ProactiveState) {
       readLocal<boolean>('line:allow-role-message:' + chatId, true) === false ||
       readLocal<boolean>('line:allow-role-message:' + npc.id, true) === false
     ) continue;
-    if (!matches.length) {
-      chats.unshift(chat);
-      saveLocal('line:chat-items', chats);
-    }
-
+    // Do not create a visible empty chat until the NPC has actually generated
+    // a message. A NO_MESSAGE response or AI failure should leave the chat list unchanged.
     const history = getLineConversationMessages(chatId).slice(-12);
     const runtimeContext = buildNpcRuntimeContext(npc, 'online-chat', personaId);
     const userPrompt = [
@@ -397,6 +394,14 @@ async function runNpcPrivateProactive(today: string, state: ProactiveState) {
 
       const createdAt = new Date().toISOString();
       const messageId = 'npc-proactive-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+      if (!matches.length) {
+        // Persist the new chat only after generation succeeds, but before appending
+        // so appendLineMessage can synchronize its preview and unread count by exact ID.
+        const latestChats = readLocal<any[]>('line:chat-items', []);
+        if (!latestChats.some(item => String(item?.id || '') === chatId)) {
+          saveLocal('line:chat-items', [chat, ...latestChats]);
+        }
+      }
       appendLineMessage(chatId, {
         id: messageId,
         sender: 'other',
