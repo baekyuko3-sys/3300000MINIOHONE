@@ -218,7 +218,11 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
       try {
         for (const [key, json] of serialized) {
           localStorage.setItem(key, json);
+          // Include the current key in rollback before checking the read-back value.
           applied.push(key);
+          if (localStorage.getItem(key) !== json) {
+            throw new Error('GITHUB_RESTORE_VERIFY_FAILED: ' + key);
+          }
         }
       } catch (writeError) {
         let rollbackFailed = false;
