@@ -145,8 +145,10 @@ export function saveCharacterMemory(memory: CharacterMemory): CharacterMemory {
     try {
       window.localStorage.setItem(key, JSON.stringify(next));
     } catch (error) {
-      reportPersistenceIssue('character-memory-write:' + key, '角色长期记忆保存失败；当前更改可能尚未保存', error);
-      throw error;
+      reportPersistenceIssue('character-memory-write:' + key, '角色长期记忆保存失败；已返回本地仍可读取的版本，当前更改可能尚未保存', error);
+      // Memory writes are often part of a chat reply. Do not crash the whole chat
+      // because storage is full; return the last persisted version instead.
+      return getCharacterMemory(memory.characterId, memory.characterName, memory.personaId);
     }
   }
   return next;
