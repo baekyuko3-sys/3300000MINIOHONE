@@ -71,8 +71,13 @@ export function createNpcFriendRequest(input: {
     createdAt: now,
     updatedAt: now,
   };
-  saveRequests([request, ...requests]);
-  return request;
+  try {
+    saveRequests([request, ...requests]);
+    return request;
+  } catch (error) {
+    reportPersistenceIssue('npc-friend-request-create', 'NPC 好友申请保存失败；未向界面报告申请已创建', error);
+    return null;
+  }
 }
 
 export function respondToNpcFriendRequest(id: string, status: 'accepted' | 'declined'): NpcFriendRequest | null {
