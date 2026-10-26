@@ -27,12 +27,9 @@ export function cleanupOldDemoData(): void {
   removeOnlyIfIdsMatch('line:global-favorites', ['1', '2']);
   removeOnlyIfIdsMatch('phone:threads', ['t1', 't2', 't3']);
 
-  const friends = parseStored('line:friends-list');
-  const demoFriendNames = new Set(['顾言', '小夏', 'Haruka', 'Aki', 'Emma', '佐藤葵', '林安']);
-  if (Array.isArray(friends) && friends.length && friends.every(item => item && demoFriendNames.has(String(item.name)))) {
-    window.localStorage.removeItem('line:friends-list');
-  }
-
+  // Do not delete a user's friend list based only on display names. Common names
+  // such as Emma or Aki are not reliable evidence that records are demo data.
+  // The original migration has no stable demo IDs for these friend records.
   const moments = parseStored('line:moments-screen-posts');
   const demoMomentIds = new Set(['p1', 'p2']);
   if (Array.isArray(moments) && moments.length && moments.every(item => item && demoMomentIds.has(String(item.id)))) {
