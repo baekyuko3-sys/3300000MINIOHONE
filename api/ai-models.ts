@@ -50,6 +50,7 @@ function validateBaseUrl(value: string): string {
     throw new Error('Invalid API base URL');
   }
   if (parsed.protocol !== 'https:') throw new Error('AI proxy only allows HTTPS upstream URLs');
+  if (parsed.port && parsed.port !== '443') throw new Error('AI proxy only allows the standard HTTPS port');
   if (parsed.username || parsed.password) throw new Error('Credentials must not be embedded in the API base URL');
   if (parsed.search || parsed.hash) throw new Error('API base URL must not include query parameters or a fragment');
 
