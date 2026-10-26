@@ -39,6 +39,7 @@ import {
   type TogetherMusicSession,
 } from '../../store/togetherMusic';
 import { emitWorldEvent, setCharacterRuntime } from '../../store/worldRuntime';
+import { readStrangerSession } from '../../store/music';
 import { appendStatusBarSnapshot, deleteStatusBarSnapshot, clearStatusBarHistory, getStatusBarHistory, getStatusBarPresets, getStatusBarRandomMode, getStatusBarForCharacter, renderStatusBarHtml, resolveStatusBarTokens, extractStatusMatch, sanitizeHtmlFragment, sanitizeStatusBarHtml, restoreStatusBarPresentationStyles, saveStatusBarRandomMode, type StatusBarPreset, type StatusBarSnapshot } from '../../store/statusBarPresets';
 import { getCotPresets, type CotPreset, type CotPresetTarget } from '../../store/cotPresets';
 import { getActivePromptPreset } from '../../store/promptPresets';
@@ -1383,6 +1384,38 @@ export function LineConversationView({
   const [localPinned, setLocalPinned] = useState(isPinned);
   const [localMuted, setLocalMuted] = useState(isMuted);
   const [togetherMusic, setTogetherMusic] = usePersistentState<TogetherMusicSession | null>('line:together-music:' + conversationStorageId, null);
+  const notifiedEndedMusicSessionRef = useRef<string>('');
+
+  // Music App can end a listening session outside LINE. Observe the shared session
+  // event and notify this conversation once, then clear its active listening state.
+  useEffect(() => {
+    const handleTogetherMusicChange = () => {
+      if (!togetherMusic || !['listening', 'paused'].includes(togetherMusic.status)) return;
+      const session = readStrangerSession();
+      if (!session || session.status !== 'ended') return;
+      const sameSession = String(session.id || '') === String(togetherMusic.id || '');
+      const sameCharacter = Boolean(
+        importedCharacter?.id &&
+        session.mode === 'direct' &&
+        String(session.characterId || '') === String(importedCharacter.id)
+      );
+      if (!sameSession && !sameCharacter) return;
+      const endedId = String(session.id || togetherMusic.id || conversationStorageId);
+      if (notifiedEndedMusicSessionRef.current === endedId) return;
+      notifiedEndedMusicSessionRef.current = endedId;
+      setTogetherMusic(null);
+      showToast('一起听结束了 ♪');
+      window.dispatchEvent(new CustomEvent('sane333:line-together-music-ended', {
+        detail: { sessionId: endedId, conversationId: conversationStorageId },
+      }));
+    };
+    window.addEventListener('sane333:music-stranger-changed', handleTogetherMusicChange);
+    window.addEventListener('storage', handleTogetherMusicChange);
+    return () => {
+      window.removeEventListener('sane333:music-stranger-changed', handleTogetherMusicChange);
+      window.removeEventListener('storage', handleTogetherMusicChange);
+    };
+  }, [togetherMusic, importedCharacter?.id, conversationStorageId, setTogetherMusic, showToast]);
 
   // 我的人设管理器 (User Persona Manager)
   const [showPersonaManager, setShowPersonaManager] = useState(false);
