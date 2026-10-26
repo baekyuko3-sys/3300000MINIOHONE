@@ -1534,8 +1534,32 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       );
     }
     if (activeItem.characterId) markCharacterRead(activeItem.characterId);
-    const activeChatName = activeItem?.name || activeChatId;
-    const activeCharacterId = activeItem?.characterId || undefined;
+    // Resolve ordinary character chats from stable character/friend metadata when
+    // legacy chat rows accidentally stored their generated c_... key as the display name.
+    // Keep the original conversation ID unchanged so existing messages remain attached.
+    const activeRuntimeMeta = getLineConversationMeta(activeItem.id);
+    const activeCharacterId = activeItem.characterId || activeRuntimeMeta?.characterId ||
+      importedCharacters.find(character => character.id === activeItem.id)?.id ||
+      friendsList.find(friend =>
+        !friend.npcId && (
+          friend.characterId === activeItem.characterId ||
+          friend.name === activeItem.name ||
+          friend.name === activeRuntimeMeta?.name
+        )
+      )?.characterId;
+    const activeCharacter = importedCharacters.find(character => character.id === activeCharacterId) ||
+      importedCharacters.find(character => character.name === activeItem.name) ||
+      importedCharacters.find(character => character.name === activeRuntimeMeta?.name);
+    const activeFriend = friendsList.find(friend => !friend.npcId && (
+      (activeCharacterId && friend.characterId === activeCharacterId) ||
+      friend.name === activeItem.name ||
+      friend.name === activeRuntimeMeta?.name
+    ));
+    const activeChatName =
+      (activeCharacter?.name && activeCharacter.name.trim()) ||
+      (activeFriend?.name && !/^(?:c_\\d+|group-[a-z0-9]+|member-.+)$/.test(activeFriend.name) ? activeFriend.name : '') ||
+      (activeRuntimeMeta?.name && !/^(?:c_\\d+|group-[a-z0-9]+|member-.+)$/.test(activeRuntimeMeta.name) ? activeRuntimeMeta.name : '') ||
+      (activeItem.name && !/^(?:c_\\d+|group-[a-z0-9]+|member-.+)$/.test(activeItem.name) ? activeItem.name : '角色');
     // The chat item itself is the conversation identity. Persona isolation is
     // enforced by the chat item's personaId, so separate chats for the same
     // character can still remain independent.
