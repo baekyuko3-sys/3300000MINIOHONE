@@ -53,7 +53,8 @@ function validateBaseUrl(value: string): string {
   if (parsed.username || parsed.password) throw new Error('Credentials must not be embedded in the API base URL');
   if (parsed.search || parsed.hash) throw new Error('API base URL must not include query parameters or a fragment');
 
-  const configuredHosts = String(process.env.AI_PROXY_ALLOWED_HOSTS || '')
+  const runtime = globalThis as typeof globalThis & { process?: { env?: Record<string, string | undefined> } };
+  const configuredHosts = String(runtime.process?.env?.AI_PROXY_ALLOWED_HOSTS || '')
     .split(',')
     .map(host => host.trim().toLowerCase())
     .filter(Boolean);
@@ -116,10 +117,11 @@ async function handleRequest(request: Request) {
     const body = await request.json() as Body;
     const provider = String(body.provider || 'openai-compatible');
     const apiKey = String(body.apiKey || '').trim();
-    const baseUrl = validateBaseUrl(cleanBaseUrl(String(body.baseUrl || '')));
+    const rawBaseUrl = cleanBaseUrl(String(body.baseUrl || ''));
 
     if (!apiKey) return json({ error: 'API key is required' }, 400);
-    if (!baseUrl) return json({ error: 'API base URL is required' }, 400);
+    if (!rawBaseUrl) return json({ error: 'API base URL is required' }, 400);
+    const baseUrl = validateBaseUrl(rawBaseUrl);
 
     if (body.action === 'models') {
       const response = await fetchUpstream(
