@@ -4893,7 +4893,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                         }
                       }} className="h-10 rounded-xl border border-[#e6e6e8] text-[11px] text-[#666]">暂时不接受</button>
                       <button onClick={() => {
-                        let acceptedRequest;
+                        let acceptedRequest: ReturnType<typeof respondToNpcFriendRequest>;
                         try {
                           acceptedRequest = respondToNpcFriendRequest(request.id, 'accepted');
                         } catch {
