@@ -62,11 +62,28 @@ export function usePersistentState<T>(
         : initialValue;
     }
 
+    let raw: string | null = null;
     try {
-      const raw = window.localStorage.getItem(key);
+      raw = window.localStorage.getItem(key);
       if (raw !== null) return JSON.parse(raw) as T;
     } catch (error) {
-      reportPersistenceIssue('read:' + key, '本地数据读取或 JSON 解析失败，已使用初始值', error);
+      // Preserve malformed JSON before returning a fallback. The normal persistence
+      // effect may subsequently write the fallback to the original key.
+      if (raw !== null) {
+        try {
+          const recoveryKey = 'sane333:recovery:corrupt:' + encodeURIComponent(key);
+          if (window.localStorage.getItem(recoveryKey) === null && raw.length <= 1_000_000) {
+            window.localStorage.setItem(recoveryKey, JSON.stringify({
+              key,
+              capturedAt: new Date().toISOString(),
+              raw,
+            }));
+          }
+        } catch (recoveryError) {
+          console.error('[SANE333 persistence] Could not preserve corrupt data', recoveryError);
+        }
+      }
+      reportPersistenceIssue('read:' + key, '本地数据读取或 JSON 解析失败，已使用初始值；原始内容已尝试保存在恢复键中', error);
     }
 
     return typeof initialValue === 'function'

@@ -13,25 +13,8 @@ export default function App() {
     cleanupOldDemoData();
     const seen = window.localStorage.getItem('sane333:last-seen-release');
     if (seen !== release) setShowUpdate(true);
-    const marker = 'sane333:blank-foundation-v1';
-    if (!window.localStorage.getItem(marker)) {
-      for (const key of [
-        'line:masks',
-        'line:current-user',
-        'line:chat-items',
-        'line:friends-list',
-        'line:global-favorites',
-        'line:moments-posts',
-        'line:moments-screen-posts',
-        'phone:threads',
-        'phone:notes',
-        'phone:gallery',
-        'phone:world-runtime-v1',
-      ]) {
-        window.localStorage.removeItem(key);
-      }
-      window.localStorage.setItem(marker, 'done');
-    }
+    // Never clear user-owned localStorage stores during startup.
+    // Legacy demo cleanup is handled by cleanupOldDemoData(), which checks known demo IDs.
   }, []);
 
   return (
