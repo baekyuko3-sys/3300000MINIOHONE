@@ -109,12 +109,30 @@ function resolveProactiveConversation(character: ImportedCharacter, personaId?: 
   }
 }
 
-function appendProactiveMessage(character: ImportedCharacter, text: string) {
-  // Use the active persona's own LINE chat. If it cannot be uniquely resolved,
-  // keep the proactive event as a notification instead of creating shared history.
+function resolveProactiveTarget(character: ImportedCharacter, schedule: ScheduleItem) {
+  const chats = readLocal<any[]>('line:chat-items', []);
+  if (schedule.conversationId) {
+    const match = Array.isArray(chats) ? chats.find(chat =>
+      chat && String(chat.id || '') === String(schedule.conversationId) &&
+      !chat.isGroup && !chat.npcId &&
+      String(chat.characterId || '') === String(character.id || '')
+    ) : null;
+    if (!match) return { conversationId: '', personaId: undefined as string | undefined, ambiguous: true };
+    return {
+      conversationId: String(match.id),
+      personaId: match.personaId ? String(match.personaId) : undefined,
+      ambiguous: false,
+    };
+  }
   const persona = getProactivePersona();
   const personaId = persona?.id ? String(persona.id) : undefined;
-  const target = resolveProactiveConversation(character, personaId);
+  return { ...resolveProactiveConversation(character, personaId), personaId };
+}
+
+function appendProactiveMessage(character: ImportedCharacter, text: string, schedule: ScheduleItem) {
+  // Explicit schedule conversation wins over the currently selected persona.
+  const target = resolveProactiveTarget(character, schedule);
+  const personaId = target.personaId;
   const conversationId = target.conversationId;
   const ambiguousConversation = target.ambiguous;
   const messageId = `proactive-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -168,10 +186,9 @@ async function generateLifeText(
   const settings = readStoredAiSettings();
   if (!settings.apiKey.trim()) throw new Error('AI_NOT_CONFIGURED');
   const profile = getCharacterProfile(character.name, character.id);
-  const persona = getProactivePersona();
-  const personaId = persona?.id ? String(persona.id) : undefined;
+  const target = resolveProactiveTarget(character, schedule);
+  const personaId = target.personaId;
   const memory = getCharacterMemory(character.id, character.name, personaId);
-  const target = resolveProactiveConversation(character, personaId);
   const recentMessages = target.conversationId ? getLineConversationMessages(target.conversationId).slice(-10) : [];
   return generateCreativeText({
     settings,
@@ -197,10 +214,9 @@ async function generateOfflineInviteFields(
   const settings = readStoredAiSettings();
   if (!settings.apiKey.trim()) throw new Error('AI_NOT_CONFIGURED');
   const profile = getCharacterProfile(character.name, character.id);
-  const persona = getProactivePersona();
-  const personaId = persona?.id ? String(persona.id) : undefined;
+  const target = resolveProactiveTarget(character, schedule);
+  const personaId = target.personaId;
   const memory = getCharacterMemory(character.id, character.name, personaId);
-  const target = resolveProactiveConversation(character, personaId);
   const recentMessages = target.conversationId ? getLineConversationMessages(target.conversationId).slice(-12) : [];
   const raw = await generateCreativeText({
     settings,
@@ -569,9 +585,8 @@ export async function runProactiveCatchup() {
           continue;
         }
         const fields = await generateOfflineInviteFields(character, candidate.item);
-        const invitePersona = getProactivePersona();
-        const invitePersonaId = invitePersona?.id ? String(invitePersona.id) : undefined;
-        const inviteTarget = resolveProactiveConversation(character, invitePersonaId);
+        const inviteTarget = resolveProactiveTarget(character, candidate.item);
+        const invitePersonaId = inviteTarget.personaId;
         const event: OfflineEvent = {
           id: 'offline-proactive-' + Date.now().toString(36),
           characterId: character.id,
@@ -615,7 +630,7 @@ export async function runProactiveCatchup() {
         }
         const message = await generateProactiveMessage(character, candidate.item);
         if (!message.trim()) continue;
-        appendProactiveMessage(character, message.trim());
+        appendProactiveMessage(character, message.trim(), candidate.item);
         notificationBody = message.trim();
       }
       state.delivered[character.id] = deliveryKey;
