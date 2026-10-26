@@ -117,6 +117,16 @@ export function appendLineMessage(id: string, message: LineRuntimeMessage): Line
   if (current.some(item => String(item.id) === String(nextMessage.id))) return current;
   const next = [...current, nextMessage];
   saveLineConversationMessages(id, next);
+  // Do not advance unread counters or previews if localStorage rejected the write
+  // (for example because the browser quota is full). That would advertise a message
+  // as delivered while its transcript was never persisted.
+  if (typeof window !== 'undefined') {
+    const persisted = getLineConversationMessages(id);
+    if (!persisted.some(item => String(item.id) === String(nextMessage.id))) {
+      reportPersistenceIssue('line-append:' + id, '消息未能持久化，已阻止未读数和聊天预览继续更新');
+      return current;
+    }
+  }
   const previousUnread = getLineConversationMeta(id)?.unread || 0;
   // Outgoing/system messages must not erase unread incoming messages.
   // Only an unread incoming message increments the counter; a message already
