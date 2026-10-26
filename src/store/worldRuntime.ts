@@ -47,6 +47,22 @@ export interface WorldRuntimeState {
   }>;
 }
 
+function preserveCorruptWorldState(raw: string): void {
+  if (typeof window === 'undefined' || !raw || raw.length > 1_000_000) return;
+  try {
+    const recoveryKey = 'sane333:recovery:corrupt:' + encodeURIComponent(STORAGE_KEY);
+    if (window.localStorage.getItem(recoveryKey) === null) {
+      window.localStorage.setItem(recoveryKey, JSON.stringify({
+        key: STORAGE_KEY,
+        capturedAt: new Date().toISOString(),
+        raw,
+      }));
+    }
+  } catch {
+    // Recovery is best-effort; never prevent the app from rendering.
+  }
+}
+
 function readState(): WorldRuntimeState {
   if (typeof window === 'undefined') return {
     version: 1,
@@ -62,11 +78,15 @@ function readState(): WorldRuntimeState {
     characters: {},
     events: [],
   };
+  let raw: string | null = null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as Partial<WorldRuntimeState> | null;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return fallback;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      preserveCorruptWorldState(raw);
+      return fallback;
+    }
     const characters = parsed.characters && typeof parsed.characters === 'object' && !Array.isArray(parsed.characters)
       ? parsed.characters
       : {};
@@ -81,11 +101,11 @@ function readState(): WorldRuntimeState {
       events,
     } as WorldRuntimeState;
   } catch {
+    if (raw !== null) preserveCorruptWorldState(raw);
     // Recover with a clean runtime if local JSON is malformed.
     return fallback;
   }
 }
-
 function writeState(state: WorldRuntimeState) {
   if (typeof window === 'undefined') return;
   try {
