@@ -65,11 +65,23 @@ const MAX_NOTIFICATIONS = 200;
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
+  let raw: string | null = null;
   try {
-    const raw = window.localStorage.getItem(key);
+    raw = window.localStorage.getItem(key);
     return raw ? JSON.parse(raw) as T : fallback;
   } catch (error) {
-    reportPersistenceIssue('line-read:' + key, 'LINE 本地数据读取或解析失败，已使用备用值', error);
+    // Preserve malformed LINE data before a later write can replace the original value.
+    if (raw !== null && raw.length <= 1_000_000) {
+      try {
+        const recoveryKey = 'sane333:recovery:corrupt:' + encodeURIComponent(key);
+        if (window.localStorage.getItem(recoveryKey) === null) {
+          window.localStorage.setItem(recoveryKey, JSON.stringify({ key, capturedAt: new Date().toISOString(), raw }));
+        }
+      } catch (recoveryError) {
+        reportPersistenceIssue('line-recovery:' + key, 'LINE 损坏数据恢复副本保存失败；请尽快导出本地数据', recoveryError);
+      }
+    }
+    reportPersistenceIssue('line-read:' + key, 'LINE 本地数据读取或解析失败，已使用备用值；已尝试保留原始内容', error);
     return fallback;
   }
 }
@@ -601,12 +613,27 @@ export function buildLineTranscript(id: string, limit = 120) {
 
 export function recordOfflineEventInLine(event: OfflineEvent) {
   if (event.status === 'draft' || event.status === 'declined') return;
-  const id = event.characterId || event.characterName;
+  let id = event.conversationId || '';
+  if (!id && event.personaId) {
+    // Never send persona-scoped event updates to a shared legacy transcript.
+    const chats = readJson<any[]>('line:chat-items', []);
+    const matches = Array.isArray(chats) ? chats.filter(chat =>
+      chat && !chat.isGroup && !chat.npcId &&
+      String(chat.characterId || '') === String(event.characterId || '') &&
+      String(chat.personaId || '') === String(event.personaId)
+    ) : [];
+    if (matches.length === 1 && matches[0].id) id = String(matches[0].id);
+    else {
+      reportPersistenceIssue('offline-event-line', '线下剧情状态未写入聊天：无法唯一确定对应用户人设会话', new Error('AMBIGUOUS_PERSONA_CONVERSATION'));
+      return;
+    }
+  }
+  if (!id) id = event.characterId || event.characterName;
   appendLineMessage(id, {
     id: `offline-${event.id}-${event.status}`,
     sender: 'system',
     kind: 'offline-invite',
     text: event.status === 'completed' ? `线下剧情已完成：${event.title}` : `线下剧情状态更新：${event.title}`,
-    metadata: { offlineEventId: event.id, location: event.location, time: event.time, status: event.status },
+    metadata: { offlineEventId: event.id, location: event.location, time: event.time, status: event.status, ...(event.personaId ? { personaId: event.personaId } : {}) },
   });
 }
