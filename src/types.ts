@@ -145,6 +145,8 @@ export interface OfflineEvent {
   updatedAt?: string;
   sceneIntro?: string;
   sceneLog?: Array<{ id: string; speaker: 'role' | 'me' | 'narrator'; text: string; createdAt: string }>;
+  /** Exact LINE conversation target when an event belongs to a persona-scoped chat. */
+  conversationId?: string;
   /** SillyTavern-style offline session controls. Kept optional for backwards compatibility. */
   personaId?: string;
   worldBookIds?: string[];
