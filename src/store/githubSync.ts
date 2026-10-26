@@ -155,9 +155,16 @@ export async function syncSnapshotToGitHub(snapshot: unknown, config = getGitHub
 
 export async function pullSnapshotFromGitHub(config = getGitHubSyncConfig(), token = getGitHubToken()): Promise<{ data: unknown; syncedAt?: string }> {
   if (!token.trim()) throw new Error('GITHUB_TOKEN_MISSING');
+  const repository = await githubRequest(
+    'https://api.github.com/repos/' + encodeURIComponent(config.owner.trim()) + '/' + encodeURIComponent(config.repo.trim()),
+    token,
+  );
+  if (repository?.private !== true) {
+    throw new Error('GITHUB_BACKUP_REPO_MUST_BE_PRIVATE: 拒绝从公开仓库导入聊天记录和个人数据');
+  }
   const existing = await githubRequest(apiUrl(config) + '?ref=' + encodeURIComponent(config.branch), token);
   if (!existing?.content) throw new Error('GITHUB_DATA_EMPTY');
-  const binary = atob(existing.content.replace(/\\s/g, ''));
+  const binary = atob(existing.content.replace(/\s/g, ''));
   const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
   const parsed = JSON.parse(new TextDecoder().decode(bytes));
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('GITHUB_BACKUP_FORMAT_INVALID');
