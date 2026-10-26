@@ -118,9 +118,12 @@ export function appendLineMessage(id: string, message: LineRuntimeMessage): Line
   const next = [...current, nextMessage];
   saveLineConversationMessages(id, next);
   const previousUnread = getLineConversationMeta(id)?.unread || 0;
+  // Outgoing/system messages must not erase unread incoming messages.
+  // Only an unread incoming message increments the counter; a message already
+  // marked read leaves the existing count unchanged.
   const nextUnread = nextMessage.sender === 'other'
     ? (nextMessage.status === 'read' || nextMessage.metadata?.isRead === true ? previousUnread : previousUnread + 1)
-    : 0;
+    : previousUnread;
 
   // Keep the visible LINE chat list synchronized with the runtime message stream.
   // This is especially important for background events such as offline-story updates
