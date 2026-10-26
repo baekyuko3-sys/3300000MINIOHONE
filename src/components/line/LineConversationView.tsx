@@ -5699,7 +5699,16 @@ export function LineConversationView({
     setShowReroll(false);
     setRerollPrompt('');
     setRerollTargetId(null);
+    // Match the normal send flow: remove the stale assistant text immediately and
+    // show the typing indicator while the replacement is being generated.
+    // Keep the same message ID so reactions/history remain attached to this turn.
+    setMessages(prev => prev.map(message =>
+      String(message.id) === String(target.id)
+        ? { ...message, text: '', content: '', status: 'sending', error: undefined, edited: true }
+        : message
+    ));
     setIsTyping(true);
+    (window as any).__lineTypingStart = Date.now();
     try {
       let streamed = '';
       const turnStatusPreset = resolveStatusBarPresetForTurn();
