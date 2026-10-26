@@ -1,3 +1,4 @@
+import { reportPersistenceIssue } from './usePersistentState';
 export type MemorySection =
   | 'stage'
   | 'about-you'
@@ -94,10 +95,16 @@ export function clearCharacterMemory(characterId: string, personaId?: string | n
 
 export function getCharacterMemory(characterId: string, characterName: string, personaId?: string | null): CharacterMemory {
   if (typeof window === 'undefined') return emptyMemory(characterId, characterName, personaId);
+  const key = keyFor(characterId, personaId);
+  let raw: string | null = null;
   try {
-    const raw = window.localStorage.getItem(keyFor(characterId, personaId));
+    raw = window.localStorage.getItem(key);
     if (!raw) return emptyMemory(characterId, characterName, personaId);
     const parsed = JSON.parse(raw) as Partial<CharacterMemory>;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      preserveCorruptMemory(key, raw);
+      return emptyMemory(characterId, characterName, personaId);
+    }
     return {
       ...emptyMemory(characterId, characterName || parsed.characterName || '', personaId),
       ...parsed,
@@ -108,17 +115,39 @@ export function getCharacterMemory(characterId: string, characterName: string, p
       recentSummaries: Array.isArray(parsed.recentSummaries) ? parsed.recentSummaries : [],
       memoryStyle: parsed.memoryStyle ? { ...getDefaultMemoryStyle(), ...parsed.memoryStyle, sections: { ...getDefaultMemoryStyle().sections, ...(parsed.memoryStyle as CharacterMemoryStyleSettings).sections } } : getDefaultMemoryStyle(),
     };
-  } catch {
+  } catch (error) {
+    if (raw !== null) preserveCorruptMemory(key, raw);
+    reportPersistenceIssue('character-memory-read:' + key, '角色长期记忆读取或解析失败；已尝试保存恢复副本', error);
     return emptyMemory(characterId, characterName, personaId);
+  }
+}
+
+function preserveCorruptMemory(key: string, raw: string): void {
+  if (!raw || raw.length > 1_000_000) return;
+  try {
+    const recoveryKey = 'sane333:recovery:corrupt:' + encodeURIComponent(key);
+    if (window.localStorage.getItem(recoveryKey) === null) {
+      window.localStorage.setItem(recoveryKey, JSON.stringify({
+        key,
+        capturedAt: new Date().toISOString(),
+        raw,
+      }));
+    }
+  } catch (error) {
+    reportPersistenceIssue('character-memory-recovery:' + key, '无法保存角色记忆恢复副本；请尽快导出本地数据', error);
   }
 }
 
 export function saveCharacterMemory(memory: CharacterMemory): CharacterMemory {
   const next = { ...memory, updatedAt: new Date().toISOString() };
   if (typeof window !== 'undefined') {
+    const key = keyFor(memory.characterId, memory.personaId);
     try {
-      window.localStorage.setItem(keyFor(memory.characterId, memory.personaId), JSON.stringify(next));
-    } catch {}
+      window.localStorage.setItem(key, JSON.stringify(next));
+    } catch (error) {
+      reportPersistenceIssue('character-memory-write:' + key, '角色长期记忆保存失败；当前更改可能尚未保存', error);
+      throw error;
+    }
   }
   return next;
 }
