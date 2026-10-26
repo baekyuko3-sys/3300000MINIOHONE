@@ -57,11 +57,11 @@ export function updateOfflineEvent(
         nextEvent.characterId,
         nextEvent.characterName,
         '线下剧情完成：' + summary,
-        { source: 'offline', importance: 85 },
+        { source: 'offline', importance: 85, personaId: nextEvent.personaId },
       );
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('sane333:memory-updated', {
-          detail: { characterId: nextEvent.characterId, source: 'offline-story' },
+          detail: { characterId: nextEvent.characterId, personaId: nextEvent.personaId, source: 'offline-story' },
         }));
       }
     }
