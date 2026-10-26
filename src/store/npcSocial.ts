@@ -1,6 +1,6 @@
 import { generateCreativeText, resolveChannelAiSettings } from '../ai/aiEngine';
 import { buildNpcRuntimeContext } from './npcContext';
-import { readPersistentState } from './usePersistentState';
+import { readPersistentState, reportPersistenceIssue } from './usePersistentState';
 import type { SaneNpc } from './npcs';
 
 export type NpcFriendRequestSource = 'group-chat' | 'vroom' | 'npc-initiative' | 'user-initiated';
@@ -43,10 +43,16 @@ export function createNpcFriendRequest(input: {
   message: string;
 }): NpcFriendRequest | null {
   if (typeof window === 'undefined' || !input.npc.active || !input.personaId) return null;
+  // Friendship is persona-scoped. Never enqueue another request once the pair is already friends.
+  if (hasNpcFriendship(input.npc.id, input.personaId)) return null;
   const requests = getNpcFriendRequests();
-  const pending = requests.find(item => item.npcId === input.npc.id && item.personaId === input.personaId && item.status === 'pending');
+  const matching = requests.filter(item => item.npcId === input.npc.id && item.personaId === input.personaId);
+  const pending = matching.find(item => item.status === 'pending');
   if (pending) return pending;
-  const recent = requests.find(item => item.npcId === input.npc.id && item.personaId === input.personaId && Date.now() - new Date(item.createdAt).getTime() < 7 * 86400000);
+  const recent = matching.find(item => {
+    const createdAt = Date.parse(item.createdAt || item.updatedAt || '');
+    return Number.isFinite(createdAt) && Date.now() - createdAt >= 0 && Date.now() - createdAt < 7 * 86400000;
+  });
   if (recent) return null;
   const now = new Date().toISOString();
   const request: NpcFriendRequest = {
@@ -66,12 +72,37 @@ export function createNpcFriendRequest(input: {
 }
 
 export function respondToNpcFriendRequest(id: string, status: 'accepted' | 'declined'): NpcFriendRequest | null {
+  if (typeof window === 'undefined') return null;
   const requests = getNpcFriendRequests();
   const current = requests.find(item => item.id === id && item.status === 'pending');
   if (!current) return null;
+
+  const requestKeyBefore = window.localStorage.getItem(REQUESTS_KEY);
+  const friendshipKeyBefore = window.localStorage.getItem(FRIENDSHIP_KEY);
   const next = { ...current, status, updatedAt: new Date().toISOString() } as NpcFriendRequest;
-  saveRequests(requests.map(item => item.id === id ? next : item));
-  return next;
+  try {
+    if (status === 'accepted') {
+      const links = readPersistentState<Array<{ npcId: string; personaId: string }>>(FRIENDSHIP_KEY, []);
+      const unique = links.filter(item => !(item.npcId === current.npcId && item.personaId === current.personaId));
+      unique.push({ npcId: current.npcId, personaId: current.personaId });
+      // Persist the friendship and request status as one guarded operation.
+      // If either write fails, restore both prior values to avoid a half-accepted request.
+      window.localStorage.setItem(FRIENDSHIP_KEY, JSON.stringify(unique));
+    }
+    saveRequests(requests.map(item => item.id === id ? next : item));
+    return next;
+  } catch (error) {
+    try {
+      if (requestKeyBefore === null) window.localStorage.removeItem(REQUESTS_KEY);
+      else window.localStorage.setItem(REQUESTS_KEY, requestKeyBefore);
+      if (friendshipKeyBefore === null) window.localStorage.removeItem(FRIENDSHIP_KEY);
+      else window.localStorage.setItem(FRIENDSHIP_KEY, friendshipKeyBefore);
+    } catch (rollbackError) {
+      reportPersistenceIssue('npc-friend-request-rollback', '好友申请状态回滚失败；请保留本地数据并检查存储空间', rollbackError);
+    }
+    reportPersistenceIssue('npc-friend-request-response', '好友申请处理失败，已尝试恢复原状态', error);
+    throw error;
+  }
 }
 
 export function hasNpcFriendship(npcId: string, personaId: string): boolean {
@@ -84,7 +115,12 @@ export function setNpcFriendship(npcId: string, personaId: string, enabled: bool
   const links = readPersistentState<Array<{ npcId: string; personaId: string }>>(FRIENDSHIP_KEY, []);
   const next = links.filter(item => !(item.npcId === npcId && item.personaId === personaId));
   if (enabled) next.push({ npcId, personaId });
-  window.localStorage.setItem(FRIENDSHIP_KEY, JSON.stringify(next));
+  try {
+    window.localStorage.setItem(FRIENDSHIP_KEY, JSON.stringify(next));
+  } catch (error) {
+    reportPersistenceIssue('npc-friendship-write', 'NPC 好友关系写入失败；更改可能尚未保存', error);
+    throw error;
+  }
 }
 
 /** Ask the model whether a specific social event plausibly makes the NPC want to add this persona. Cooldowns prevent repetitive requests. */
@@ -129,9 +165,11 @@ export async function considerNpcFriendRequest(input: {
 }
 
 export function canNpcConsiderFriendRequest(npcId: string, personaId: string): boolean {
-  if (hasNpcFriendship(npcId, personaId)) return false;
-  return !getNpcFriendRequests().some(item =>
-    item.npcId === npcId && item.personaId === personaId &&
-    (item.status === 'pending' || Date.now() - new Date(item.updatedAt).getTime() < 7 * 86400000)
-  );
+  if (!npcId || !personaId || hasNpcFriendship(npcId, personaId)) return false;
+  return !getNpcFriendRequests().some(item => {
+    if (item.npcId !== npcId || item.personaId !== personaId) return false;
+    if (item.status === 'pending') return true;
+    const updatedAt = Date.parse(item.updatedAt || item.createdAt || '');
+    return Number.isFinite(updatedAt) && Date.now() - updatedAt >= 0 && Date.now() - updatedAt < 7 * 86400000;
+  });
 }
