@@ -121,6 +121,7 @@ export async function testGitHubSync(config = getGitHubSyncConfig(), token = get
 
 export async function syncSnapshotToGitHub(snapshot: unknown, config = getGitHubSyncConfig(), token = getGitHubToken()): Promise<{ sha: string; syncedAt: string }> {
   if (!token.trim()) throw new Error('GITHUB_TOKEN_MISSING');
+  const url = apiUrl(config);
   const repository = await githubRequest(
     'https://api.github.com/repos/' + encodeURIComponent(config.owner.trim()) + '/' + encodeURIComponent(config.repo.trim()),
     token,
@@ -128,7 +129,6 @@ export async function syncSnapshotToGitHub(snapshot: unknown, config = getGitHub
   if (repository?.private !== true) {
     throw new Error('GITHUB_BACKUP_REPO_MUST_BE_PRIVATE: 拒绝把聊天记录和个人数据写入公开仓库');
   }
-  const url = apiUrl(config);
   let existingSha: string | undefined;
   try {
     const existing = await githubRequest(url + '?ref=' + encodeURIComponent(config.branch), token);
