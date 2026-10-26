@@ -569,12 +569,15 @@ export async function runProactiveCatchup() {
           continue;
         }
         const fields = await generateOfflineInviteFields(character, candidate.item);
+        const invitePersona = getProactivePersona();
+        const invitePersonaId = invitePersona?.id ? String(invitePersona.id) : undefined;
+        const inviteTarget = resolveProactiveConversation(character, invitePersonaId);
         const event: OfflineEvent = {
           id: 'offline-proactive-' + Date.now().toString(36),
           characterId: character.id,
           characterName: character.name,
-          ...(getProactivePersona()?.id ? { personaId: String(getProactivePersona()!.id) } : {}),
-          ...(candidate.item.conversationId ? { conversationId: candidate.item.conversationId } : {}),
+          ...(invitePersonaId ? { personaId: invitePersonaId } : {}),
+          ...(inviteTarget.conversationId ? { conversationId: inviteTarget.conversationId } : {}),
           title: fields.theme,
           location: fields.location,
           time: fields.time,
@@ -592,9 +595,6 @@ export async function runProactiveCatchup() {
           characterName: character.name,
           fields,
         });
-        const invitePersona = getProactivePersona();
-        const invitePersonaId = invitePersona?.id ? String(invitePersona.id) : undefined;
-        const inviteTarget = resolveProactiveConversation(character, invitePersonaId);
         if (inviteTarget.conversationId) appendLineMessage(inviteTarget.conversationId, {
           ...card,
           createdAt: event.createdAt,
