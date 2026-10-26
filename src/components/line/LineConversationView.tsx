@@ -6084,29 +6084,35 @@ export function LineConversationView({
           // 防御性修复：角色消息强制放左边，防止 sender 存错
           // AI 回复、带角色身份的消息一律放左边
           const charName = characterProfile.nickname || importedCharacter?.name || '';
-          const userName = String(activePersona?.name || '').trim();
-          const senderNameStr = String(msg.senderName || '');
-          const isAiReply = msg.type === 'ai-reply';
-          // senderName 是角色名（不是用户名）→ 角色消息
-          const senderNameIsCharacter = Boolean(
-            senderNameStr && 
-            (senderNameStr === charName || (userName && senderNameStr !== userName))
-          );
-          const hasCharacterIdentity = Boolean(
-            isAiReply ||
-            msg.characterId || msg.npcId || msg.metadata?.characterId ||
-            senderNameIsCharacter
-          );
-          const isMe = msg.sender === 'me' && !hasCharacterIdentity;
+          const senderNameIsCharacter = (candidate: any) => {
+            const senderName = String(candidate?.senderName || '').trim();
+            const activeCharacterName = String(charName || '').trim();
+            return Boolean(senderName && activeCharacterName && senderName === activeCharacterName);
+          };
+          // Only strong identity signals override sender. A non-empty senderName that
+          // differs from the user's name is not enough: legacy messages often have
+          // display names, and the old rule incorrectly pushed them all to the left.
+          const isLineMessageFromUser = (candidate: any) => {
+            if (!candidate || candidate.sender !== 'me') return false;
+            const hasCharacterIdentity = Boolean(
+              candidate.type === 'ai-reply' ||
+              candidate.senderType === 'character' ||
+              candidate.senderType === 'npc' ||
+              candidate.characterId || candidate.npcId || candidate.metadata?.characterId ||
+              senderNameIsCharacter(candidate)
+            );
+            return !hasCharacterIdentity;
+          };
+          const isMe = isLineMessageFromUser(msg);
           const bilingualTextParts = String(msg.text || '').split('[[ZH_TRANSLATION]]');
           const bilingualOriginalText = bilingualTextParts[0].trim();
           const bilingualTranslationText = bilingualTextParts.slice(1).join('[[ZH_TRANSLATION]]').trim();
           const showBilingualTranslation = !isMe && bilingualMode === 'auto' && bilingualTextParts.length > 1 && Boolean(bilingualOriginalText && bilingualTranslationText);
           const messageBubbleParts = (isGroup ? [bilingualOriginalText] : splitLineChatText(bilingualOriginalText)).filter(Boolean);
-          const sameAsPrevious = Boolean(previousMessage && previousMessage.sender === msg.sender && previousMessage.type !== 'system-nudge' && msg.type !== 'system-nudge');
-          const sameAsNext = Boolean(nextMessage && nextMessage.sender === msg.sender && nextMessage.type !== 'system-nudge' && msg.type !== 'system-nudge');
-          const sameGroupSpeakerAsPreviousForSpacing = Boolean(isGroup && previousMessage && previousMessage.sender !== 'me' && msg.sender !== 'me' && String(previousMessage.characterId || previousMessage.metadata?.characterId || previousMessage.senderName || '') === String(msg.characterId || msg.metadata?.characterId || msg.senderName || ''));
-          const sameGroupSpeakerAsNextForSpacing = Boolean(isGroup && nextMessage && nextMessage.sender !== 'me' && msg.sender !== 'me' && String(nextMessage.characterId || nextMessage.metadata?.characterId || nextMessage.senderName || '') === String(msg.characterId || msg.metadata?.characterId || msg.senderName || ''));
+          const sameAsPrevious = Boolean(previousMessage && isLineMessageFromUser(previousMessage) === isMe && previousMessage.type !== 'system-nudge' && msg.type !== 'system-nudge');
+          const sameAsNext = Boolean(nextMessage && isLineMessageFromUser(nextMessage) === isMe && nextMessage.type !== 'system-nudge' && msg.type !== 'system-nudge');
+          const sameGroupSpeakerAsPreviousForSpacing = Boolean(isGroup && previousMessage && !isLineMessageFromUser(previousMessage) && !isMe && String(previousMessage.characterId || previousMessage.metadata?.characterId || previousMessage.senderName || '') === String(msg.characterId || msg.metadata?.characterId || msg.senderName || ''));
+          const sameGroupSpeakerAsNextForSpacing = Boolean(isGroup && nextMessage && !isLineMessageFromUser(nextMessage) && !isMe && String(nextMessage.characterId || nextMessage.metadata?.characterId || nextMessage.senderName || '') === String(msg.characterId || msg.metadata?.characterId || msg.senderName || ''));
           const effectiveSameAsPrevious = isGroup && !isMe ? sameGroupSpeakerAsPreviousForSpacing : sameAsPrevious;
           const effectiveSameAsNext = isGroup && !isMe ? sameGroupSpeakerAsNextForSpacing : sameAsNext;
           const currentDateRaw = msg.createdAt || msg.timestamp;
@@ -11417,24 +11423,21 @@ export function LineConversationView({
 
             <button
               onClick={() => {
-                const charName = characterProfile.nickname || importedCharacter?.name || '';
-                const userName = String(activePersona?.name || '').trim();
+                const charName = String(characterProfile.nickname || importedCharacter?.name || '').trim();
                 let fixed = 0;
-                setMessages((prev: any[]) => {
-                  const next = prev.map((m: any) => {
-                    if (!m || m.sender !== 'me') return m;
-                    const senderNameStr = String(m.senderName || '');
-                    const isAiReply = m.type === 'ai-reply';
-                    const hasCharId = Boolean(m.characterId || m.npcId || m.metadata?.characterId);
-                    const nameIsChar = Boolean(senderNameStr && (senderNameStr === charName || (userName && senderNameStr !== userName)));
-                    if (isAiReply || hasCharId || nameIsChar) {
-                      fixed++;
-                      return { ...m, sender: 'other' };
-                    }
-                    return m;
-                  });
-                  return next;
-                });
+                setMessages((prev: any[]) => prev.map((m: any) => {
+                  if (!m || m.sender !== 'me') return m;
+                  const senderNameStr = String(m.senderName || '').trim();
+                  const isAiReply = m.type === 'ai-reply';
+                  const hasCharId = Boolean(m.characterId || m.npcId || m.metadata?.characterId);
+                  const nameIsChar = Boolean(senderNameStr && charName && senderNameStr === charName);
+                  const hasCharacterSenderType = m.senderType === 'character' || m.senderType === 'npc';
+                  if (isAiReply || hasCharId || nameIsChar || hasCharacterSenderType) {
+                    fixed++;
+                    return { ...m, sender: 'other' };
+                  }
+                  return m;
+                }));
                 setTimeout(() => showToast(fixed > 0 ? `已修复 ${fixed} 条错位消息` : '没有发现错位消息'), 100);
               }}
               className="w-full py-3 bg-white text-[#ae7e89] rounded-[14px] border border-[#f0f0f1] font-medium cursor-pointer hover:bg-[#faf1f3] transition-colors"
