@@ -3102,6 +3102,11 @@ export function LineConversationView({
     // Enter/Return only sends the user's message. The paper-plane button passes shouldReply=true.
     if (!shouldReply) return;
 
+    // 先立即显示“正在输入”，不要等动态 import / 在线状态读取完成。
+    // 否则点击发送后会有一段没有任何反馈的空窗。
+    setIsTyping(true);
+    (window as any).__lineTypingStart = Date.now();
+
     // 不在线自动回复（仅单聊）
     if (!isGroup) {
       const { isCharacterOnline, getOfflineMessage } = await import('../../store/characterStatus');
@@ -3128,12 +3133,11 @@ export function LineConversationView({
           localStorage.setItem(key, JSON.stringify(pending));
         } catch { /* best effort */ }
         showToast('对方不在线，已发送自动回复');
+        setIsTyping(false);
+        (window as any).__lineTypingStart = 0;
         return;
       }
     }
-
-    setIsTyping(true);
-    (window as any).__lineTypingStart = Date.now();
 
     // LINE read state: once the role starts processing the message, it has been seen.
     // A later role message upgrades the footer from “已读 · 暂未回复” to “已读”.
