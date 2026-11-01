@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isLineTurnContextCurrent, releaseLineTypingRequest } from '../src/store/lineTurnGuard.ts';
+import { isLineTurnContextCurrent, isLineTurnRequestCurrent, releaseLineTypingRequest } from '../src/store/lineTurnGuard.ts';
 
 test('LINE send and Reroll contexts become stale when chat or persona changes', () => {
   const started = { conversationId: 'chat-a', personaId: 'persona-a' };
@@ -29,4 +29,12 @@ test('the current LINE request clears its own typing indicator', () => {
   assert.equal(owner.current, '');
   assert.equal(typing, false);
   assert.equal(resetCount, 1);
+});
+
+test('a timed-out or superseded LINE request cannot update the same chat anymore', () => {
+  const context = { conversationId: 'chat-a', personaId: 'persona-a' };
+  const owner = { current: 'newer-request' };
+  assert.equal(isLineTurnRequestCurrent(context, context, owner, 'older-request'), false);
+  assert.equal(isLineTurnRequestCurrent(context, context, owner, 'newer-request'), true);
+  assert.equal(isLineTurnRequestCurrent({ conversationId: 'chat-a', personaId: 'persona-b' }, context, owner, 'newer-request'), false);
 });
