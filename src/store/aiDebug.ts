@@ -3,6 +3,27 @@ export interface AiDebugEntry {
   id: string; time: string; level: AiDebugLevel; event: string; message: string;
   provider?: string; model?: string; durationMs?: number; meta?: Record<string, unknown>;
 }
+const SECRET_FIELD = /^(?:apiKey|voiceApiKey|sttApiKey|imageApiKey|accessToken|refreshToken|githubToken|authorization|password|clientSecret|secret)$/i;
+function redactSensitiveText(value: string): string {
+  return value
+    .replace(/\\bAIza[0-9A-Za-z_-]{20,}\\b/g, '[REDACTED_API_KEY]')
+    .replace(/\\bBearer\\s+[A-Za-z0-9._~+\\/-]+=*/gi, 'Bearer [REDACTED]')
+    .replace(/\\bsk-(?:proj-)?[A-Za-z0-9_-]{16,}\\b/g, '[REDACTED_API_KEY]')
+    .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|password|client[_-]?secret)\\s*[:=]\\s*["']?)[^&\\s"'\x60]+/gi, '$1[REDACTED]');
+}
+function redactSensitiveValue(value: unknown, depth = 0): unknown {
+  if (depth > 12) return '[TRUNCATED]';
+  if (typeof value === 'string') return redactSensitiveText(value);
+  if (Array.isArray(value)) return value.map(item => redactSensitiveValue(item, depth + 1));
+  if (value && typeof value === 'object') {
+    const output: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      output[key] = SECRET_FIELD.test(key) ? '[REDACTED]' : redactSensitiveValue(child, depth + 1);
+    }
+    return output;
+  }
+  return value;
+}
 const KEY='phone:ai-debug-log';
 export function readAiDebugLog(): AiDebugEntry[] {
   if(typeof window==='undefined') return [];
@@ -28,13 +49,17 @@ function compactTraceValue(value: AiDebugTrace): AiDebugTrace {
       payload: undefined,
     };
   }
-  copy.rawResponse = String(copy.rawResponse || '').slice(0, 30000);
+  copy.rawResponse = redactSensitiveText(String(copy.rawResponse || '')).slice(0, 30000);
+  if (copy.error) copy.error = { message: redactSensitiveText(String(copy.error.message || '')), stack: copy.error.stack ? redactSensitiveText(copy.error.stack) : undefined };
+  if (Array.isArray(copy.stages)) copy.stages = copy.stages.map(stage => ({ ...stage, detail: stage.detail ? redactSensitiveText(stage.detail) : undefined }));
+  if (copy.request) copy.request = redactSensitiveValue(copy.request) as AiDebugTrace['request'];
   return copy;
 }
 
 export function pushAiDebugLog(entry: Omit<AiDebugEntry,'id'|'time'>) {
   if(typeof window==='undefined') return;
-  const next=[{...entry,id:'dbg-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),time:new Date().toISOString()},...readAiDebugLog()].slice(0,100);
+  const safeEntry = redactSensitiveValue(entry) as Omit<AiDebugEntry, 'id' | 'time'>;
+  const next=[{...safeEntry,id:'dbg-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),time:new Date().toISOString()},...readAiDebugLog()].slice(0,100);
   safeSetItem(KEY, JSON.stringify(next));
   window.dispatchEvent(new CustomEvent('sane333:ai-debug-changed'));
 }
