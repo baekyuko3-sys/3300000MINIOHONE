@@ -75,12 +75,15 @@ test('AI diagnostics redact API keys and bearer tokens before local persistence'
     meta: { apiKey: googleKey, detail: bearer },
   });
   writeAiDebugTrace({
-    context: { conversationId: 'test' },
+    context: { conversationId: 'test', userMessage: 'user pasted ' + googleKey },
     error: { message: 'bad ' + googleKey, stack: 'Authorization: ' + bearer },
+    parsed: { text: 'model echoed ' + googleKey },
+    final: { apiKey: googleKey },
     rawResponse: 'echoed key ' + googleKey,
   });
   const log = storage.get('phone:ai-debug-log') || '';
   const trace = storage.get('phone:ai-debug-trace:test') || '';
   assert.doesNotMatch(log, /AIza[A-Z]{20,}|secret-token-123456789/);
   assert.doesNotMatch(trace, /AIza[A-Z]{20,}|secret-token-123456789/);
+  assert.match(trace, /REDACTED/);
 });
