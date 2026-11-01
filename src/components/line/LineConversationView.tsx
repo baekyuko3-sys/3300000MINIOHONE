@@ -1410,6 +1410,17 @@ export function LineConversationView({
       identity: '',
       traits: '',
     };
+
+  // A request belongs to the conversation + persona that started it. If either
+  // changes, stale stream callbacks must not write into the newly active context.
+  const currentTurnContextRef = useRef({ conversationId: conversationStorageId, personaId: String(resolvedPersonaId || '') });
+  currentTurnContextRef.current = { conversationId: conversationStorageId, personaId: String(resolvedPersonaId || '') };
+  const typingRequestIdRef = useRef('');
+  useEffect(() => {
+    typingRequestIdRef.current = '';
+    setIsTyping(false);
+    (window as any).__lineTypingStart = 0;
+  }, [conversationStorageId, resolvedPersonaId]);
   const [editingPersonaId, setEditingPersonaId] = useState<string | null>(null);
   const [showMyAvatar, setShowMyAvatar] = usePersistentState<boolean>(`line:show-my-avatar:${conversationStorageId}`, true);
   const myAvatarFileRef = useRef<HTMLInputElement>(null);
@@ -3028,6 +3039,7 @@ export function LineConversationView({
     if (shouldReply && isTyping) {
       const typingStart = (window as any).__lineTypingStart || 0;
       if (Date.now() - typingStart > 3 * 60 * 1000) {
+        typingRequestIdRef.current = '';
         setIsTyping(false);
         (window as any).__lineTypingStart = 0;
       } else {
@@ -3104,11 +3116,25 @@ export function LineConversationView({
     // Enter/Return only sends the user's message. The paper-plane button passes shouldReply=true.
     if (!shouldReply) return;
 
+    const turnContext = { conversationId: conversationStorageId, personaId: String(resolvedPersonaId || '') };
+    const turnRequestId = 'line-turn-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    const isCurrentTurn = () =>
+      currentTurnContextRef.current.conversationId === turnContext.conversationId &&
+      currentTurnContextRef.current.personaId === turnContext.personaId;
+    const clearTyping = () => {
+      if (typingRequestIdRef.current !== turnRequestId) return;
+      typingRequestIdRef.current = '';
+      setIsTyping(false);
+      (window as any).__lineTypingStart = 0;
+    };
+    typingRequestIdRef.current = turnRequestId;
+
     // 先立即显示“正在输入”，不要等动态 import / 在线状态读取完成。
     // 否则点击发送后会有一段没有任何反馈的空窗。
     setIsTyping(true);
     (window as any).__lineTypingStart = Date.now();
 
+    try {
     // 不在线自动回复（仅单聊）
     if (!isGroup) {
       const { isCharacterOnline, getOfflineMessage } = await import('../../store/characterStatus');
@@ -3135,11 +3161,24 @@ export function LineConversationView({
           localStorage.setItem(key, JSON.stringify(pending));
         } catch { /* best effort */ }
         showToast('对方不在线，已发送自动回复');
-        setIsTyping(false);
+        clearTyping();
         (window as any).__lineTypingStart = 0;
         return;
       }
     }
+
+    } catch (error) {
+      if (!isCurrentTurn()) return;
+      // Typing starts before the asynchronous online-status preflight.
+      // Clear it on import/storage/status errors so the indicator cannot stick.
+      clearTyping();
+      (window as any).__lineTypingStart = 0;
+      showToast('检查对方在线状态失败，请重试');
+      console.error('[LINE] send preflight failed', error);
+      return;
+    }
+
+    if (!isCurrentTurn()) { clearTyping(); return; }
 
     // LINE read state: once the role starts processing the message, it has been seen.
     // A later role message upgrades the footer from “已读 · 暂未回复” to “已读”.
@@ -3155,7 +3194,7 @@ export function LineConversationView({
         if (groupAiMembers.length === 0) {
           showToast('这个群还没有导入可接入 AI 的角色卡');
           setMessages(prev => prev.filter(message => message.id !== msgId));
-          setIsTyping(false);
+          clearTyping();
           return;
         }
         // 这些成员没有可用 AI 身份，会被静默排除在回复之外。提醒一次，让用户知道
@@ -3196,7 +3235,7 @@ export function LineConversationView({
         const primary = mentioned.length ? pool[0] : rotatedPool[0];
         if (!primary) {
           showToast(availableMembers.length ? '没有找到可回应的群成员，请检查 @ 名称或昵称' : '群里目前没有可发言的在线成员，请检查成员在线状态和禁言设置');
-          setIsTyping(false);
+          clearTyping();
           return;
         }
 
@@ -3309,6 +3348,7 @@ export function LineConversationView({
           temperature: Number(presetTemp) || 0.85,
           debugConversationId: conversationStorageId,
           onDelta: delta => {
+            if (!isCurrentTurn()) return;
             streamedText += delta;
             const hasSpeakerMarker = /[\[【]/.test(delta);
             if (!hasSpeakerMarker && streamedText.length < 6) return;
@@ -3343,6 +3383,7 @@ export function LineConversationView({
           },
         });
 
+        if (!isCurrentTurn()) return;
         const rawReplyText = String(result?.text || streamedText || '');
         // 注意：cleanGroupGeneratedText 会先把 [PASS]/【PASS】整行剥掉，所以必须在清洗前判断；
         // 否则 [PASS] 检查永远匹配不上（死代码），模型合规的"不接话"会被渲染成红色报错气泡。
@@ -3365,13 +3406,13 @@ export function LineConversationView({
               dismissible: true,
             } as any,
           ]);
-          setIsTyping(false);
+          clearTyping();
           return;
         }
         if (!finalText) {
           setMessages(prev => prev.map(m => String(m.id).startsWith(String(placeholderId)) ? { ...m, status: 'failed', error: 'AI 没有返回任何内容', text: '回复失败：AI 没有返回任何内容（可点击下方按钮删除）' } : m));
           showToast('群聊 AI 没有返回内容');
-          setIsTyping(false);
+          clearTyping();
           return;
         }
 
@@ -3390,7 +3431,7 @@ export function LineConversationView({
         const filteredParts = normalParts.length ? normalParts : parts;
         if (!filteredParts.length) {
           setMessages(prev => prev.map(m => String(m.id).startsWith(String(placeholderId)) ? { ...m, status: 'failed', error: 'AI 输出无法解析为群聊消息', text: '回复失败：输出无法解析为群聊消息（可点击下方按钮删除）' } : m));
-          setIsTyping(false);
+          clearTyping();
           return;
         }
 
@@ -3421,7 +3462,7 @@ export function LineConversationView({
         if (!finalMessages.length) {
           setMessages(prev => prev.filter(m => !String(m.id).startsWith(String(placeholderId))));
           showToast('群聊输出中的说话者无法匹配到真实群成员，请检查角色名字/昵称');
-          setIsTyping(false);
+          clearTyping();
           return;
         }
         setMessages(prev => {
@@ -3516,10 +3557,11 @@ export function LineConversationView({
           })();
         }
 
-        setIsTyping(false);
+        clearTyping();
         return;
       } catch (error) {
-        const message = error instanceof Error ? error.message : '群聊 AI 请求失败';
+        if (!isCurrentTurn()) return;
+      const message = error instanceof Error ? error.message : '群聊 AI 请求失败';
         setMessages(prev => {
           // 删占位 + 标为可删除的失败提示
           const cleaned = prev.filter(m => activeGroupPlaceholderId == null || !String(m.id).startsWith(String(activeGroupPlaceholderId)));
@@ -3536,7 +3578,7 @@ export function LineConversationView({
           } as any];
         });
         showToast(message.length > 72 ? message.slice(0, 72) + '…' : message);
-        setIsTyping(false);
+        clearTyping();
         return;
       }
     }
@@ -3663,11 +3705,13 @@ export function LineConversationView({
         temperature: Number(presetTemp) || 0.85,
         debugConversationId: conversationStorageId,
         onDelta: (delta) => {
+          if (!isCurrentTurn()) return;
           streamedText += delta;
           updateStreamingBubbles(streamedText);
         },
       });
 
+      if (!isCurrentTurn()) return;
       const finalReplyText = String(result?.text || streamedText || '').trim();
       if (!finalReplyText) {
         throw new Error('AI 没有返回任何内容，请检查 API、模型或网络连接。');
@@ -3869,6 +3913,7 @@ export function LineConversationView({
       // 这里不再由系统因为“收到回复”自动修改关系/好感度。
       // 角色自主判断只影响角色自己的关系认知；真正的关系变化应有剧情或角色判断依据。
     } catch (error) {
+      if (!isCurrentTurn()) return;
       const message = error instanceof Error ? error.message : 'AI 请求失败';
       ensureReplyMessage(`发送失败：${message}`);
       setMessages((prev) => prev.map(m =>
@@ -3886,7 +3931,7 @@ export function LineConversationView({
         showToast(message.length > 72 ? message.slice(0, 72) + '…' : message);
       }
     } finally {
-      setIsTyping(false);
+      clearTyping();
     }
   };
   // 双击头像“拍一拍 / 戳一戳” (Nudge / Poke)
@@ -5687,6 +5732,7 @@ export function LineConversationView({
 
   // 重新生成 (Reroll)
   const handleDoReroll = async () => {
+    if (isTyping) { showToast('上一轮回复还在生成中，稍等一下再重新生成'); return; }
     const instruction = rerollPrompt.trim();
     if (!instruction) {
       showToast('告诉 AI 这一轮怎么改');
@@ -5700,6 +5746,19 @@ export function LineConversationView({
       return;
     }
     const target = messages[targetIndex];
+    const turnContext = { conversationId: conversationStorageId, personaId: String(resolvedPersonaId || '') };
+    const turnRequestId = 'line-reroll-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    const isCurrentTurn = () =>
+      currentTurnContextRef.current.conversationId === turnContext.conversationId &&
+      currentTurnContextRef.current.personaId === turnContext.personaId;
+    const clearTyping = () => {
+      if (typingRequestIdRef.current !== turnRequestId) return;
+      typingRequestIdRef.current = '';
+      setIsTyping(false);
+      (window as any).__lineTypingStart = 0;
+    };
+    typingRequestIdRef.current = turnRequestId;
+
     const previousUserIndex = [...messages.slice(0, targetIndex)].map((message, index) => ({ message, index })).reverse().find(item => item.message.sender === 'me' && item.message.text?.trim())?.index ?? -1;
     const previousUser = previousUserIndex >= 0 ? messages[previousUserIndex].text || '' : inputText;
     setShowReroll(false);
@@ -5750,6 +5809,7 @@ export function LineConversationView({
         temperature: Number(presetTemp) || 0.85,
         debugConversationId: conversationStorageId,
         onDelta: delta => {
+          if (!isCurrentTurn()) return;
           streamed += delta;
           setMessages(prev => prev.map(message =>
             String(message.id) === String(target.id)
@@ -5758,6 +5818,7 @@ export function LineConversationView({
           ));
         },
       });
+      if (!isCurrentTurn()) return;
       const rerolledText = splitGeneratedLineMessages(String(result.text || streamed)).filter(Boolean)[0] || String(result.text || streamed || '').trim();
       statusBarKnownMessageIdsRef.current?.add(String(target.id));
       setMessages(prev => {
@@ -5804,6 +5865,7 @@ export function LineConversationView({
       if (statusBarEnabled && !isGroup) await createStatusBarSnapshot(rerolledText, target.id, result.statusBarRaw, turnStatusPreset, true);
       showToast('这一条已经重新生成');
     } catch (error) {
+      if (!isCurrentTurn()) return;
       const message = error instanceof Error ? error.message : '重新生成失败';
       setMessages(prev => {
         const next = [...prev];
@@ -5816,7 +5878,7 @@ export function LineConversationView({
       markLineMessageFailed(conversationStorageId, target.id, message);
       showToast(message.length > 60 ? message.slice(0, 60) + '…' : message);
     } finally {
-      setIsTyping(false);
+      clearTyping();
     }
   };
 

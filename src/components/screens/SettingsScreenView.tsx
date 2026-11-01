@@ -16,7 +16,7 @@ import { listOpenAiCompatibleModels, testAiConnection } from '../../ai/aiEngine'
 import { generateImage, generateSpeech } from '../../ai/mediaEngine';
 import { generateImage as generateImageNew, useImagePresets } from '../../ai/imageGen';
 import { playAppSound, saveSoundFile, type AppSoundKind } from '../../store/soundManager';
-import { exportMedia, importMedia, getMediaStats } from '../../store/mediaVault';
+import { exportMedia, replaceMedia, getMediaStats } from '../../store/mediaVault';
 import { reportPersistenceIssue, readPersistenceDiagnostics, type PersistenceDiagnostic } from '../../store/usePersistentState';
 import {
   getBackgroundHeartbeat,
@@ -385,15 +385,35 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
 
       const previous = new Map<string, string | null>();
       for (const [key] of entries) previous.set(key, localStorage.getItem(key));
+      const changed: string[] = [];
       try {
-        for (const [key, value] of entries) localStorage.setItem(key, JSON.stringify(value));
-        const mediaCount = await importMedia(media as Record<string, string>);
+        for (const [key, value] of entries) {
+          const serialized = JSON.stringify(value);
+          if (serialized === undefined) throw new Error('备份数据无法序列化：' + key);
+          localStorage.setItem(key, serialized);
+          changed.push(key);
+          if (localStorage.getItem(key) !== serialized) throw new Error('本地数据写入校验失败：' + key);
+        }
+        // The media vault is replaced in one IndexedDB transaction. Decode/validation
+        // happens before that transaction, and clear+put commit or abort together.
+        const mediaCount = await replaceMedia(media as Record<string, string>);
         if (mediaCount !== Object.keys(media).length) throw new Error('媒体恢复数量不匹配');
       } catch (restoreError) {
-        for (const [key, value] of previous) {
-          try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch { /* best effort rollback */ }
+        let rollbackFailed = false;
+        for (const key of changed.reverse()) {
+          try {
+            const oldValue = previous.get(key);
+            if (oldValue === null || oldValue === undefined) localStorage.removeItem(key);
+            else localStorage.setItem(key, oldValue);
+            if (localStorage.getItem(key) !== (oldValue ?? null)) rollbackFailed = true;
+          } catch {
+            rollbackFailed = true;
+          }
         }
-        throw restoreError;
+        if (rollbackFailed) {
+          throw new Error('恢复失败，且本地数据自动回滚未能完整验证。请保留原备份文件并停止继续写入。');
+        }
+        throw new Error('恢复失败：已回滚本次本地数据写入。' + (restoreError instanceof Error ? restoreError.message : '未知错误'));
       }
 
       window.dispatchEvent(new Event('sane333:data-restored'));

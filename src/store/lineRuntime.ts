@@ -389,6 +389,8 @@ export interface LineBackup {
   conversations: Record<string, LineRuntimeMessage[]>;
   metadata: Record<string, LineConversationMeta>;
   notifications: LineNotification[];
+  /** This lightweight transcript backup does not include the separate IndexedDB media vault. */
+  mediaIncluded?: false;
 }
 
 export function exportLineBackup(): LineBackup {
@@ -407,17 +409,82 @@ export function exportLineBackup(): LineBackup {
     conversations,
     metadata: readJson<Record<string, LineConversationMeta>>(META_KEY, {}),
     notifications: getLineNotifications(),
+    mediaIncluded: false,
   };
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 export function importLineBackup(backup: LineBackup) {
   if (typeof window === 'undefined') return;
-  if (!backup || backup.version !== 1) throw new Error('LINE_BACKUP_VERSION_UNSUPPORTED');
-  for (const [id, messages] of Object.entries(backup.conversations || {})) {
-    saveLineConversationMessages(id, messages);
+  if (!isPlainRecord(backup) || backup.version !== 1) throw new Error('LINE_BACKUP_VERSION_UNSUPPORTED');
+  if (!isPlainRecord(backup.conversations)) throw new Error('LINE_BACKUP_CONVERSATIONS_INVALID');
+  if (!isPlainRecord(backup.metadata)) throw new Error('LINE_BACKUP_METADATA_INVALID');
+  if (!Array.isArray(backup.notifications)) throw new Error('LINE_BACKUP_NOTIFICATIONS_INVALID');
+
+  // Validate and normalize the entire payload before the first persistent write.
+  const conversations = new Map<string, LineRuntimeMessage[]>();
+  for (const [id, value] of Object.entries(backup.conversations)) {
+    if (!id || id.length > 500 || !Array.isArray(value)) throw new Error('LINE_BACKUP_CONVERSATION_INVALID');
+    const messages = value.map((message, index) => {
+      if (!isPlainRecord(message)) throw new Error('LINE_BACKUP_MESSAGE_INVALID: ' + id + ':' + index);
+      if (message.id !== undefined && typeof message.id !== 'string' && typeof message.id !== 'number') {
+        throw new Error('LINE_BACKUP_MESSAGE_ID_INVALID: ' + id + ':' + index);
+      }
+      if (message.text !== undefined && typeof message.text !== 'string') {
+        throw new Error('LINE_BACKUP_MESSAGE_TEXT_INVALID: ' + id + ':' + index);
+      }
+      return normalizeLineMessage(message as unknown as LineRuntimeMessage, index);
+    });
+    conversations.set(id, messages);
   }
-  writeJson(META_KEY, backup.metadata || {});
-  writeJson(NOTIFICATION_KEY, backup.notifications || []);
+  for (const [id, meta] of Object.entries(backup.metadata)) {
+    if (!id || !isPlainRecord(meta) || typeof meta.name !== 'string' || typeof meta.isGroup !== 'boolean') {
+      throw new Error('LINE_BACKUP_METADATA_ENTRY_INVALID: ' + id);
+    }
+  }
+  const notifications = backup.notifications.map((item, index) => {
+    if (!isPlainRecord(item) || typeof item.id !== 'string' || typeof item.title !== 'string' || typeof item.body !== 'string') {
+      throw new Error('LINE_BACKUP_NOTIFICATION_INVALID: ' + index);
+    }
+    return item as unknown as LineNotification;
+  });
+
+  const writes = new Map<string, string>();
+  for (const [id, messages] of conversations) writes.set(conversationKey(id), JSON.stringify(messages));
+  writes.set(META_KEY, JSON.stringify(backup.metadata));
+  writes.set(NOTIFICATION_KEY, JSON.stringify(notifications));
+  const previous = new Map<string, string | null>();
+  for (const key of writes.keys()) previous.set(key, window.localStorage.getItem(key));
+
+  const changed: string[] = [];
+  try {
+    for (const [key, serialized] of writes) {
+      window.localStorage.setItem(key, serialized);
+      changed.push(key);
+      if (window.localStorage.getItem(key) !== serialized) throw new Error('LINE_BACKUP_WRITE_VERIFY_FAILED: ' + key);
+    }
+  } catch (error) {
+    let rollbackFailed = false;
+    for (const key of changed.reverse()) {
+      try {
+        const oldValue = previous.get(key);
+        if (oldValue === null || oldValue === undefined) window.localStorage.removeItem(key);
+        else window.localStorage.setItem(key, oldValue);
+        if (window.localStorage.getItem(key) !== (oldValue ?? null)) rollbackFailed = true;
+      } catch {
+        rollbackFailed = true;
+      }
+    }
+    if (rollbackFailed) {
+      reportPersistenceIssue('line-backup-rollback', 'LINE 备份恢复失败，且自动回滚未能完整验证；请勿继续写入并保留原备份文件', error);
+      throw new Error('LINE_BACKUP_IMPORT_ROLLBACK_FAILED');
+    }
+    throw new Error('LINE_BACKUP_IMPORT_FAILED_ROLLED_BACK: ' + (error instanceof Error ? error.message : 'unknown error'));
+  }
+
   window.dispatchEvent(new CustomEvent('sane333:line-runtime-changed'));
 }
 
