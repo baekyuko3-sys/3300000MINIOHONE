@@ -136,3 +136,31 @@ export async function importMedia(records: Record<string, string>): Promise<numb
   });
   return prepared.length;
 }
+
+
+/**
+ * Replace the complete media vault in one IndexedDB transaction.
+ * Decoding happens before the transaction; clear + puts either commit together or abort together.
+ */
+export async function replaceMedia(records: Record<string, string>): Promise<number> {
+  const entries = Object.entries(records || {});
+  const prepared = entries.map(([id, dataUrl]) => {
+    if (!id || typeof dataUrl !== 'string') throw new Error('MEDIA_IMPORT_RECORD_INVALID');
+    return {
+      id,
+      blob: dataUrlToBlob(dataUrl),
+      createdAt: new Date().toISOString(),
+    } satisfies MediaRecord;
+  });
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    store.clear();
+    for (const record of prepared) store.put(record);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('MEDIA_REPLACE_FAILED'));
+    tx.onabort = () => reject(tx.error || new Error('MEDIA_REPLACE_ABORTED'));
+  });
+  return prepared.length;
+}
