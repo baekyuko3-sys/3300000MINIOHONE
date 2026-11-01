@@ -72,6 +72,7 @@ import {
 import { appendLineMessage, editLineMessage, toggleLineReaction, setLineMessageFavorite, recordLineCall, markLineMessageFailed, clearLineConversation, recallLineMessage, updateLineMessage } from '../../store/lineRuntime';
 import { saveCallRecord, getCallHistory, deleteCallRecord, formatCallDuration, type CallRecord } from '../../store/callHistory';
 import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, searchLineMessages, type LineRuntimeMessage } from '../../store/lineRuntime';
+import { isLineTurnContextCurrent, releaseLineTypingRequest } from '../../store/lineTurnGuard';
 import { fetchLineWeather, formatLineWeather, type LineWeatherSnapshot } from '../../store/lineReality';
 import { getRecentMomentsForGroup, maybePostGroupMomentAfterRound } from '../../store/momentsAfterChat';
 import { getGroupAiSummaries, updateGroupAiSummary, deleteGroupAiSummary, buildGroupAiSummariesContext } from '../../store/groupAiSummaries';
@@ -3118,15 +3119,13 @@ export function LineConversationView({
 
     const turnContext = { conversationId: conversationStorageId, personaId: String(resolvedPersonaId || '') };
     const turnRequestId = 'line-turn-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-    const isCurrentTurn = () =>
-      currentTurnContextRef.current.conversationId === turnContext.conversationId &&
-      currentTurnContextRef.current.personaId === turnContext.personaId;
-    const clearTyping = () => {
-      if (typingRequestIdRef.current !== turnRequestId) return;
-      typingRequestIdRef.current = '';
-      setIsTyping(false);
-      (window as any).__lineTypingStart = 0;
-    };
+    const isCurrentTurn = () => isLineTurnContextCurrent(currentTurnContextRef.current, turnContext);
+    const clearTyping = () => releaseLineTypingRequest(
+      typingRequestIdRef,
+      turnRequestId,
+      setIsTyping,
+      () => { (window as any).__lineTypingStart = 0; },
+    );
     typingRequestIdRef.current = turnRequestId;
 
     // 先立即显示“正在输入”，不要等动态 import / 在线状态读取完成。
