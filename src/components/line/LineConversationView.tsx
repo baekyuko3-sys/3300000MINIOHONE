@@ -1410,6 +1410,17 @@ export function LineConversationView({
       identity: '',
       traits: '',
     };
+
+  // A request belongs to the conversation + persona that started it. If either
+  // changes, stale stream callbacks must not write into the newly active context.
+  const currentTurnContextRef = useRef({ conversationId: conversationStorageId, personaId: String(resolvedPersonaId || '') });
+  currentTurnContextRef.current = { conversationId: conversationStorageId, personaId: String(resolvedPersonaId || '') };
+  const typingRequestIdRef = useRef('');
+  useEffect(() => {
+    typingRequestIdRef.current = '';
+    setIsTyping(false);
+    (window as any).__lineTypingStart = 0;
+  }, [conversationStorageId, resolvedPersonaId]);
   const [editingPersonaId, setEditingPersonaId] = useState<string | null>(null);
   const [showMyAvatar, setShowMyAvatar] = usePersistentState<boolean>(`line:show-my-avatar:${conversationStorageId}`, true);
   const myAvatarFileRef = useRef<HTMLInputElement>(null);
@@ -3028,7 +3039,7 @@ export function LineConversationView({
     if (shouldReply && isTyping) {
       const typingStart = (window as any).__lineTypingStart || 0;
       if (Date.now() - typingStart > 3 * 60 * 1000) {
-        setIsTyping(false);
+        clearTyping();
         (window as any).__lineTypingStart = 0;
       } else {
         showToast('上一轮回复还在生成中，稍等一下再发');
@@ -3104,6 +3115,19 @@ export function LineConversationView({
     // Enter/Return only sends the user's message. The paper-plane button passes shouldReply=true.
     if (!shouldReply) return;
 
+    const turnContext = { conversationId: conversationStorageId, personaId: String(resolvedPersonaId || '') };
+    const turnRequestId = 'line-turn-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    const isCurrentTurn = () =>
+      currentTurnContextRef.current.conversationId === turnContext.conversationId &&
+      currentTurnContextRef.current.personaId === turnContext.personaId;
+    const clearTyping = () => {
+      if (typingRequestIdRef.current !== turnRequestId) return;
+      typingRequestIdRef.current = '';
+      setIsTyping(false);
+      (window as any).__lineTypingStart = 0;
+    };
+    typingRequestIdRef.current = turnRequestId;
+
     // 先立即显示“正在输入”，不要等动态 import / 在线状态读取完成。
     // 否则点击发送后会有一段没有任何反馈的空窗。
     setIsTyping(true);
@@ -3151,6 +3175,8 @@ export function LineConversationView({
       console.error('[LINE] send preflight failed', error);
       return;
     }
+
+    if (!isCurrentTurn()) { clearTyping(); return; }
 
     // LINE read state: once the role starts processing the message, it has been seen.
     // A later role message upgrades the footer from “已读 · 暂未回复” to “已读”.
@@ -3320,6 +3346,7 @@ export function LineConversationView({
           temperature: Number(presetTemp) || 0.85,
           debugConversationId: conversationStorageId,
           onDelta: delta => {
+            if (!isCurrentTurn()) return;
             streamedText += delta;
             const hasSpeakerMarker = /[\[【]/.test(delta);
             if (!hasSpeakerMarker && streamedText.length < 6) return;
@@ -3354,6 +3381,7 @@ export function LineConversationView({
           },
         });
 
+        if (!isCurrentTurn()) return;
         const rawReplyText = String(result?.text || streamedText || '');
         // 注意：cleanGroupGeneratedText 会先把 [PASS]/【PASS】整行剥掉，所以必须在清洗前判断；
         // 否则 [PASS] 检查永远匹配不上（死代码），模型合规的"不接话"会被渲染成红色报错气泡。
@@ -3530,7 +3558,8 @@ export function LineConversationView({
         setIsTyping(false);
         return;
       } catch (error) {
-        const message = error instanceof Error ? error.message : '群聊 AI 请求失败';
+        if (!isCurrentTurn()) return;
+      const message = error instanceof Error ? error.message : '群聊 AI 请求失败';
         setMessages(prev => {
           // 删占位 + 标为可删除的失败提示
           const cleaned = prev.filter(m => activeGroupPlaceholderId == null || !String(m.id).startsWith(String(activeGroupPlaceholderId)));
@@ -3674,11 +3703,13 @@ export function LineConversationView({
         temperature: Number(presetTemp) || 0.85,
         debugConversationId: conversationStorageId,
         onDelta: (delta) => {
+          if (!isCurrentTurn()) return;
           streamedText += delta;
           updateStreamingBubbles(streamedText);
         },
       });
 
+      if (!isCurrentTurn()) return;
       const finalReplyText = String(result?.text || streamedText || '').trim();
       if (!finalReplyText) {
         throw new Error('AI 没有返回任何内容，请检查 API、模型或网络连接。');
@@ -3880,6 +3911,7 @@ export function LineConversationView({
       // 这里不再由系统因为“收到回复”自动修改关系/好感度。
       // 角色自主判断只影响角色自己的关系认知；真正的关系变化应有剧情或角色判断依据。
     } catch (error) {
+      if (!isCurrentTurn()) return;
       const message = error instanceof Error ? error.message : 'AI 请求失败';
       ensureReplyMessage(`发送失败：${message}`);
       setMessages((prev) => prev.map(m =>
