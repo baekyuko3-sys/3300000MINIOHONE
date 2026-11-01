@@ -3119,6 +3119,7 @@ export function LineConversationView({
 
     const turnContext = { conversationId: conversationStorageId, personaId: String(resolvedPersonaId || '') };
     const turnRequestId = 'line-turn-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    // Context and ownership token both have to match; a timed-out older request cannot append after a newer send.
     const isCurrentTurn = () => isLineTurnRequestCurrent(currentTurnContextRef.current, turnContext, typingRequestIdRef, turnRequestId);
     const clearTyping = () => releaseLineTypingRequest(
       typingRequestIdRef,
