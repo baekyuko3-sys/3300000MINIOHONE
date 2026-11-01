@@ -71,7 +71,7 @@ import {
 } from '../../store/lineMediaCards';
 import { appendLineMessage, editLineMessage, toggleLineReaction, setLineMessageFavorite, recordLineCall, markLineMessageFailed, clearLineConversation, recallLineMessage, updateLineMessage } from '../../store/lineRuntime';
 import { saveCallRecord, getCallHistory, deleteCallRecord, formatCallDuration, type CallRecord } from '../../store/callHistory';
-import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, searchLineMessages, type LineRuntimeMessage } from '../../store/lineRuntime';
+import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, searchLineMessages, isLineMessageFromUser, type LineRuntimeMessage } from '../../store/lineRuntime';
 import { isLineTurnRequestCurrent, releaseLineTypingRequest } from '../../store/lineTurnGuard';
 import { fetchLineWeather, formatLineWeather, type LineWeatherSnapshot } from '../../store/lineReality';
 import { getRecentMomentsForGroup, maybePostGroupMomentAfterRound } from '../../store/momentsAfterChat';
@@ -6192,26 +6192,7 @@ export function LineConversationView({
           // 防御性修复：角色消息强制放左边，防止 sender 存错
           // AI 回复、带角色身份的消息一律放左边
           const charName = characterProfile.nickname || importedCharacter?.name || '';
-          const senderNameIsCharacter = (candidate: any) => {
-            const senderName = String(candidate?.senderName || '').trim();
-            const activeCharacterName = String(charName || '').trim();
-            return Boolean(senderName && activeCharacterName && senderName === activeCharacterName);
-          };
-          // Only strong identity signals override sender. A non-empty senderName that
-          // differs from the user's name is not enough: legacy messages often have
-          // display names, and the old rule incorrectly pushed them all to the left.
-          const isLineMessageFromUser = (candidate: any) => {
-            if (!candidate || candidate.sender !== 'me') return false;
-            const hasCharacterIdentity = Boolean(
-              candidate.type === 'ai-reply' ||
-              candidate.senderType === 'character' ||
-              candidate.senderType === 'npc' ||
-              candidate.characterId || candidate.npcId || candidate.metadata?.characterId ||
-              senderNameIsCharacter(candidate)
-            );
-            return !hasCharacterIdentity;
-          };
-          const isMe = isLineMessageFromUser(msg);
+          const isMe = isLineMessageFromUser(msg, charName);
           const bilingualTextParts = String(msg.text || '').split('[[ZH_TRANSLATION]]');
           const bilingualOriginalText = bilingualTextParts[0].trim();
           const bilingualTranslationText = bilingualTextParts.slice(1).join('[[ZH_TRANSLATION]]').trim();
@@ -6718,7 +6699,7 @@ export function LineConversationView({
               onPointerUp={(event) => handleMessagePointerUp(event, msg)}
               onPointerCancel={cancelMessageSwipe}
               style={{ touchAction: 'pan-y' }}
-              className={`relative flex items-end gap-2 group ${effectiveSameAsNext ? 'mb-0.5' : 'mb-2'}`}
+              className={`relative flex flex-col items-stretch gap-0 group ${effectiveSameAsNext ? 'mb-0.5' : 'mb-2'}`}
             >
               {swipingMessageId === msg.id && Math.abs(swipeOffset) > 8 && (
                 <div
@@ -7884,13 +7865,33 @@ export function LineConversationView({
                   {/* 单条消息操作通过左右滑动触发：左滑编辑，右滑引用。这里不再常驻按钮，保持气泡紧凑。 */}
                 </div>
 
+              {/* Optional user avatar */}
+              {isMe && showMyAvatar && (
+                sameAsPrevious ? (
+                  <div className="w-[31px] shrink-0" aria-hidden="true" />
+                ) : (
+                <div
+                  className="w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 self-start mt-0.5 border border-white"
+                  title={activePersona.name ? `我的人设：${activePersona.name}` : '我的头像'}
+                >
+                  {activePersona.avatar ? (
+                    <img src={activePersona.avatar} alt={activePersona.name || '我的头像'} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <span className="text-[10px] font-medium text-[#999]">{(activePersona.name || '我').slice(0, 1)}</span>
+                  )}
+                </div>
+                )
+              )}
+
+              </div>
+
               {/* Timestamp belongs below the message bubble, matching LINE's compact layout.
                   同一人连续发言时只在最后一条显示时间（C 版折叠），避免同一时间重复刷屏；空占位不显示时间。 */}
               {!msg.isRecalled && (currentDateIsValid || msg.time) && !effectiveSameAsNext && !isEmptyAiPlaceholder && (
                 <div
                   title={formatLineMessageExactDateTime(msg, chatTimezone, lineTimeDisplayLocale)}
                   aria-label={formatLineMessageExactDateTime(msg, chatTimezone, lineTimeDisplayLocale)}
-                  className={`mt-0.5 flex min-h-[12px] items-center gap-1 px-1 text-[9px] leading-[1.2] text-[#a6a6aa] ${isMe ? 'justify-end' : 'justify-start'}`}
+                  className={`w-full mt-0.5 flex min-h-[12px] items-center gap-1 px-1 text-[9px] leading-[1.2] text-[#a6a6aa] ${isMe ? 'justify-end' : 'justify-start'}`}
                 >
                   {isMe ? (() => {
                     const msgIndex = messages.findIndex((candidate) => String(candidate.id) === String(msg.id));
@@ -7910,26 +7911,6 @@ export function LineConversationView({
                   )}
                   <span>{formatLineMessageClock(msg, chatTimezone, lineTimeDisplayLocale)}</span>
                 </div>
-              )}
-
-              </div>
-
-              {/* Optional user avatar */}
-              {isMe && showMyAvatar && (
-                sameAsPrevious ? (
-                  <div className="w-[31px] shrink-0" aria-hidden="true" />
-                ) : (
-                <div
-                  className="w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 self-start mt-0.5 border border-white"
-                  title={activePersona.name ? `我的人设：${activePersona.name}` : '我的头像'}
-                >
-                  {activePersona.avatar ? (
-                    <img src={activePersona.avatar} alt={activePersona.name || '我的头像'} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  ) : (
-                    <span className="text-[10px] font-medium text-[#999]">{(activePersona.name || '我').slice(0, 1)}</span>
-                  )}
-                </div>
-                )
               )}
 
               </div>
