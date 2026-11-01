@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { listOpenAiCompatibleModels } from '../src/ai/aiEngine.ts';
+import { pushAiDebugLog, writeAiDebugTrace } from '../src/store/aiDebug.ts';
 
 const baseSettings = {
   apiKey: 'test-api-key-not-real',
@@ -51,4 +52,33 @@ test('Gemini model discovery surfaces proxy HTTP errors cleanly', async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('AI diagnostics redact API keys and bearer tokens before local persistence', () => {
+  const storage = new Map();
+  globalThis.window = {
+    localStorage: {
+      getItem: key => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, String(value)),
+      removeItem: key => storage.delete(key),
+    },
+    dispatchEvent() { return true; },
+  };
+  const googleKey = 'AIza' + 'A'.repeat(30);
+  const bearer = 'Bearer ' + 'secret-token-123456789';
+  pushAiDebugLog({
+    level: 'error',
+    event: 'redaction-test',
+    message: 'request failed ' + bearer + ' apiKey=' + googleKey,
+    meta: { apiKey: googleKey, detail: bearer },
+  });
+  writeAiDebugTrace({
+    context: { conversationId: 'test' },
+    error: { message: 'bad ' + googleKey, stack: 'Authorization: ' + bearer },
+    rawResponse: 'echoed key ' + googleKey,
+  });
+  const log = storage.get('phone:ai-debug-log') || '';
+  const trace = storage.get('phone:ai-debug-trace:test') || '';
+  assert.doesNotMatch(log, /AIza[A-Z]{20,}|secret-token-123456789/);
+  assert.doesNotMatch(trace, /AIza[A-Z]{20,}|secret-token-123456789/);
 });
