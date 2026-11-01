@@ -1386,37 +1386,6 @@ export function LineConversationView({
   const [togetherMusic, setTogetherMusic] = usePersistentState<TogetherMusicSession | null>('line:together-music:' + conversationStorageId, null);
   const notifiedEndedMusicSessionRef = useRef<string>('');
 
-  // Music App can end a listening session outside LINE. Observe the shared session
-  // event and notify this conversation once, then clear its active listening state.
-  useEffect(() => {
-    const handleTogetherMusicChange = () => {
-      if (!togetherMusic || !['listening', 'paused'].includes(togetherMusic.status)) return;
-      const session = readStrangerSession();
-      if (!session || session.status !== 'ended') return;
-      const sameSession = String(session.id || '') === String(togetherMusic.id || '');
-      const sameCharacter = Boolean(
-        importedCharacter?.id &&
-        session.mode === 'direct' &&
-        String(session.characterId || '') === String(importedCharacter.id)
-      );
-      if (!sameSession && !sameCharacter) return;
-      const endedId = String(session.id || togetherMusic.id || conversationStorageId);
-      if (notifiedEndedMusicSessionRef.current === endedId) return;
-      notifiedEndedMusicSessionRef.current = endedId;
-      setTogetherMusic(null);
-      showToast('一起听结束了 ♪');
-      window.dispatchEvent(new CustomEvent('sane333:line-together-music-ended', {
-        detail: { sessionId: endedId, conversationId: conversationStorageId },
-      }));
-    };
-    window.addEventListener('sane333:music-stranger-changed', handleTogetherMusicChange);
-    window.addEventListener('storage', handleTogetherMusicChange);
-    return () => {
-      window.removeEventListener('sane333:music-stranger-changed', handleTogetherMusicChange);
-      window.removeEventListener('storage', handleTogetherMusicChange);
-    };
-  }, [togetherMusic, importedCharacter?.id, conversationStorageId, setTogetherMusic, showToast]);
-
   // 我的人设管理器 (User Persona Manager)
   const [showPersonaManager, setShowPersonaManager] = useState(false);
   const [storedUserPersonas, setUserPersonas] = usePersistentState<any[]>('line:user-personas', []);
@@ -2489,6 +2458,39 @@ export function LineConversationView({
     setToastMsg(text);
     setTimeout(() => setToastMsg(''), 1800);
   };
+
+  // Music App can end a listening session outside LINE. Observe the shared session
+  // event and notify this conversation once, then clear its active listening state.
+  // 注意：必须放在 importedCharacter / showToast 声明之后，否则依赖数组读取它们会触发 TDZ
+  // (Cannot access 'X' before initialization)，导致整个 LINE 聊天白屏。
+  useEffect(() => {
+    const handleTogetherMusicChange = () => {
+      if (!togetherMusic || !['listening', 'paused'].includes(togetherMusic.status)) return;
+      const session = readStrangerSession();
+      if (!session || session.status !== 'ended') return;
+      const sameSession = String(session.id || '') === String(togetherMusic.id || '');
+      const sameCharacter = Boolean(
+        importedCharacter?.id &&
+        session.mode === 'direct' &&
+        String(session.characterId || '') === String(importedCharacter.id)
+      );
+      if (!sameSession && !sameCharacter) return;
+      const endedId = String(session.id || togetherMusic.id || conversationStorageId);
+      if (notifiedEndedMusicSessionRef.current === endedId) return;
+      notifiedEndedMusicSessionRef.current = endedId;
+      setTogetherMusic(null);
+      showToast('一起听结束了 ♪');
+      window.dispatchEvent(new CustomEvent('sane333:line-together-music-ended', {
+        detail: { sessionId: endedId, conversationId: conversationStorageId },
+      }));
+    };
+    window.addEventListener('sane333:music-stranger-changed', handleTogetherMusicChange);
+    window.addEventListener('storage', handleTogetherMusicChange);
+    return () => {
+      window.removeEventListener('sane333:music-stranger-changed', handleTogetherMusicChange);
+      window.removeEventListener('storage', handleTogetherMusicChange);
+    };
+  }, [togetherMusic, importedCharacter?.id, conversationStorageId, setTogetherMusic, showToast]);
 
   // 角色主页「分享」：把主页链接真正写入剪贴板
   const shareCharacterProfile = () => {
