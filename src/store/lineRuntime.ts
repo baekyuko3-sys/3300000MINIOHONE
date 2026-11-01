@@ -111,7 +111,7 @@ export function saveLineConversationMessages(id: string, messages: LineRuntimeMe
  * Explicit user markers win; explicit NPC/character/system markers stay incoming.
  * Display names are only a legacy fallback and never override an explicit user marker.
  */
-export function isLineMessageFromUser(candidate: Partial<LineRuntimeMessage> & Record<string, any>, activeCharacterName = ''): boolean {
+export function isLineMessageFromUser(candidate: any, activeCharacterName = ''): boolean {
   if (!candidate) return false;
   const sender = String(candidate.sender || '').trim().toLowerCase();
   const senderType = String(candidate.senderType || candidate.metadata?.senderType || '').trim().toLowerCase();
