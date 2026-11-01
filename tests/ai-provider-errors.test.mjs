@@ -20,6 +20,7 @@ const baseSettings = {
 
 test('OpenAI-compatible model discovery surfaces upstream HTTP errors without hiding status', async () => {
   const originalFetch = globalThis.fetch;
+  globalThis.window = { setTimeout, clearTimeout };
   globalThis.fetch = async () => new Response(JSON.stringify({ error: { message: 'invalid test key' } }), { status: 401 });
   try {
     await assert.rejects(
@@ -33,6 +34,7 @@ test('OpenAI-compatible model discovery surfaces upstream HTTP errors without hi
 
 test('Gemini model discovery surfaces proxy HTTP errors cleanly', async () => {
   const originalFetch = globalThis.fetch;
+  globalThis.window = { setTimeout, clearTimeout };
   const calls = [];
   globalThis.fetch = async (input, init = {}) => {
     calls.push({ input: String(input), init });
