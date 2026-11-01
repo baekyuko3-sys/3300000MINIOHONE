@@ -106,6 +106,38 @@ export function saveLineConversationMessages(id: string, messages: LineRuntimeMe
   return normalized;
 }
 
+/**
+ * Resolve the visual side of a LINE message from explicit sender identity.
+ * Explicit user markers win; explicit NPC/character/system markers stay incoming.
+ * Display names are only a legacy fallback and never override an explicit user marker.
+ */
+export function isLineMessageFromUser(candidate: Partial<LineRuntimeMessage> & Record<string, any>, activeCharacterName = ''): boolean {
+  if (!candidate) return false;
+  const sender = String(candidate.sender || '').trim().toLowerCase();
+  const senderType = String(candidate.senderType || candidate.metadata?.senderType || '').trim().toLowerCase();
+
+  if (senderType === 'user' || sender === 'user') return true;
+  if (sender === 'other' || sender === 'system' || senderType === 'character' || senderType === 'npc' || senderType === 'system') return false;
+  if (sender !== 'me') return false;
+
+  const messageKind = String(candidate.type || candidate.kind || '').trim().toLowerCase();
+  const hasCharacterIdentity = Boolean(
+    messageKind === 'ai-reply' ||
+    candidate.senderType === 'character' ||
+    candidate.senderType === 'npc' ||
+    candidate.characterId ||
+    candidate.npcId ||
+    candidate.metadata?.characterId ||
+    candidate.metadata?.npcId
+  );
+  if (hasCharacterIdentity) return false;
+
+  const senderName = String(candidate.senderName || '').trim();
+  const characterName = String(activeCharacterName || '').trim();
+  if (senderName && characterName && senderName === characterName) return false;
+  return true;
+}
+
 export function normalizeLineMessage(message: LineRuntimeMessage, fallbackIndex = 0): LineRuntimeMessage {
   const legacyTimestamp = (message as LineRuntimeMessage & { timestamp?: string | number }).timestamp;
   const timestampValue = message.createdAt || (
