@@ -27,7 +27,7 @@ function redactSensitiveValue(value: unknown, depth = 0): unknown {
 const KEY='phone:ai-debug-log';
 export function readAiDebugLog(): AiDebugEntry[] {
   if(typeof window==='undefined') return [];
-  try { const v=JSON.parse(localStorage.getItem(KEY)||'[]'); return Array.isArray(v)?v:[]; } catch { return []; }
+  try { const v=JSON.parse(localStorage.getItem(KEY)||'[]'); return Array.isArray(v)?v.map(item => redactSensitiveValue(item) as AiDebugEntry):[]; } catch { return []; }
 }
 function safeSetItem(key: string, value: string): boolean {
   if (typeof window === 'undefined') return false;
