@@ -390,7 +390,7 @@ export interface LineBackup {
   metadata: Record<string, LineConversationMeta>;
   notifications: LineNotification[];
   /** This lightweight transcript backup does not include the separate IndexedDB media vault. */
-  mediaIncluded: false;
+  mediaIncluded?: false;
 }
 
 export function exportLineBackup(): LineBackup {
