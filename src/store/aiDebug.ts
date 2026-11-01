@@ -6,10 +6,10 @@ export interface AiDebugEntry {
 const SECRET_FIELD = /^(?:apiKey|voiceApiKey|sttApiKey|imageApiKey|accessToken|refreshToken|githubToken|authorization|password|clientSecret|secret)$/i;
 function redactSensitiveText(value: string): string {
   return value
-    .replace(/\\bAIza[0-9A-Za-z_-]{20,}\\b/g, '[REDACTED_API_KEY]')
-    .replace(/\\bBearer\\s+[A-Za-z0-9._~+\\/-]+=*/gi, 'Bearer [REDACTED]')
-    .replace(/\\bsk-(?:proj-)?[A-Za-z0-9_-]{16,}\\b/g, '[REDACTED_API_KEY]')
-    .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|password|client[_-]?secret)\\s*[:=]\\s*["']?)[^&\\s"'\x60]+/gi, '$1[REDACTED]');
+    .replace(/\bAIza[0-9A-Za-z_-]{20,}\b/g, '[REDACTED_API_KEY]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [REDACTED]')
+    .replace(/\bsk-(?:proj-)?[A-Za-z0-9_-]{16,}\b/g, '[REDACTED_API_KEY]')
+    .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|password|client[_-]?secret)\s*[:=]\s*["']?)[^&\s"'<>]+/gi, '$1[REDACTED]');
 }
 function redactSensitiveValue(value: unknown, depth = 0): unknown {
   if (depth > 12) return '[TRUNCATED]';
