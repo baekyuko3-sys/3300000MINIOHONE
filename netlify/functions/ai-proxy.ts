@@ -40,11 +40,11 @@ function json(data: unknown, status = 200, extra: Record<string, string> = {}) {
 function cleanBaseUrl(value: string) {
   return value
     .trim()
-    .replace(/\\/+$/, '')
-    .replace(/\\/chat\\/completions$/i, '')
-    .replace(/\\/responses$/i, '')
-    .replace(/\\/models$/i, '')
-    .replace(/\\/+$/, '');
+    .replace(/\/+$/, '')
+    .replace(/\/chat\/completions$/i, '')
+    .replace(/\/responses$/i, '')
+    .replace(/\/models$/i, '')
+    .replace(/\/+$/, '');
 }
 
 function validateBaseUrl(value: string): string {
