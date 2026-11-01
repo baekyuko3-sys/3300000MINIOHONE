@@ -3039,7 +3039,8 @@ export function LineConversationView({
     if (shouldReply && isTyping) {
       const typingStart = (window as any).__lineTypingStart || 0;
       if (Date.now() - typingStart > 3 * 60 * 1000) {
-        clearTyping();
+        typingRequestIdRef.current = '';
+        setIsTyping(false);
         (window as any).__lineTypingStart = 0;
       } else {
         showToast('上一轮回复还在生成中，稍等一下再发');
@@ -5730,6 +5731,7 @@ export function LineConversationView({
 
   // 重新生成 (Reroll)
   const handleDoReroll = async () => {
+    if (isTyping) { showToast('上一轮回复还在生成中，稍等一下再重新生成'); return; }
     const instruction = rerollPrompt.trim();
     if (!instruction) {
       showToast('告诉 AI 这一轮怎么改');
@@ -5743,6 +5745,19 @@ export function LineConversationView({
       return;
     }
     const target = messages[targetIndex];
+    const turnContext = { conversationId: conversationStorageId, personaId: String(resolvedPersonaId || '') };
+    const turnRequestId = 'line-reroll-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    const isCurrentTurn = () =>
+      currentTurnContextRef.current.conversationId === turnContext.conversationId &&
+      currentTurnContextRef.current.personaId === turnContext.personaId;
+    const clearTyping = () => {
+      if (typingRequestIdRef.current !== turnRequestId) return;
+      typingRequestIdRef.current = '';
+      setIsTyping(false);
+      (window as any).__lineTypingStart = 0;
+    };
+    typingRequestIdRef.current = turnRequestId;
+
     const previousUserIndex = [...messages.slice(0, targetIndex)].map((message, index) => ({ message, index })).reverse().find(item => item.message.sender === 'me' && item.message.text?.trim())?.index ?? -1;
     const previousUser = previousUserIndex >= 0 ? messages[previousUserIndex].text || '' : inputText;
     setShowReroll(false);
@@ -5793,6 +5808,7 @@ export function LineConversationView({
         temperature: Number(presetTemp) || 0.85,
         debugConversationId: conversationStorageId,
         onDelta: delta => {
+          if (!isCurrentTurn()) return;
           streamed += delta;
           setMessages(prev => prev.map(message =>
             String(message.id) === String(target.id)
@@ -5801,6 +5817,7 @@ export function LineConversationView({
           ));
         },
       });
+      if (!isCurrentTurn()) return;
       const rerolledText = splitGeneratedLineMessages(String(result.text || streamed)).filter(Boolean)[0] || String(result.text || streamed || '').trim();
       statusBarKnownMessageIdsRef.current?.add(String(target.id));
       setMessages(prev => {
@@ -5847,6 +5864,7 @@ export function LineConversationView({
       if (statusBarEnabled && !isGroup) await createStatusBarSnapshot(rerolledText, target.id, result.statusBarRaw, turnStatusPreset, true);
       showToast('这一条已经重新生成');
     } catch (error) {
+      if (!isCurrentTurn()) return;
       const message = error instanceof Error ? error.message : '重新生成失败';
       setMessages(prev => {
         const next = [...prev];
@@ -5859,7 +5877,7 @@ export function LineConversationView({
       markLineMessageFailed(conversationStorageId, target.id, message);
       showToast(message.length > 60 ? message.slice(0, 60) + '…' : message);
     } finally {
-      setIsTyping(false);
+      clearTyping();
     }
   };
 
