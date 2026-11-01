@@ -53,7 +53,7 @@ function compactTraceValue(value: AiDebugTrace): AiDebugTrace {
   if (copy.error) copy.error = { message: redactSensitiveText(String(copy.error.message || '')), stack: copy.error.stack ? redactSensitiveText(copy.error.stack) : undefined };
   if (Array.isArray(copy.stages)) copy.stages = copy.stages.map(stage => ({ ...stage, detail: stage.detail ? redactSensitiveText(stage.detail) : undefined }));
   if (copy.request) copy.request = redactSensitiveValue(copy.request) as AiDebugTrace['request'];
-  return copy;
+  return redactSensitiveValue(copy) as AiDebugTrace;
 }
 
 export function pushAiDebugLog(entry: Omit<AiDebugEntry,'id'|'time'>) {
@@ -86,10 +86,10 @@ export function readAiDebugTrace(conversationId?: string): AiDebugTrace | null {
   try {
     const key = traceKey(conversationId);
     const v=JSON.parse(localStorage.getItem(key)||'null');
-    if(v&&typeof v==='object') return v;
+    if(v&&typeof v==='object') return redactSensitiveValue(v) as AiDebugTrace;
     if(conversationId) {
       const latest=JSON.parse(localStorage.getItem(TRACE_KEY)||'null');
-      if(latest && typeof latest==='object' && String(latest.context?.conversationId || '') === conversationId) return latest;
+      if(latest && typeof latest==='object' && String(latest.context?.conversationId || '') === conversationId) return redactSensitiveValue(latest) as AiDebugTrace;
     }
     return null;
   } catch { return null; }
