@@ -3109,6 +3109,7 @@ export function LineConversationView({
     setIsTyping(true);
     (window as any).__lineTypingStart = Date.now();
 
+    try {
     // 不在线自动回复（仅单聊）
     if (!isGroup) {
       const { isCharacterOnline, getOfflineMessage } = await import('../../store/characterStatus');
@@ -3139,6 +3140,16 @@ export function LineConversationView({
         (window as any).__lineTypingStart = 0;
         return;
       }
+    }
+
+    } catch (error) {
+      // Typing starts before the asynchronous online-status preflight.
+      // Clear it on import/storage/status errors so the indicator cannot stick.
+      setIsTyping(false);
+      (window as any).__lineTypingStart = 0;
+      showToast('检查对方在线状态失败，请重试');
+      console.error('[LINE] send preflight failed', error);
+      return;
     }
 
     // LINE read state: once the role starts processing the message, it has been seen.
