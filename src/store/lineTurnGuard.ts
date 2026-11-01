@@ -21,3 +21,15 @@ export function releaseLineTypingRequest(
   resetStartTime();
   return true;
 }
+
+/** A request is current only while both its context and its ownership token match. */
+export function isLineTurnRequestCurrent(
+  current: LineTurnContext,
+  started: LineTurnContext,
+  owner: { current: string },
+  requestId: string,
+): boolean {
+  return Boolean(requestId) &&
+    owner.current === requestId &&
+    isLineTurnContextCurrent(current, started);
+}
