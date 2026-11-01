@@ -3161,16 +3161,17 @@ export function LineConversationView({
           localStorage.setItem(key, JSON.stringify(pending));
         } catch { /* best effort */ }
         showToast('对方不在线，已发送自动回复');
-        setIsTyping(false);
+        clearTyping();
         (window as any).__lineTypingStart = 0;
         return;
       }
     }
 
     } catch (error) {
+      if (!isCurrentTurn()) return;
       // Typing starts before the asynchronous online-status preflight.
       // Clear it on import/storage/status errors so the indicator cannot stick.
-      setIsTyping(false);
+      clearTyping();
       (window as any).__lineTypingStart = 0;
       showToast('检查对方在线状态失败，请重试');
       console.error('[LINE] send preflight failed', error);
@@ -3193,7 +3194,7 @@ export function LineConversationView({
         if (groupAiMembers.length === 0) {
           showToast('这个群还没有导入可接入 AI 的角色卡');
           setMessages(prev => prev.filter(message => message.id !== msgId));
-          setIsTyping(false);
+          clearTyping();
           return;
         }
         // 这些成员没有可用 AI 身份，会被静默排除在回复之外。提醒一次，让用户知道
@@ -3234,7 +3235,7 @@ export function LineConversationView({
         const primary = mentioned.length ? pool[0] : rotatedPool[0];
         if (!primary) {
           showToast(availableMembers.length ? '没有找到可回应的群成员，请检查 @ 名称或昵称' : '群里目前没有可发言的在线成员，请检查成员在线状态和禁言设置');
-          setIsTyping(false);
+          clearTyping();
           return;
         }
 
@@ -3405,13 +3406,13 @@ export function LineConversationView({
               dismissible: true,
             } as any,
           ]);
-          setIsTyping(false);
+          clearTyping();
           return;
         }
         if (!finalText) {
           setMessages(prev => prev.map(m => String(m.id).startsWith(String(placeholderId)) ? { ...m, status: 'failed', error: 'AI 没有返回任何内容', text: '回复失败：AI 没有返回任何内容（可点击下方按钮删除）' } : m));
           showToast('群聊 AI 没有返回内容');
-          setIsTyping(false);
+          clearTyping();
           return;
         }
 
@@ -3430,7 +3431,7 @@ export function LineConversationView({
         const filteredParts = normalParts.length ? normalParts : parts;
         if (!filteredParts.length) {
           setMessages(prev => prev.map(m => String(m.id).startsWith(String(placeholderId)) ? { ...m, status: 'failed', error: 'AI 输出无法解析为群聊消息', text: '回复失败：输出无法解析为群聊消息（可点击下方按钮删除）' } : m));
-          setIsTyping(false);
+          clearTyping();
           return;
         }
 
@@ -3461,7 +3462,7 @@ export function LineConversationView({
         if (!finalMessages.length) {
           setMessages(prev => prev.filter(m => !String(m.id).startsWith(String(placeholderId))));
           showToast('群聊输出中的说话者无法匹配到真实群成员，请检查角色名字/昵称');
-          setIsTyping(false);
+          clearTyping();
           return;
         }
         setMessages(prev => {
@@ -3556,7 +3557,7 @@ export function LineConversationView({
           })();
         }
 
-        setIsTyping(false);
+        clearTyping();
         return;
       } catch (error) {
         if (!isCurrentTurn()) return;
@@ -3577,7 +3578,7 @@ export function LineConversationView({
           } as any];
         });
         showToast(message.length > 72 ? message.slice(0, 72) + '…' : message);
-        setIsTyping(false);
+        clearTyping();
         return;
       }
     }
@@ -3930,7 +3931,7 @@ export function LineConversationView({
         showToast(message.length > 72 ? message.slice(0, 72) + '…' : message);
       }
     } finally {
-      setIsTyping(false);
+      clearTyping();
     }
   };
   // 双击头像“拍一拍 / 戳一戳” (Nudge / Poke)
