@@ -5,6 +5,14 @@ type InitialValue<T> = T | (() => T);
 const DIAGNOSTICS_KEY = 'sane333:storage-diagnostics';
 const MAX_DIAGNOSTICS = 100;
 
+function redactDiagnosticText(value: string): string {
+  return value
+    .replace(/\bAIza[0-9A-Za-z_-]{20,}\b/g, '[REDACTED_API_KEY]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [REDACTED]')
+    .replace(/\bsk-(?:proj-)?[A-Za-z0-9_-]{16,}\b/g, '[REDACTED_API_KEY]')
+    .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|password|client[_-]?secret)\s*[:=]\s*["']?)[^&\s"'<>]+/gi, '$1[REDACTED]');
+}
+
 export interface PersistenceDiagnostic {
   id: string;
   time: string;
@@ -14,12 +22,13 @@ export interface PersistenceDiagnostic {
 }
 
 export function reportPersistenceIssue(area: string, message: string, error?: unknown): void {
-  const detail = error instanceof Error ? error.message : error == null ? '' : String(error);
+  const detail = redactDiagnosticText(error instanceof Error ? error.message : error == null ? '' : String(error));
+  const safeMessage = redactDiagnosticText(message);
   const entry: PersistenceDiagnostic = {
     id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
     time: new Date().toISOString(),
     area,
-    message,
+    message: safeMessage,
     detail,
   };
   try {
