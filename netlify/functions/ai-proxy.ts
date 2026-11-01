@@ -1,61 +1,140 @@
+type ChatMessage = { role: 'user' | 'assistant'; content: string };
+
+type Body = {
+  action?: 'models' | 'chat';
+  provider?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  systemPrompt?: string;
+  userPrompt?: string;
+  history?: ChatMessage[];
+};
+
+const DEFAULT_ALLOWED_HOSTS = new Set([
+  'generativelanguage.googleapis.com',
+  'api.openai.com',
+  'api.deepseek.com',
+  'api.siliconflow.cn',
+  'api.moonshot.cn',
+  'dashscope.aliyuncs.com',
+  'api.minimax.chat',
+  'api.minimaxi.com',
+  'openrouter.ai',
+  'api.groq.com',
+  'api.together.xyz',
+  'api.mistral.ai',
+  'api.perplexity.ai',
+  'api.x.ai',
+  'api.lingyiwanwu.com',
+  'api.stepfun.com',
+]);
+
+function json(data: unknown, status = 200, extra: Record<string, string> = {}) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...extra },
+  });
+}
+
+function cleanBaseUrl(value: string) {
+  return value
+    .trim()
+    .replace(/\\/+$/, '')
+    .replace(/\\/chat\\/completions$/i, '')
+    .replace(/\\/responses$/i, '')
+    .replace(/\\/models$/i, '')
+    .replace(/\\/+$/, '');
+}
+
+function validateBaseUrl(value: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error('Invalid API base URL');
+  }
+  if (parsed.protocol !== 'https:') throw new Error('AI proxy only allows HTTPS upstream URLs');
+  if (parsed.port && parsed.port !== '443') throw new Error('AI proxy only allows the standard HTTPS port');
+  if (parsed.username || parsed.password) throw new Error('Credentials must not be embedded in the API base URL');
+  if (parsed.search || parsed.hash) throw new Error('API base URL must not include query parameters or a fragment');
+
+  const runtime = globalThis as typeof globalThis & { process?: { env?: Record<string, string | undefined> } };
+  const configuredHosts = String(runtime.process?.env?.AI_PROXY_ALLOWED_HOSTS || '')
+    .split(',')
+    .map(host => host.trim().toLowerCase())
+    .filter(Boolean);
+  const allowedHosts = new Set([...DEFAULT_ALLOWED_HOSTS, ...configuredHosts]);
+  if (!allowedHosts.has(parsed.hostname.toLowerCase())) {
+    throw new Error('API host is not allowed by the server proxy. Add its exact hostname to AI_PROXY_ALLOWED_HOSTS if you trust this provider.');
+  }
+  return cleanBaseUrl(parsed.toString());
+}
+
+async function fetchUpstream(input: string, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000);
+  try {
+    return await fetch(input, {
+      ...init,
+      redirect: 'error',
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function upstreamJson(response: Response) {
+  const text = await response.text();
+  let data: unknown = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: text || response.statusText || 'Upstream returned invalid JSON' };
+  }
+  return json(data, response.status, {
+    'Content-Type': response.headers.get('content-type') || 'application/json',
+  });
+}
+
 export default async function handler(request: Request) {
   if (request.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
-    });
+    // Same-origin requests need no permissive Access-Control-Allow-Origin header.
+    return new Response(null, { status: 204, headers: { 'Allow': 'POST, OPTIONS' } });
   }
-
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Content-Type': 'application/json',
-  };
-
-  if (request.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'POST required' }), { status: 405, headers });
-  }
+  if (request.method !== 'POST') return json({ error: 'POST required' }, 405);
 
   try {
-    const body = await request.json() as {
-      action?: string;
-      baseUrl?: string;
-      apiKey?: string;
-      provider?: string;
-      model?: string;
-      systemPrompt?: string;
-      userPrompt?: string;
-      history?: Array<{ role: 'user' | 'assistant'; content: string }>;
-    };
-
-    if (body.action !== 'models' && body.action !== 'chat') {
-      return new Response(JSON.stringify({ error: 'Unsupported action' }), { status: 400, headers });
-    }
-
+    const body = await request.json() as Body;
+    const provider = String(body.provider || 'openai-compatible');
     const apiKey = String(body.apiKey || '').trim();
-    let baseUrl = String(body.baseUrl || '').trim().replace(/\/+$/, '');
-    if (!apiKey || !baseUrl) {
-      return new Response(JSON.stringify({ error: 'baseUrl and apiKey are required' }), { status: 400, headers });
+    const rawBaseUrl = cleanBaseUrl(String(body.baseUrl || ''));
+
+    if (!apiKey) return json({ error: 'API key is required' }, 400);
+    if (!rawBaseUrl) return json({ error: 'API base URL is required' }, 400);
+    const baseUrl = validateBaseUrl(rawBaseUrl);
+
+    if (body.action === 'models') {
+      const response = await fetchUpstream(baseUrl + '/models', {
+        method: 'GET',
+        headers: provider === 'gemini'
+          ? { Accept: 'application/json', 'x-goog-api-key': apiKey }
+          : { Accept: 'application/json', Authorization: 'Bearer ' + apiKey },
+      });
+      return upstreamJson(response);
     }
 
-    baseUrl = baseUrl
-      .replace(/\/chat\/completions$/i, '')
-      .replace(/\/responses$/i, '')
-      .replace(/\/models$/i, '')
-      .replace(/\/+$/, '');
+    if (body.action !== 'chat') {
+      return json({ error: 'Unsupported action. Use models or chat.' }, 400);
+    }
+    const model = String(body.model || '').trim();
+    if (!model) return json({ error: 'Model is required' }, 400);
 
-    if (body.action === 'chat') {
-      const provider = String(body.provider || 'openai-compatible');
-      const model = String(body.model || '').trim();
-      if (!model) return new Response(JSON.stringify({ error: 'model is required' }), { status: 400, headers });
-
-      if (provider === 'gemini') {
-        const actionUrl = baseUrl + '/models/' + encodeURIComponent(model) + ':generateContent';
-        const upstream = await fetch(actionUrl, {
+    if (provider === 'gemini') {
+      const response = await fetchUpstream(
+        baseUrl + '/models/' + encodeURIComponent(model) + ':generateContent',
+        {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
           body: JSON.stringify({
@@ -69,59 +148,38 @@ export default async function handler(request: Request) {
             ],
             generationConfig: { temperature: 0.2, maxOutputTokens: 5000 },
           }),
-        });
-        const text = await upstream.text();
-        return new Response(text || '{}', {
-          status: upstream.status,
-          headers: { ...headers, 'Content-Type': upstream.headers.get('content-type') || 'application/json' },
-        });
-      }
-
-      const upstream = await fetch(baseUrl + '/chat/completions', {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer ' + apiKey,
         },
-        body: JSON.stringify({
-          model,
-          stream: false,
-          temperature: 0.2,
-          max_tokens: 5000,
-          messages: [
-            { role: 'system', content: String(body.systemPrompt || '') },
-            ...(body.history || []),
-            { role: 'user', content: String(body.userPrompt || '') },
-          ],
-        }),
-      });
-      const text = await upstream.text();
-      return new Response(text || '{}', {
-        status: upstream.status,
-        headers: { ...headers, 'Content-Type': upstream.headers.get('content-type') || 'application/json' },
-      });
+      );
+      return upstreamJson(response);
     }
 
-    const upstream = await fetch(baseUrl + '/models', {
-      method: 'GET',
+    const response = await fetchUpstream(baseUrl + '/chat/completions', {
+      method: 'POST',
       headers: {
         Accept: 'application/json',
+        'Content-Type': 'application/json',
         Authorization: 'Bearer ' + apiKey,
       },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        temperature: 0.2,
+        max_tokens: 5000,
+        messages: [
+          { role: 'system', content: String(body.systemPrompt || '') },
+          ...(body.history || []),
+          { role: 'user', content: String(body.userPrompt || '') },
+        ],
+      }),
     });
-
-    const text = await upstream.text();
-    return new Response(text || '{}', {
-      status: upstream.status,
-      headers: {
-        ...headers,
-        'Content-Type': upstream.headers.get('content-type') || 'application/json',
-      },
-    });
+    return upstreamJson(response);
   } catch (error) {
-    return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : 'Proxy request failed',
-    }), { status: 502, headers });
+    // Do not reflect arbitrary upstream error objects or request credentials.
+    const message = error instanceof Error && error.name === 'AbortError'
+      ? 'AI upstream request timed out'
+      : error instanceof Error
+        ? error.message
+        : 'AI proxy request failed';
+    return json({ error: message }, 502);
   }
 }
