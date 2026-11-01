@@ -72,7 +72,7 @@ import {
 import { appendLineMessage, editLineMessage, toggleLineReaction, setLineMessageFavorite, recordLineCall, markLineMessageFailed, clearLineConversation, recallLineMessage, updateLineMessage } from '../../store/lineRuntime';
 import { saveCallRecord, getCallHistory, deleteCallRecord, formatCallDuration, type CallRecord } from '../../store/callHistory';
 import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, searchLineMessages, type LineRuntimeMessage } from '../../store/lineRuntime';
-import { isLineTurnContextCurrent, releaseLineTypingRequest } from '../../store/lineTurnGuard';
+import { isLineTurnRequestCurrent, releaseLineTypingRequest } from '../../store/lineTurnGuard';
 import { fetchLineWeather, formatLineWeather, type LineWeatherSnapshot } from '../../store/lineReality';
 import { getRecentMomentsForGroup, maybePostGroupMomentAfterRound } from '../../store/momentsAfterChat';
 import { getGroupAiSummaries, updateGroupAiSummary, deleteGroupAiSummary, buildGroupAiSummariesContext } from '../../store/groupAiSummaries';
@@ -3119,7 +3119,7 @@ export function LineConversationView({
 
     const turnContext = { conversationId: conversationStorageId, personaId: String(resolvedPersonaId || '') };
     const turnRequestId = 'line-turn-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-    const isCurrentTurn = () => isLineTurnContextCurrent(currentTurnContextRef.current, turnContext);
+    const isCurrentTurn = () => isLineTurnRequestCurrent(currentTurnContextRef.current, turnContext, typingRequestIdRef, turnRequestId);
     const clearTyping = () => releaseLineTypingRequest(
       typingRequestIdRef,
       turnRequestId,
@@ -5747,15 +5747,13 @@ export function LineConversationView({
     const target = messages[targetIndex];
     const turnContext = { conversationId: conversationStorageId, personaId: String(resolvedPersonaId || '') };
     const turnRequestId = 'line-reroll-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-    const isCurrentTurn = () =>
-      currentTurnContextRef.current.conversationId === turnContext.conversationId &&
-      currentTurnContextRef.current.personaId === turnContext.personaId;
-    const clearTyping = () => {
-      if (typingRequestIdRef.current !== turnRequestId) return;
-      typingRequestIdRef.current = '';
-      setIsTyping(false);
-      (window as any).__lineTypingStart = 0;
-    };
+    const isCurrentTurn = () => isLineTurnRequestCurrent(currentTurnContextRef.current, turnContext, typingRequestIdRef, turnRequestId);
+    const clearTyping = () => releaseLineTypingRequest(
+      typingRequestIdRef,
+      turnRequestId,
+      setIsTyping,
+      () => { (window as any).__lineTypingStart = 0; },
+    );
     typingRequestIdRef.current = turnRequestId;
 
     const previousUserIndex = [...messages.slice(0, targetIndex)].map((message, index) => ({ message, index })).reverse().find(item => item.message.sender === 'me' && item.message.text?.trim())?.index ?? -1;
