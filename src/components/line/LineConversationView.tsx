@@ -1421,6 +1421,54 @@ export function LineConversationView({
       traits: '',
     };
 
+  // 数据修复：把署名是用户本人、但 sender 存错成 other/缺失的消息，一次性纠正为 me。
+  // 只认单聊（群聊里成员名会撞），且绝不动 type='ai-reply'（那是角色回复，归对方规则管）
+  // 和 sender='system'（系统消息）。修的是存储里的 sender 本身，修完后“只认 sender”的
+  // 渲染规则就永远是对的，删除/发送再也不会让已纠正的消息翻转。
+  useEffect(() => {
+    if (isGroup) return;
+    const myNames = new Set(
+      [currentUserNameFallback(), activePersona?.name, '我'].map((s) => String(s || '').trim()).filter(Boolean),
+    );
+    if (myNames.size === 0) return;
+    const fixUserSender = (items: any[]) => {
+      let changed = false;
+      const next = items.map((item) => {
+        if (!item || typeof item !== 'object') return item;
+        const sender = String(item.sender || '').trim().toLowerCase();
+        if (sender === 'me' || sender === 'user' || sender === 'system') return item;
+        if (item.type === 'ai-reply') return item;
+        const name = String(item.senderName || '').trim();
+        if (name && myNames.has(name)) {
+          changed = true;
+          return { ...item, sender: 'me', senderType: 'user' };
+        }
+        return item;
+      });
+      return changed ? next : items;
+    };
+
+    setMessages((prev: any[]) => fixUserSender(Array.isArray(prev) ? prev : []));
+
+    try {
+      const fixedKey = 'line:fix-user-sender-v1';
+      if (window.localStorage.getItem(fixedKey)) return;
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (!key || !key.startsWith('line:conversation:')) continue;
+        try {
+          const raw = window.localStorage.getItem(key);
+          if (!raw) continue;
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) continue;
+          const repaired = fixUserSender(parsed);
+          if (repaired !== parsed) window.localStorage.setItem(key, JSON.stringify(repaired));
+        } catch { /* 跳过损坏的历史会话 */ }
+      }
+      window.localStorage.setItem(fixedKey, String(Date.now()));
+    } catch { /* 忽略存储不可用 */ }
+  }, [conversationStorageId, isGroup, setMessages, activePersona?.name]);
+
   // A request belongs to the conversation + persona that started it. If either
   // changes, stale stream callbacks must not write into the newly active context.
   const currentTurnContextRef = useRef({ conversationId: conversationStorageId, personaId: String(resolvedPersonaId || '') });
