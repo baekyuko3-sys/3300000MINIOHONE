@@ -111,38 +111,30 @@ export function saveLineConversationMessages(id: string, messages: LineRuntimeMe
  * Explicit user markers win; explicit NPC/character/system markers stay incoming.
  * Display names are only a legacy fallback and never override an explicit user marker.
  */
-export function isLineMessageFromUser(candidate: any, activeCharacterName = '', userName = ''): boolean {
+/**
+ * 消息方向只由发送者身份决定：
+ * - sender=me/user：用户发出，放右侧
+ * - sender=other：角色/NPC 发出，放左侧
+ * - sender=system：系统消息，不参与左右聊天气泡布局
+ * senderType 仅用于旧消息缺少 sender 字段时兜底；昵称和消息类型绝不反向覆盖发送者身份。
+ */
+export function isLineMessageFromUser(candidate: any, _activeCharacterName = '', _userName = ''): boolean {
   if (!candidate) return false;
+
   const sender = String(candidate.sender || '').trim().toLowerCase();
-  const senderType = String(candidate.senderType || candidate.metadata?.senderType || '').trim().toLowerCase();
+  if (sender === 'me' || sender === 'user') return true;
+  if (sender === 'other' || sender === 'system') return false;
 
-  if (sender === 'system' || senderType === 'system') return false;
-  if (senderType === 'user' || sender === 'user') return true;
-  // 单聊里发送名就是用户本人时，就是用户消息——哪怕 sender 存错了（如 AI 回复流程误标）。
-  // userName 只在单聊传入，群聊不启用，避免成员重名误判。
-  const senderNameEarly = String(candidate.senderName || '').trim();
-  const userNameTrimmed = String(userName || '').trim();
-  if (senderNameEarly && userNameTrimmed && senderNameEarly === userNameTrimmed) return true;
-  if (sender === 'other' || senderType === 'character' || senderType === 'npc') return false;
-  if (sender !== 'me') return false;
+  // 仅当旧消息没有 sender 时，才读取 senderType 兼容历史数据。
+  if (!sender) {
+    const senderType = String(candidate.senderType || candidate.metadata?.senderType || '').trim().toLowerCase();
+    if (senderType === 'user') return true;
+    if (senderType === 'character' || senderType === 'npc' || senderType === 'system') return false;
+  }
 
-  // sender 已是 'me'：只有强角色信号才能把它推到左边。
-  // 裸 characterId/npcId 只是“这是哪个角色的会话”，不是“谁发的”——用户在角色会话里发的
-  // 消息也会带它，之前这里把它一律判成角色消息，导致用户消息跑到左边。
-  const messageKind = String(candidate.type || candidate.kind || '').trim().toLowerCase();
-  const hasStrongCharacterIdentity = Boolean(
-    messageKind === 'ai-reply' ||
-    candidate.senderType === 'character' ||
-    candidate.senderType === 'npc'
-  );
-  if (hasStrongCharacterIdentity) return false;
-
-  const senderName = String(candidate.senderName || '').trim();
-  const characterName = String(activeCharacterName || '').trim();
-  if (senderName && characterName && senderName === characterName) return false;
-  return true;
+  // 未知或缺失的发送者身份默认不冒充用户消息，避免误排到右侧。
+  return false;
 }
-
 /** AI 误把内部结构化数据块（如角色卡朋友圈 WX_MOMENTS 数据）输出到聊天正文时，去掉它。
  *  块格式：[WX_MOMENTS: Signature="...", Private1="...", ...]，字段值可能含中文逗号但不含裸双引号；
  *  若块被截断没有右括号，则从标记起截到文末（这类块只会出现在正文末尾）。 */
