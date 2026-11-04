@@ -139,6 +139,51 @@ test('phone diagnosis ranks storage usage so the biggest chats are visible', asy
   assert.ok(settings.includes('largestKeys'));
 });
 
+test('safe storage cleanup only removes logs, histories and snapshots', async () => {
+  // The one-tap cleanup must free space without touching user data: chats,
+  // characters and unrelated keys (including status-bar-random) must survive.
+  const prevWindow = globalThis.window;
+  const store = new Map([
+    ['phone:ai-debug-log', JSON.stringify([{ event: 'x' }])],
+    ['line:status-bar-history:c1', JSON.stringify([{ html: '<b>a</b>' }])],
+    ['line:status-bar-history:c2', JSON.stringify([{ html: '<b>b</b>' }])],
+    ['line:chat-settings-snapshot:c1', JSON.stringify({ name: 'c1' })],
+    ['line:conversation:c1', JSON.stringify([{ role: 'user', text: 'keep me' }])],
+    ['phone:characters', JSON.stringify([{ id: 'ch1' }])],
+    ['line:status-bar-random:c1', JSON.stringify({ r: 1 })],
+  ]);
+  const mockStorage = {
+    get length() { return store.size; },
+    key: (i) => [...store.keys()][i] ?? null,
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => { store.set(k, String(v)); },
+    removeItem: (k) => { store.delete(k); },
+    clear: () => { store.clear(); },
+  };
+  globalThis.window = { localStorage: mockStorage, dispatchEvent: () => {} };
+  try {
+    const { cleanupSafeStorageBloat } = await import('../src/store/phoneDiagnostics.ts');
+    const expectedFreed = ['phone:ai-debug-log', 'line:status-bar-history:c1', 'line:status-bar-history:c2', 'line:chat-settings-snapshot:c1']
+      .reduce((sum, k) => sum + k.length + JSON.stringify(JSON.parse(store.get(k))).length, 0);
+    const result = cleanupSafeStorageBloat();
+    assert.equal(result.removed, 4);
+    assert.equal(result.freedBytes, expectedFreed);
+    for (const k of ['phone:ai-debug-log', 'line:status-bar-history:c1', 'line:status-bar-history:c2', 'line:chat-settings-snapshot:c1']) {
+      assert.equal(store.has(k), false);
+    }
+    for (const k of ['line:conversation:c1', 'phone:characters', 'line:status-bar-random:c1']) {
+      assert.equal(store.has(k), true);
+    }
+  } finally {
+    if (prevWindow === undefined) delete globalThis.window;
+    else globalThis.window = prevWindow;
+  }
+  const { readFile } = await import('node:fs/promises');
+  const settings = await readFile(new URL('../src/components/screens/SettingsScreenView.tsx', import.meta.url), 'utf8');
+  assert.ok(settings.includes('清理日志和历史快照'));
+  assert.ok(settings.includes('cleanupSafeStorageBloat'));
+});
+
 test('group invite picker shows already-in-group friends and persistent failure reasons', async () => {
   // Members must not be hidden silently: the picker shows them greyed out
   // with an explicit already-in-group mark. And a failed invite must leave

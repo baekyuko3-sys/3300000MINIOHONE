@@ -297,6 +297,38 @@ export function diagnosePhone(): PhoneDiagnosis {
 }
 
 /**
+ * 一键清理安全项：只删调试日志、状态栏历史、设定快照。
+ * 绝不碰聊天、角色卡、世界书、好友、群、朋友圈等用户数据。
+ * 设定快照是备份用的副本（真正的设定存在独立的键里，且没有代码读回快照），
+ * 状态栏历史只是以前的样式记录，调试日志只是运行记录。
+ * 返回清理项数与腾出的约数字节数（调用方刷新体检报告即可验证）。
+ */
+export function cleanupSafeStorageBloat(): { removed: number; freedBytes: number } {
+  if (typeof window === 'undefined') return { removed: 0, freedBytes: 0 };
+  const keys: string[] = [];
+  for (let i = 0; i < window.localStorage.length; i++) {
+    const key = window.localStorage.key(i);
+    if (key) keys.push(key);
+  }
+  let removed = 0;
+  let freedBytes = 0;
+  for (const key of keys) {
+    const isSafe = key === 'phone:ai-debug-log'
+      || key.startsWith('line:status-bar-history:')
+      || key.startsWith('line:chat-settings-snapshot:');
+    if (!isSafe) continue;
+    const raw = window.localStorage.getItem(key) || '';
+    freedBytes += key.length + raw.length;
+    window.localStorage.removeItem(key);
+    removed += 1;
+  }
+  if (removed > 0) {
+    try { window.dispatchEvent(new CustomEvent('sane333:status-bar-history-changed')); } catch { /* ignore */ }
+  }
+  return { removed, freedBytes };
+}
+
+/**
  * 全局修复错位消息：所有会话里 kind=ai-reply 但 role=user 的消息翻回 assistant。
  * ai-reply 按定义就是 AI 发的，不可能是用户消息，安全。
  */

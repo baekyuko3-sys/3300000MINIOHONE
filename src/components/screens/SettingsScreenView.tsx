@@ -26,7 +26,7 @@ import {
 } from '../../store/backgroundRuntime';
 import { getGitHubSyncConfig, getGitHubToken, pullSnapshotFromGitHub, saveGitHubSyncConfig, saveGitHubToken, syncSnapshotToGitHub, testGitHubSync } from '../../store/githubSync';
 import { repairBlankChats } from '../../store/lineRuntime';
-import { diagnosePhone, formatStorageBytes, type PhoneDiagnosis } from '../../store/phoneDiagnostics';
+import { cleanupSafeStorageBloat, diagnosePhone, formatStorageBytes, type PhoneDiagnosis } from '../../store/phoneDiagnostics';
 
 function collectLocalData(includeSecrets = true) {
   const data: Record<string, unknown> = {};
@@ -467,11 +467,23 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
   };
 
   const [diagnosis, setDiagnosis] = useState<PhoneDiagnosis | null>(null);
+  const [cleanupResult, setCleanupResult] = useState<{ removed: number; freedBytes: number } | null>(null);
   const runDiagnosis = () => {
     try {
+      setCleanupResult(null);
       setDiagnosis(diagnosePhone());
     } catch (e) {
       notify('体检失败：' + (e instanceof Error ? e.message : '未知错误'));
+    }
+  };
+  const runStorageCleanup = () => {
+    try {
+      const result = cleanupSafeStorageBloat();
+      setCleanupResult(result);
+      setDiagnosis(diagnosePhone());
+      notify(`已清理 ${result.removed} 项，腾出约 ${formatStorageBytes(result.freedBytes)}`);
+    } catch (e) {
+      notify('清理失败：' + (e instanceof Error ? e.message : '未知错误'));
     }
   };
 
@@ -1120,6 +1132,10 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
                       ))}
                     </div>
                     <div className="text-[8px] leading-relaxed text-[#8b8782]">删掉不用的大聊天就能腾出空间（删之前先备份）。</div>
+                    <button onClick={runStorageCleanup} className="py-2 rounded-lg bg-[#292724] text-white text-[9px]">清理日志和历史快照（调试日志、状态栏历史、设定快照）</button>
+                    {cleanupResult && (
+                      <div className="text-[8px] leading-relaxed text-[#5f7a5a]">已清理 {cleanupResult.removed} 项，腾出约 {formatStorageBytes(cleanupResult.freedBytes)}。聊天、角色卡、世界书都没动。</div>
+                    )}
                   </>
                 )}
                 {diagnosis.issues.length === 0 ? (
