@@ -6751,8 +6751,9 @@ export function LineConversationView({
                 </div>
               )}
               <div
-                className={`w-full flex flex-nowrap items-end gap-2 transition-transform duration-75 ease-out ${isMe ? 'justify-end' : 'justify-start'}`}
-                style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', transform: swipingMessageId === msg.id ? `translateX(${swipeOffset}px)` : 'translateX(0)' }}
+                className={`line-message-row w-full flex flex-nowrap items-end gap-2 transition-transform duration-75 ease-out ${isMe ? 'line-message-row--me justify-end' : 'line-message-row--other justify-start'}`}
+                data-message-side={isMe ? 'me' : 'other'}
+                style={{ transform: swipingMessageId === msg.id ? `translateX(${swipeOffset}px)` : 'translateX(0)' }}
               >
               {/* Multi-select checkbox */}
               {isMultiSelectMode && (
@@ -6798,7 +6799,7 @@ export function LineConversationView({
                       handleMessageAvatarDoubleClick(msg.senderName || characterProfile.nickname);
                     }
                   }}
-                  className={`w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 self-start mt-0.5 cursor-pointer hover:opacity-80 active:scale-95 transition-all ${
+                  className={`line-message-avatar line-message-avatar--other w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 self-start mt-0.5 cursor-pointer hover:opacity-80 active:scale-95 transition-all ${
                     nudgeAvatar ? 'scale-110 ring-2 ring-[#d4aab5]' : ''
                   }`}
                   title={isGroup ? `单击查看${msg.senderName || characterProfile.nickname}心声，双击@该成员` : '单击打开状态卡，双击拍一拍'}
@@ -6823,7 +6824,7 @@ export function LineConversationView({
 
               {/* Bubble content container */}
               <div
-                className={`min-w-0 flex flex-col ${isMe ? 'ml-auto ' : ''}${isGroup && !isMe ? 'flex-1 items-start' : 'max-w-[78%] relative touch-pan-y select-none ' + (isMe ? 'items-end' : 'items-start')}`}
+                className={`line-message-bubble min-w-0 flex flex-col ${isGroup && !isMe ? 'flex-1 items-start' : 'max-w-[78%] relative touch-pan-y select-none ' + (isMe ? 'items-end' : 'items-start')}`}
               >
                 {/* COT 小标签已按用户要求移除 */}
 
@@ -7884,7 +7885,7 @@ export function LineConversationView({
                   <div className="w-[31px] shrink-0" aria-hidden="true" />
                 ) : (
                 <div
-                  className="w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 self-end mb-0.5 border border-white"
+                  className="line-message-avatar line-message-avatar--me w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 self-end mb-0.5 border border-white"
                   title={activePersona.name ? `我的人设：${activePersona.name}` : '我的头像'}
                 >
                   {activePersona.avatar ? (
