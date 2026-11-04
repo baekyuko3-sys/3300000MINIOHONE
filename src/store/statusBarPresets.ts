@@ -402,6 +402,12 @@ export function sanitizeHtmlFragment(html: string): string {
       if (name.startsWith('on') || name === 'srcdoc' || ((name === 'href' || name === 'src') && value.startsWith('javascript:'))) {
         node.removeAttribute(attribute.name);
       }
+      // 行内 style 也要过滤：否则 position:fixed / 超大尺寸会把聊天布局整个撑坏
+      if (name === 'style') {
+        const safeStyle = sanitizeStatusBarCssDeclarations(attribute.value);
+        if (safeStyle) node.setAttribute('style', safeStyle);
+        else node.removeAttribute('style');
+      }
     });
   });
   return template.innerHTML.trim();
@@ -522,3 +528,4 @@ export function getStatusBarForCharacter(characterId: string | undefined, target
   }
   return getStatusBarForTarget(target);
 }
+
