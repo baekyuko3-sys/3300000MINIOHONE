@@ -2127,6 +2127,7 @@ export function LineConversationView({
   const [groupInviteTab, setGroupInviteTab] = useState<'character' | 'npc'>('character');
   const [groupInviteSearch, setGroupInviteSearch] = useState('');
   const [groupInviteSelected, setGroupInviteSelected] = useState<string[]>([]);
+  const [groupInviteError, setGroupInviteError] = useState('');
   const [groupNameDraft, setGroupNameDraft] = useState('');
 
   useEffect(() => {
@@ -12137,6 +12138,18 @@ export function LineConversationView({
           return !members.some(m => m.name === f.name || (f.characterId && m.characterId === f.characterId));
         });
 
+        // 已在群里的当前人设好友：不再藏起来，灰掉并标“已在群里”，让人一眼看到谁已在群里。
+        const alreadyInGroupFriends = lineFriends.filter(f => {
+          const q = groupInviteSearch.trim().toLowerCase();
+          if (q && !String(f.name || '').toLowerCase().includes(q) && !String(f.note || '').toLowerCase().includes(q)) return false;
+          // 与 inviteableFriends 同一套人设规则
+          if (resolvedPersonaId && f.npcId && f.personaId !== resolvedPersonaId) return false;
+          const inviteBoundIds: string[] = Array.isArray((activePersona as any)?.boundCharacterIds) ? (activePersona as any).boundCharacterIds : [];
+          if (inviteBoundIds.length > 0 && !f.npcId && f.characterId && !inviteBoundIds.includes(f.characterId)) return false;
+          const members = activeGroup?.members || [];
+          return members.some(m => m.name === f.name || (f.characterId && m.characterId === f.characterId));
+        });
+
         const selectedMeta = groupInviteSelected.map(key => {
           const f = lineFriends.find(x => 'friend:' + x.name === key);
           if (!f) return null;
@@ -12145,13 +12158,14 @@ export function LineConversationView({
         }).filter(Boolean) as Array<{ key: string; name: string; avatar: string; kind: '好友' }>;
 
         const toggleInviteKey = (key: string) => {
+          setGroupInviteError('');
           setGroupInviteSelected(prev => prev.includes(key) ? prev.filter(x => x !== key) : [...prev, key]);
         };
 
         return (
           <div className="absolute inset-0 z-[72] bg-[#f7f7f8] flex flex-col animate-in slide-in-from-bottom">
             <div className="shrink-0 h-[56px] bg-white border-b border-[#ededee] flex items-center justify-between px-3">
-              <button type="button" onClick={() => { setShowGroupInvitePicker(false); setGroupInviteSelected([]); }} className="text-[13px] text-[#888] px-2">取消</button>
+              <button type="button" onClick={() => { setShowGroupInvitePicker(false); setGroupInviteSelected([]); setGroupInviteError(''); }} className="text-[13px] text-[#888] px-2">取消</button>
               <div className="text-center">
                 <div className="font-semibold text-sm text-[#333]">邀请成员</div>
                 <div className="text-[10px] text-[#999]">只能邀请已添加的好友</div>
@@ -12186,6 +12200,7 @@ export function LineConversationView({
                     addedNames.push(f.name);
                   }
                   if (added === 0) {
+                    setGroupInviteError('所选好友已在群里');
                     showToast('所选好友已在群里');
                     return;
                   }
@@ -12196,6 +12211,7 @@ export function LineConversationView({
                   const allSaved = !!savedGroup && addedNames.every(n => (savedGroup.members || []).some((m: any) => m && m.name === n));
                   if (!allSaved) {
                     const reason = saveResult.error === 'QuotaExceededError' ? '本地存储空间不足' : (saveResult.error && saveResult.error !== 'unknown' ? saveResult.error : '请重试');
+                    setGroupInviteError(`添加失败（${reason}），没有加上`);
                     showToast(`成员保存失败（${reason}），没有加上`);
                     return;
                   }
@@ -12210,6 +12226,7 @@ export function LineConversationView({
                   });
                   setShowGroupInvitePicker(false);
                   setGroupInviteSelected([]);
+                  setGroupInviteError('');
                   showToast(`已邀请 ${added} 位好友进群`);
                 }}
                 className="min-w-[52px] text-[13px] font-semibold text-[#06C755] px-2 disabled:opacity-35"
@@ -12235,7 +12252,7 @@ export function LineConversationView({
             <div className="shrink-0 bg-white px-3 pt-2 pb-3 space-y-2 border-b border-[#f0f0f1]">
               <input
                 value={groupInviteSearch}
-                onChange={e => setGroupInviteSearch(e.target.value)}
+                onChange={e => { setGroupInviteError(''); setGroupInviteSearch(e.target.value); }}
                 placeholder="搜索好友名称或备注…"
                 className="w-full p-2.5 rounded-[12px] bg-[#f4f4f5] border-0 text-[11px] outline-none"
               />
@@ -12243,6 +12260,12 @@ export function LineConversationView({
                 只能邀请已添加的好友进群。
               </div>
             </div>
+
+            {groupInviteError && (
+              <div className="shrink-0 bg-white px-4 py-2.5 border-b border-[#f0f0f1]">
+                <div className="text-[11px] text-[#c0392b]">{groupInviteError}</div>
+              </div>
+            )}
 
             <div className="flex-1 min-h-0 overflow-y-auto">
               <div className="divide-y divide-[#f2f2f3] bg-white">
@@ -12266,7 +12289,26 @@ export function LineConversationView({
                     </button>
                   );
                 })}
-                {inviteableFriends.length === 0 && (
+                {alreadyInGroupFriends.length > 0 && (
+                  <div className="px-4 py-2 text-[10px] text-[#aaa] bg-[#fafafa]">已在群里</div>
+                )}
+                {alreadyInGroupFriends.map(f => {
+                  const c = f.characterId ? importedCharacters.find(item => item.id === f.characterId) : null;
+                  return (
+                    <div key={'in-group-' + f.name} className="w-full flex items-center gap-3 px-4 py-3 opacity-60">
+                      <div className="w-5 h-5 shrink-0" />
+                      <div className="w-11 h-11 rounded-full overflow-hidden bg-[#f5f2f3] border border-[#eee7e9] shrink-0 grid place-items-center">
+                        {c?.avatar ? <VroomImage src={c.avatar} alt="" className="w-full h-full object-cover" /> : <span className="text-[12px] text-[#999]">{(f.name || '?').slice(0, 1)}</span>}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-medium text-[#333] truncate">{f.note || f.name}</div>
+                        {f.note && f.note !== f.name && <div className="text-[10px] text-[#aaa] truncate">{f.name}</div>}
+                        <div className="text-[10px] text-[#aaa] mt-0.5">已在群里</div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {inviteableFriends.length === 0 && alreadyInGroupFriends.length === 0 && (
                   <div className="p-8 text-center text-[11px] text-[#aaa]">{groupInviteSearch.trim() ? '没有匹配的好友' : '没有可邀请的好友了<br />请先添加好友'}</div>
                 )}
               </div>

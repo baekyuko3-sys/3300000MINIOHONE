@@ -96,6 +96,19 @@ test('group invite list only shows the current persona\'s friends', async () => 
   assert.ok(picker.includes('inviteBoundIds.includes(f.characterId)'));
 });
 
+test('group invite picker shows already-in-group friends and persistent failure reasons', async () => {
+  // Members must not be hidden silently: the picker shows them greyed out
+  // with an explicit already-in-group mark. And a failed invite must leave
+  // its reason visible inside the picker, not only in a fleeting toast.
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
+  assert.ok(source.includes('alreadyInGroupFriends'));
+  assert.ok(source.includes('已在群里'));
+  assert.ok(source.includes('groupInviteError'));
+  assert.ok(source.includes('添加失败'));
+  assert.ok(source.includes('setGroupInviteError'));
+});
+
 test('group invite failure toast names the reason', async () => {
   // A failed save used to leave the picker open with no explanation. The
   // failure toast must say why (storage full maps to plain language) so the
