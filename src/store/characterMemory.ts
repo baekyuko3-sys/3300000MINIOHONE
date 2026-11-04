@@ -98,6 +98,18 @@ export function clearCharacterMemory(characterId: string, personaId?: string | n
   window.localStorage.removeItem(keyFor(characterId, personaId));
 }
 
+/** Clear the base key and every persona-specific variant for a character. */
+export function clearAllCharacterMemoryVariants(characterId: string) {
+  if (typeof window === 'undefined' || !characterId) return;
+  const base = keyFor(characterId);
+  const personaPrefix = base + ':persona:';
+  const toRemove: string[] = [];
+  for (let i = 0; i < window.localStorage.length; i++) {
+    const key = window.localStorage.key(i);
+    if (key && (key === base || key.startsWith(personaPrefix))) toRemove.push(key);
+  }
+  toRemove.forEach(key => window.localStorage.removeItem(key));
+}
 export function getCharacterMemory(characterId: string, characterName: string, personaId?: string | null): CharacterMemory {
   if (typeof window === 'undefined') return emptyMemory(characterId, characterName, personaId);
   const key = keyFor(characterId, personaId);
@@ -553,3 +565,4 @@ export function buildMemoryContext(memory: CharacterMemory, maxItems = 20, query
 
   return sections.join('\n\n') || '当前没有已保存的长期记忆。';
 }
+
