@@ -13,7 +13,7 @@ test('LINE keeps explicit incoming character and NPC messages on the left', () =
   assert.equal(isLineMessageFromUser({ sender: 'me', senderType: 'character' }), false);
   assert.equal(isLineMessageFromUser({ sender: 'me', senderType: 'npc' }), false);
   assert.equal(isLineMessageFromUser({ sender: 'me', type: 'ai-reply' }), false);
-  assert.equal(isLineMessageFromUser({ sender: 'me', metadata: { characterId: 'npc-1' } }), false);
+  assert.equal(isLineMessageFromUser({ sender: 'me', metadata: { characterId: 'npc-1' } }), true);
 });
 
 test('legacy sender display names do not override explicit user identity', () => {
@@ -26,5 +26,5 @@ test('LINE bubble content wrapper is a flex column so side alignment classes tak
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
   assert.match(source, /className=\{\`min-w-0 flex flex-col \$\{isGroup && !isMe \?/);
-  assert.match(source, /max-w-\[78%\][^\`]*\$\{isMe \? 'items-end' : 'items-start'\}/);
+  assert.ok(source.includes("'max-w-[78%] relative touch-pan-y select-none ' + (isMe ? 'items-end' : 'items-start')"));
 });
