@@ -26,6 +26,7 @@ import {
 } from '../../store/backgroundRuntime';
 import { getGitHubSyncConfig, getGitHubToken, pullSnapshotFromGitHub, saveGitHubSyncConfig, saveGitHubToken, syncSnapshotToGitHub, testGitHubSync } from '../../store/githubSync';
 import { repairBlankChats } from '../../store/lineRuntime';
+import { diagnosePhone, fixMisalignedSenders, type PhoneDiagnosis } from '../../store/phoneDiagnostics';
 
 function collectLocalData(includeSecrets = true) {
   const data: Record<string, unknown> = {};
@@ -463,6 +464,20 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
     } catch (e) {
       notify('修复失败：' + (e instanceof Error ? e.message : '未知错误'));
     }
+  };
+
+  const [diagnosis, setDiagnosis] = useState<PhoneDiagnosis | null>(null);
+  const runDiagnosis = () => {
+    try {
+      setDiagnosis(diagnosePhone());
+    } catch (e) {
+      notify('体检失败：' + (e instanceof Error ? e.message : '未知错误'));
+    }
+  };
+  const fixMisaligned = () => {
+    const n = fixMisalignedSenders();
+    notify(n > 0 ? `已把 ${n} 条错位消息翻回左边` : '没有发现错位消息');
+    setDiagnosis(diagnosePhone());
   };
 
   const clearAll = () => {
@@ -1088,6 +1103,38 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
             </div>
             <button onClick={() => onNavigate('project-studio')} className="mt-2 w-full py-2.5 rounded-xl bg-white/75 border border-[rgba(40,36,31,.12)] text-[10px] flex items-center justify-center gap-1.5"><Smartphone className="w-3.5 h-3.5 text-[#8b7560]" />Studio · AI 编程工作台</button>
             <button onClick={repairBlank} className="mt-2 w-full py-2.5 rounded-xl bg-white/75 border border-[rgba(40,36,31,.12)] text-[10px] flex items-center justify-center gap-1.5"><Wrench className="w-3.5 h-3.5 text-[#8b7560]" />修复空白聊天（恢复数据 / 清除空聊天）</button>
+            <button onClick={runDiagnosis} className="mt-2 w-full py-2.5 rounded-xl bg-white/75 border border-[rgba(40,36,31,.12)] text-[10px] flex items-center justify-center gap-1.5"><Shield className="w-3.5 h-3.5 text-[#8b7560]" />手机体检（检查哪里有错误）</button>
+            {diagnosis && (
+              <div className="mt-2 p-3 rounded-xl bg-white/70 border border-[rgba(40,36,31,.1)] space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold">体检报告 · {new Date(diagnosis.checkedAt).toLocaleString()}</span>
+                  <button onClick={() => setDiagnosis(null)} className="text-[9px] text-[#8b8782]">收起</button>
+                </div>
+                <div className="text-[9px] leading-relaxed text-[#6f6860]">
+                  聊天 {diagnosis.chatCount} 个 · 会话 {diagnosis.conversationCount} 个 · 消息 {diagnosis.messageCount} 条 · 本地数据 {(diagnosis.storageBytes / 1024).toFixed(0)} KB（{diagnosis.storageKeys} 个键）
+                </div>
+                {diagnosis.issues.length === 0 ? (
+                  <div className="text-[10px] font-semibold text-[#5f7a5a]">✅ 没发现问题，手机很健康。</div>
+                ) : (
+                  <>
+                    <div className="text-[10px] font-semibold text-[#9b625b]">发现 {diagnosis.issues.length} 项异常：</div>
+                    <div className="max-h-44 overflow-y-auto space-y-1.5">
+                      {diagnosis.issues.map((issue, i) => (
+                        <div key={i} className="rounded-lg bg-white/70 border border-black/5 p-2">
+                          <div className="text-[9px] font-semibold text-[#8f5f65]">{issue.title}</div>
+                          <div className="mt-0.5 text-[8px] leading-relaxed text-[#8b8782]">{issue.detail}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {diagnosis.counts.blankChats > 0 && <button onClick={repairBlank} className="py-2 rounded-lg bg-[#292724] text-white text-[9px]">修复空白聊天（{diagnosis.counts.blankChats}）</button>}
+                      {diagnosis.counts.misalignedMessages > 0 && <button onClick={fixMisaligned} className="py-2 rounded-lg bg-white border border-black/5 text-[9px]">修复错位消息（{diagnosis.counts.misalignedMessages}）</button>}
+                    </div>
+                    <div className="text-[8px] leading-relaxed text-[#8b8782]">体检只检查、不删数据；点修复按钮才会改动。重复聊天、幽灵好友、损坏数据、孤儿会话请截图发给 Muse 处理。</div>
+                  </>
+                )}
+              </div>
+            )}
             <button onClick={clearAll} className="mt-2 w-full py-2.5 rounded-xl bg-white/60 border border-[#cba6a0]/30 text-[#9b625b] text-[10px] flex items-center justify-center gap-1.5"><Trash2 className="w-3.5 h-3.5" />清空全部本机数据</button>
           </section>
         )}
