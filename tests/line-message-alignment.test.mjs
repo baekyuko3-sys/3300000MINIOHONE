@@ -30,7 +30,7 @@ test('LINE bubble content wrapper is a flex column so side alignment classes tak
   assert.ok(source.includes('w-full flex flex-nowrap items-end gap-2 transition-transform'));
 });
 
-test('LINE outgoing avatar stays inside the same horizontal row as its bubble', async () => {
+test('LINE outgoing avatar is ordered after the unchanged bubble inside the same row', async () => {
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
   const rowStart = source.indexOf('w-full flex flex-nowrap items-end gap-2 transition-transform');
