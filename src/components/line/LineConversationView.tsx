@@ -6752,7 +6752,7 @@ export function LineConversationView({
               )}
               <div
                 className={`w-full flex items-end gap-2 transition-transform duration-75 ease-out ${isMe ? 'justify-end' : 'justify-start'}`}
-                style={{ transform: swipingMessageId === msg.id ? `translateX(${swipeOffset}px)` : 'translateX(0)' }}
+                style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', transform: swipingMessageId === msg.id ? `translateX(${swipeOffset}px)` : 'translateX(0)' }}
               >
               {/* Multi-select checkbox */}
               {isMultiSelectMode && (
