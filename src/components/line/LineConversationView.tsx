@@ -1446,14 +1446,17 @@ export function LineConversationView({
 .custom-chat-view {
   --bubble-border-radius: 16px;
 }
+/* 默认外观：仅作为初始值；用户可在此编辑颜色、形状、字体、尺寸等 */
 .custom-chat-view .bubble-me {
   background: #f7eef0 !important;
   color: #303034 !important;
+  border-radius: var(--bubble-border-radius, 16px) !important;
   box-shadow: 0 1px 3px rgba(212, 170, 181, 0.12);
 }
 .custom-chat-view .bubble-other {
   background: #f5f5f6 !important;
   color: #303034 !important;
+  border-radius: var(--bubble-border-radius, 16px) !important;
 }
 .custom-chat-view .thinking-card {
   border-left: 2px solid #d4aab5;
