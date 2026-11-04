@@ -26,7 +26,8 @@ test('LINE bubble content wrapper is a flex column so side alignment classes tak
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
   assert.match(source, /className=\{\`min-w-0 flex flex-col \$\{isGroup && !isMe \?/);
-  assert.ok(source.includes("'max-w-[78%] relative touch-pan-y select-none ' + (isMe ? 'items-end' : 'items-start')"));
+  assert.ok(source.includes("'w-fit max-w-[78%] flex-none relative touch-pan-y select-none ' + (isMe ? 'items-end' : 'items-start')"));
+  assert.ok(source.includes('w-full flex flex-nowrap items-end gap-2 transition-transform'));
 });
 
 test('LINE outgoing avatar stays inside the same horizontal row as its bubble', async () => {
