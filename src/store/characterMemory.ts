@@ -56,7 +56,12 @@ export interface CharacterMemory {
   memoryStyle?: CharacterMemoryStyleSettings;
 }
 
-const keyFor = (characterId: string, personaId?: string | null) => personaId ? `phone:character-memory:${characterId}:persona:${personaId}` : `phone:character-memory:${characterId}`;
+// Memory keys are prefix-stable: char:X and X share the same bare key, so
+// the char:/npc: id migration never orphans stored memories.
+const keyFor = (characterId: string, personaId?: string | null) => {
+  const bare = String(characterId || '').replace(/^(?:char|npc)[:-]/i, '');
+  return personaId ? `phone:character-memory:${bare}:persona:${personaId}` : `phone:character-memory:${bare}`;
+};
 
 const DEFAULT_MEMORY_STYLE: CharacterMemoryStyleSettings = {
   personality: 'character-style',

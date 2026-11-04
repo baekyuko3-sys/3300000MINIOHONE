@@ -539,9 +539,9 @@ export function MusicHtmlView({ active = true, onNavigate }: MusicHtmlViewProps)
       if (!text) return;
       appendLineRuntimeMessage(conversationId, {
         id: 'charpl-listen-' + Date.now().toString(36),
-        sender: 'other',
+        role: 'assistant',
         senderName: character.name,
-        type: 'ai-reply',
+        kind: 'ai-reply',
         text,
         time: '刚刚',
         status: 'sent',
@@ -1590,13 +1590,13 @@ export function MusicHtmlView({ active = true, onNavigate }: MusicHtmlViewProps)
       .slice(-16)
       .map((item) => {
         if (item.text.startsWith('我说：')) {
-          return { sender: 'me' as const, text: item.text.slice(3), createdAt: item.createdAt };
+          return { role: 'user' as const, text: item.text.slice(3), createdAt: item.createdAt };
         }
         if (/^TA 切到了《/.test(item.text)) {
-          return { sender: 'system' as const, text: item.text, createdAt: item.createdAt };
+          return { role: 'system' as const, text: item.text, createdAt: item.createdAt };
         }
         return {
-          sender: 'other' as const,
+          role: 'assistant' as const,
           senderName: isStranger ? displayAs : character.name,
           text: item.text,
           createdAt: item.createdAt,
@@ -1725,9 +1725,8 @@ export function MusicHtmlView({ active = true, onNavigate }: MusicHtmlViewProps)
 
     const inviteMessage = {
       id: 'music-invite-' + Date.now().toString(36),
-      sender: 'me' as const,
+      role: 'user' as const,
       senderName: meName,
-      type: 'music-together',
       kind: 'music-together',
       text: `邀请你一起听歌：《${track.name}》`,
       time: '刚刚',

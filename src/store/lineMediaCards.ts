@@ -15,8 +15,8 @@ export type LineMediaCardSegment = {
   stickerUrl?: string;
 };
 
-function messageType(message: any): string {
-  return String(message?.type || message?.kind || message?.metadata?.cardKind || '').trim();
+function messageKind(message: any): string {
+  return String(message?.kind || message?.metadata?.cardKind || '').trim();
 }
 
 function messageCategory(message: any): string {
@@ -34,7 +34,7 @@ function messageBody(message: any): string {
 }
 
 export function isLineTextImageCard(message: any): boolean {
-  const type = messageType(message);
+  const type = messageKind(message);
   const category = messageCategory(message);
   const title = String(message?.title || '');
   if (type === TEXT_IMAGE_TYPE || type === 'text-card') return true;
@@ -44,7 +44,7 @@ export function isLineTextImageCard(message: any): boolean {
 }
 
 export function isLineTextVideoCard(message: any): boolean {
-  const type = messageType(message);
+  const type = messageKind(message);
   const category = messageCategory(message);
   const title = String(message?.title || '');
   if (type === TEXT_VIDEO_TYPE) return true;
@@ -58,13 +58,13 @@ export function isLineVroomCard(message: any): boolean {
 }
 
 export function isLineVoiceMessage(message: any): boolean {
-  const type = messageType(message);
+  const type = messageKind(message);
   const category = messageCategory(message);
   const title = String(message?.title || message?.metadata?.title || '').trim();
   if (type === 'voice') return true;
   if (category === 'voice') return true;
   if (title === '文字语音') return true;
-  if (String(message?.metadata?.mediaType || message?.mediaType || '').toLowerCase() === 'voice') return true;
+  if (String(message?.metadata?.mediaType || '').toLowerCase() === 'voice') return true;
   return false;
 }
 
@@ -180,7 +180,7 @@ function resolveBuildDuration(kind: 'image' | 'video', duration?: number): numbe
 
 export function buildLineVroomCardMessage(input: {
   id?: number | string;
-  sender?: 'me' | 'other' | string;
+  role?: 'user' | 'assistant' | string;
   senderName?: string;
   characterId?: string;
   kind: 'image' | 'video';
@@ -195,12 +195,10 @@ export function buildLineVroomCardMessage(input: {
   const duration = resolveBuildDuration(input.kind, input.duration);
   return {
     id: input.id ?? Date.now(),
-    sender: input.sender || 'me',
+    role: input.role || 'user',
     senderName: input.senderName,
     characterId: input.characterId,
-    type,
     kind: type,
-    category: input.kind,
     title: input.kind === 'video' ? '文字视频' : '文字图片',
     descTitle: input.kind === 'video' ? '视频描述' : '图片描述',
     desc: text,
@@ -224,20 +222,18 @@ export function buildLineVroomCardMessage(input: {
 
 export function hydrateLineChatMessage(message: any) {
   if (!message || typeof message !== 'object') return message;
-  const type = messageType(message);
+  const kind = messageKind(message) || message.kind;
+  const { type: _legacyType, category: _legacyCategory, ...rest } = message;
   const next: Record<string, unknown> = {
-    ...message,
-    type: type || message.type,
+    ...rest,
+    kind,
     text: message.text || message.content || message.desc || message.metadata?.desc,
     desc: message.desc || message.metadata?.desc || message.text,
     cardStyle: lineCardStyleOf(message),
-    category: message.category || message.metadata?.category,
   };
   if (isLineTextImageCard(next)) {
     const cardStyle = lineCardStyleOf(next, readStoredLineCardStyle('image'));
-    next.type = TEXT_IMAGE_TYPE;
     next.kind = TEXT_IMAGE_TYPE;
-    next.category = 'image';
     next.cardStyle = cardStyle;
     next.textCard = next.textCard && typeof next.textCard === 'object'
       ? { ...(next.textCard as object), style: cardStyle }
@@ -254,9 +250,7 @@ export function hydrateLineChatMessage(message: any) {
     const duration = Number.isFinite(durationRaw) && durationRaw > 0
       ? Math.min(599, Math.max(1, Math.round(durationRaw)))
       : undefined;
-    next.type = TEXT_VIDEO_TYPE;
     next.kind = TEXT_VIDEO_TYPE;
-    next.category = 'video';
     next.cardStyle = cardStyle;
     if (duration) next.duration = duration;
     next.videoCard = next.videoCard && typeof next.videoCard === 'object'
@@ -281,9 +275,7 @@ export function hydrateLineChatMessage(message: any) {
       ''
     ).trim();
     const durationSeconds = estimateVoiceDurationSeconds(next);
-    next.type = 'voice';
     next.kind = 'voice';
-    next.category = 'voice';
     next.transcript = transcript;
     next.duration = next.duration ?? durationSeconds;
     next.mediaRef = next.mediaRef || (next.metadata as any)?.mediaRef;
@@ -306,7 +298,7 @@ export function expandLineReplyIntoMessages(
   splitPlain: (text: string) => string[],
   base: {
     id: number | string;
-    sender?: string;
+    role?: string;
     senderName?: string;
     characterId?: string;
     extras?: Record<string, unknown>;
@@ -320,10 +312,9 @@ export function expandLineReplyIntoMessages(
       return {
         id,
         turnId: String(base.id),
-        sender: base.sender || 'other',
+        role: base.role || 'assistant',
         senderName: base.senderName,
         characterId: base.characterId,
-        type: 'sticker',
         kind: 'sticker',
         text: segment.text,
         stickerName: segment.stickerName,
@@ -337,7 +328,7 @@ export function expandLineReplyIntoMessages(
     if (segment.type === TEXT_IMAGE_TYPE || segment.type === TEXT_VIDEO_TYPE) {
       const card = buildLineVroomCardMessage({
         id,
-        sender: base.sender || 'other',
+        role: base.role || 'assistant',
         senderName: base.senderName,
         characterId: base.characterId,
         kind: segment.category === 'video' ? 'video' : 'image',
@@ -358,14 +349,14 @@ export function expandLineReplyIntoMessages(
     return {
       id,
       turnId: String(base.id),
-      sender: base.sender || 'other',
+      role: base.role || 'assistant',
       senderName: base.senderName,
       characterId: base.characterId,
       text: segment.text,
       content: segment.text,
       time: '刚刚',
       createdAt: new Date().toISOString(),
-      type: 'ai-reply',
+      kind: 'ai-reply',
       ...extras,
     };
   });

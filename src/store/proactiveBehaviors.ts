@@ -113,11 +113,11 @@ async function generateProactiveText(person: ActivePerson): Promise<string> {
 function pushMessage(conversationId: string, person: ActivePerson, text: string, extra?: Record<string, unknown>) {
   const msg = {
     id: 'proactive-' + Date.now().toString(36),
-    sender: 'other' as const,
+    role: 'assistant' as const,
     senderName: person.name,
     text,
     time: '刚刚',
-    type: 'text' as const,
+    kind: 'text' as const,
     ...extra,
   };
   appendLineMessage(conversationId, msg as never);

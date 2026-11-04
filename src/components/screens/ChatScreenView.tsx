@@ -9,7 +9,7 @@ interface ChatScreenViewProps {
 
 interface ChatMsgItem {
   id: string;
-  sender: string;
+  role: string;
   time: string;
   text?: string;
   imageUrl?: string;
@@ -27,32 +27,32 @@ export function ChatScreenView({ onNavigate }: ChatScreenViewProps) {
   const [messages, setMessages] = useState<ChatMsgItem[]>([
     {
       id: 'm1',
-      sender: 'character',
+      role: 'assistant',
       time: '21:42',
       text: '在看你发来的照片了，真好看。',
     },
     {
       id: 'm2',
-      sender: 'user',
+      role: 'user',
       time: '21:43',
       text: '你看喜欢就好。',
     },
     {
       id: 'm3',
-      sender: 'user',
+      role: 'user',
       time: '21:43',
       imageUrl: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=400&q=80',
       caption: 'FRAME 07 · 伦敦夜雨',
     },
     {
       id: 'm4',
-      sender: 'character',
+      role: 'assistant',
       time: '21:44',
       text: '下次带你去。',
     },
     {
       id: 'm5',
-      sender: 'character',
+      role: 'assistant',
       time: '21:45',
       isVoice: true,
       voiceDuration: '0:12',
@@ -61,7 +61,7 @@ export function ChatScreenView({ onNavigate }: ChatScreenViewProps) {
     },
     {
       id: 'm6',
-      sender: 'character',
+      role: 'assistant',
       time: '21:46',
       text: '把今天留给自己，剩下的事情明天再说。',
     }
@@ -71,7 +71,7 @@ export function ChatScreenView({ onNavigate }: ChatScreenViewProps) {
     if (!inputText.trim()) return;
     const userMsg = {
       id: `usr-${Date.now()}`,
-      sender: 'user',
+      role: 'user',
       time: '刚刚',
       text: inputText.trim(),
     };
@@ -81,7 +81,7 @@ export function ChatScreenView({ onNavigate }: ChatScreenViewProps) {
     setTimeout(() => {
       const reply = {
         id: `char-${Date.now()}`,
-        sender: 'character',
+        role: 'assistant',
         time: '刚刚',
         text: '收到纸条了。早点睡，我在。',
         cotThinking: '（指尖触碰屏幕上的字句，目光停顿良久。即使隔着大洋，她的一句话也能瞬间驱散雨夜的湿冷。）'
@@ -141,7 +141,7 @@ export function ChatScreenView({ onNavigate }: ChatScreenViewProps) {
         </div>
 
         {messages.map((msg: any) => {
-          const isChar = msg.sender === 'character';
+          const isChar = msg.role === 'assistant';
 
           return (
             <div

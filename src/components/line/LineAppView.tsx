@@ -29,7 +29,7 @@ import { isCharacterOnline } from '../../store/characterStatus';
 import { VroomImage } from '../VroomImage';
 import { putMedia } from '../../store/mediaVault';
 import { markCharacterRead } from '../../store/worldRuntime';
-import { getLineConversationMeta, markLineConversationRead, markLineNotificationsReadForConversation, stripLeakedInternalBlocks, stripLeakedMarkupTags, touchLineConversation } from '../../store/lineRuntime';
+import { getLineConversationMeta, markLineConversationRead, markLineNotificationsReadForConversation, stripLeakedInternalBlocks, stripLeakedMarkupTags, touchLineConversation, runLineStorageMigrations } from '../../store/lineRuntime';
 import { reportPersistenceIssue } from '../../store/usePersistentState';
 import { generateCreativeText, listOpenAiCompatibleModels, resolveChannelAiSettings, testAiConnection, type AiSettings } from '../../ai/aiEngine';
 import { useImagePresets, useMinimaxKey, useVoicePresets, type ImagePreset, type VoicePreset } from '../../ai/imageGen';
@@ -212,6 +212,12 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     const refresh = () => setWalletBalance(getWalletBalance());
     window.addEventListener('sane333:wallet-updated', refresh);
     return () => window.removeEventListener('sane333:wallet-updated', refresh);
+  }, []);
+  // One-time role + identity-prefix storage migrations (guarded, idempotent).
+  useEffect(() => {
+    try {
+      runLineStorageMigrations();
+    } catch { /* 忽略存储不可用 */ }
   }, []);
   const [lineLocale, setLineLocale] = usePersistentState<'zh-CN' | 'ja-JP'>('line:locale', 'zh-CN');
   const ja = lineLocale === 'ja-JP';
@@ -877,7 +883,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         if (!raw) continue;
         const stored = JSON.parse(raw);
         if (!Array.isArray(stored) || !stored.length) continue;
-        const realMessages = stored.filter((message: any) => message && typeof message === 'object' && message.type !== 'system-nudge' && message.sender !== 'system' && message.kind !== 'system');
+        const realMessages = stored.filter((message: any) => message && typeof message === 'object' && message.kind !== 'system-nudge' && message.role !== 'system' && message.kind !== 'system');
         if (!realMessages.length) continue;
         const latest = realMessages[realMessages.length - 1];
         const existing = chatItems.find(item => item.id === id);
@@ -3961,7 +3967,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                       import('../../store/lineRuntime').then(({ appendLineMessage }) => {
                         appendLineMessage(newChatId, {
                           id: `system-friend-${Date.now()}`,
-                          sender: 'system',
+                          role: 'system',
                           senderType: 'system',
                           kind: 'system',
                           text: '你们已经是好友了，开始聊天吧',
@@ -5071,7 +5077,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                       import('../../store/lineRuntime').then(({ appendLineMessage }) => {
                         appendLineMessage(targetChatId, {
                           id: `system-friend-${Date.now()}`,
-                          sender: 'system',
+                          role: 'system',
                           senderType: 'system',
                           kind: 'system',
                           text: '你们已经是好友了，开始聊天吧',
@@ -5226,7 +5232,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                     import('../../store/lineRuntime').then(({ appendLineMessage }) => {
                       appendLineMessage(targetChatId, {
                         id: `system-friend-${Date.now()}`,
-                        sender: 'system',
+                        role: 'system',
                         senderType: 'system',
                         kind: 'system',
                         text: '你们已经是好友了，开始聊天吧',

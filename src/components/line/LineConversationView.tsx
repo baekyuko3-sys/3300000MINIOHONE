@@ -71,7 +71,7 @@ import {
 } from '../../store/lineMediaCards';
 import { appendLineMessage, editLineMessage, toggleLineReaction, setLineMessageFavorite, recordLineCall, markLineMessageFailed, clearLineConversation, recallLineMessage, updateLineMessage } from '../../store/lineRuntime';
 import { saveCallRecord, getCallHistory, deleteCallRecord, formatCallDuration, type CallRecord } from '../../store/callHistory';
-import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, searchLineMessages, isLineMessageFromUser, stripLeakedInternalBlocks, stripLeakedMarkupTags, type LineRuntimeMessage } from '../../store/lineRuntime';
+import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, searchLineMessages, isLineMessageFromUser, stripLeakedInternalBlocks, stripLeakedMarkupTags, normalizeLineMessage, resolveMessageRole, runLineStorageMigrations, npcConversationId, type LineRuntimeMessage } from '../../store/lineRuntime';
 import { isLineTurnRequestCurrent, releaseLineTypingRequest } from '../../store/lineTurnGuard';
 import { fetchLineWeather, formatLineWeather, type LineWeatherSnapshot } from '../../store/lineReality';
 import { getRecentMomentsForGroup, maybePostGroupMomentAfterRound } from '../../store/momentsAfterChat';
@@ -112,7 +112,7 @@ function formatSongDurationLabel(raw: unknown): string {
 }
 
 /** 从 music-together 消息里抽出邀请卡片展示字段（兼容 TogetherMusicSession / MusicStrangerSession） */
-function resolveSongInviteCard(msg: { sender?: string; text?: string; musicSession?: any; metadata?: any }) {
+function resolveSongInviteCard(msg: { role?: string; text?: string; musicSession?: any; metadata?: any }) {
   const session =
     (msg.musicSession && typeof msg.musicSession === 'object' ? msg.musicSession : null)
     || (msg.metadata?.musicSession && typeof msg.metadata.musicSession === 'object' ? msg.metadata.musicSession : null)
@@ -129,7 +129,7 @@ function resolveSongInviteCard(msg: { sender?: string; text?: string; musicSessi
     : pickSongInviteColors(title + artist);
   const note = String(session.note || '').trim();
   const rawStatus = String(session.status || 'invited');
-  const isMe = msg.sender === 'me';
+  const isMe = msg.role === 'user';
   let inviteState: 'pending' | 'waiting' | 'ok' | 'no' | 'failed' = 'waiting';
   if (rawStatus === 'failed' || rawStatus === 'error' || rawStatus === 'timeout') inviteState = 'failed';
   else if (rawStatus === 'declined' || rawStatus === 'no' || rawStatus === 'ended') inviteState = 'no';
@@ -140,7 +140,7 @@ function resolveSongInviteCard(msg: { sender?: string; text?: string; musicSessi
 
 function isMusicTogetherMessage(message: Record<string, any> | null | undefined): boolean {
   if (!message || typeof message !== 'object') return false;
-  const kind = String(message.type || message.kind || '');
+  const kind = String(message.kind || message.metadata?.cardKind || '');
   return kind === 'music-together' || kind === 'music-invite';
 }
 
@@ -669,7 +669,7 @@ function expandCharacterReplyMessages(
   source: string,
   replyMsgId: number | string,
   options: {
-    sender?: string;
+    role?: string;
     senderName?: string;
     characterId?: string;
     groupMode?: boolean;
@@ -693,7 +693,7 @@ function expandCharacterReplyMessages(
   };
   return expandLineReplyIntoMessages(processedSource, splitPlain, {
     id: replyMsgId,
-    sender: options.sender || 'other',
+    role: options.role || 'assistant',
     senderName: options.senderName,
     characterId: options.characterId,
     extras: options.extras,
@@ -777,7 +777,7 @@ export function LineConversationView({
   // not a transcript key; otherwise the NPC chat can read/write the imported character's history.
   // Parent-provided conversationId remains authoritative and separates multiple persona chats.
   const conversationStorageId = conversationId ||
-    (npcId ? `npc:${npcId}:persona:${personaId || 'legacy'}` : characterId || contactName);
+    (npcId ? npcConversationId(npcId, personaId) : characterId || contactName);
   const [inputText, setInputText] = useState(initialDraft);
   const [selectedOpeningContext, setSelectedOpeningContext] = usePersistentState<string>(`line:opening-context:${conversationStorageId}`, openingContext || '');
   const [lineLocale] = usePersistentState<'zh-CN' | 'ja-JP'>('line:locale', 'zh-CN');
@@ -790,41 +790,26 @@ export function LineConversationView({
   );
   // Old/local data can be malformed. A bad conversation record must never prevent
   // the chat screen itself from opening.
-  // 数据修复：ai-reply 是角色生成的回复，绝不可能是用户发送。
+  // 数据修复（role 模型）：方向只认 role，ai-reply 一律归 assistant。
   // 先修复当前会话的 React state（不能只改 localStorage，否则当前页面仍显示旧方向），
-  // 再用版本标记一次性修复其他历史会话。
+  // 再跑一次性存储迁移（line:fix-role-v1 / line:fix-id-prefix-v1）修复其他历史会话。
+  // senderName 永不参与方向判断；认不出的消息靠多选“移到右边”手动定死。
   useEffect(() => {
-    const normalizeAiReplySender = (items: any[]) => {
+    const normalizeRole = (items: any[]) => {
       let changed = false;
-      const next = items.map(item => {
+      const next = items.map((item, index) => {
         if (!item || typeof item !== 'object') return item;
-        if (item.type === 'ai-reply' && item.sender !== 'other') {
-          changed = true;
-          return { ...item, sender: 'other', senderType: item.senderType === 'npc' ? 'npc' : 'character' };
-        }
-        return item;
+        const normalized = normalizeLineMessage(item, index);
+        if (JSON.stringify(normalized) !== JSON.stringify(item)) changed = true;
+        return normalized;
       });
       return changed ? next : items;
     };
 
-    setMessages((prev: any[]) => normalizeAiReplySender(Array.isArray(prev) ? prev : []));
+    setMessages((prev: any[]) => normalizeRole(Array.isArray(prev) ? prev : []));
 
     try {
-      const fixedKey = 'line:fix-ai-reply-sender-v2';
-      if (window.localStorage.getItem(fixedKey)) return;
-      for (let i = 0; i < window.localStorage.length; i++) {
-        const key = window.localStorage.key(i);
-        if (!key || !key.startsWith('line:conversation:')) continue;
-        try {
-          const raw = window.localStorage.getItem(key);
-          if (!raw) continue;
-          const parsed = JSON.parse(raw);
-          if (!Array.isArray(parsed)) continue;
-          const repaired = normalizeAiReplySender(parsed);
-          if (repaired !== parsed) window.localStorage.setItem(key, JSON.stringify(repaired));
-        } catch { /* 跳过损坏的历史会话 */ }
-      }
-      window.localStorage.setItem(fixedKey, String(Date.now()));
+      runLineStorageMigrations();
     } catch { /* 忽略存储不可用 */ }
   }, [conversationStorageId, setMessages]);
   // useMemo 稳定引用：否则每次渲染都生成新数组，依赖 messages 的 effect 会无限循环。
@@ -901,12 +886,11 @@ export function LineConversationView({
     if (stored.length && messages.length === 0) {
       setMessages(stored.map((message) => hydrateLineChatMessage({
         ...message,
-        type: message.kind || (message as any).type,
+        kind: message.kind || (message as any).type || (message.metadata as any)?.cardKind,
         transcript: (message as any).transcript || (message.metadata as any)?.transcript || (message.metadata as any)?.desc,
         duration: (message as any).duration || (message.metadata as any)?.duration,
         mediaRef: (message as any).mediaRef || (message.metadata as any)?.mediaRef,
         audioUrl: (message as any).audioUrl || (message.metadata as any)?.audioUrl,
-        category: (message as any).category || (message.metadata as any)?.category,
       })));
     }
     markLineConversationRead(conversationStorageId, messages.at(-1)?.id);
@@ -920,11 +904,11 @@ export function LineConversationView({
       if (!message || typeof message !== 'object') return message;
       if (!isLineVoiceMessage(message)) return message;
       // Already normalized — avoid rewrite loops.
-      if (message.type === 'voice' && message.kind === 'voice') return message;
+      if (message.kind === 'voice') return message;
       changed = true;
       return hydrateLineChatMessage({
         ...message,
-        type: message.type || message.kind || 'voice',
+        kind: message.kind || 'voice',
         transcript:
           message.transcript ||
           message.desc ||
@@ -943,10 +927,11 @@ export function LineConversationView({
   useEffect(() => {
     const runtimeMessages: LineRuntimeMessage[] = messages.map((message) => {
       const musicSession = message.musicSession || message.metadata?.musicSession;
-      const msgKind = String(message.type || message.kind || 'text');
+      const msgKind = String(message.kind || message.metadata?.cardKind || 'text');
+      const msgRole = resolveMessageRole(message) || 'assistant';
       return {
         id: message.id,
-        sender: message.sender,
+        role: msgRole,
         // 群聊发言人身份：persist 映射是落盘前的最后一道，usePersistentState 的 300ms
         // 防抖写可能因切屏被取消，此时存储里只有这里写下的版本；丢了 senderName，
         // 重载后群消息就只剩「群成员」，群记忆/AI 上下文也会丢发言人。
@@ -956,10 +941,8 @@ export function LineConversationView({
         characterId: message.characterId,
         text: message.text || message.content,
         kind: msgKind as LineRuntimeMessage['kind'],
-        // 保留 type，避免 music-together 被只写 kind 后渲染/触发逻辑丢字段
-        ...( { type: msgKind } as any ),
         createdAt: message.createdAt || message.timestamp,
-        status: message.sender === 'other'
+        status: msgRole === 'assistant'
           ? 'read'
           : (message.status || 'sent'),
         replyToId: message.replyToId,
@@ -977,12 +960,12 @@ export function LineConversationView({
         metadata: {
           ...(message.metadata || {}),
           ...(musicSession ? { musicSession } : {}),
-          mediaType: message.mediaType || (message.type === 'voice' || message.kind === 'voice' ? 'voice' : undefined),
+          mediaType: message.metadata?.mediaType || (message.kind === 'voice' ? 'voice' : undefined),
           mediaRef: message.mediaRef,
           transcript: message.transcript || message.desc,
           desc: message.desc || message.transcript,
           duration: message.duration,
-          category: message.category || (message.type === 'voice' ? 'voice' : undefined),
+          category: message.metadata?.category || (message.kind === 'voice' ? 'voice' : undefined),
           title: message.title,
           fileName: message.fileName,
           thinking: message.thinking,
@@ -1204,7 +1187,7 @@ export function LineConversationView({
     const myName = currentUserNameFallback() || '';
     if (!myName.trim()) return;
     const latestMention = [...messages].reverse().find((message) => {
-      if (message.sender === 'me' || !message.text) return false;
+      if (message.role === 'user' || !message.text) return false;
       const text = String(message.text);
       return text.includes('@' + myName) || text.includes('＠' + myName);
     });
@@ -1215,7 +1198,7 @@ export function LineConversationView({
 
   useEffect(() => {
     if (unreadAnchorId !== null || !messages.length) return;
-    const firstUnread = messages.find((message) => message.sender !== 'me' && message.isRead === false);
+    const firstUnread = messages.find((message) => message.role !== 'user' && message.isRead === false);
     if (firstUnread) {
       setUnreadAnchorId(firstUnread.id);
       setShowUnreadJump(true);
@@ -1421,53 +1404,9 @@ export function LineConversationView({
       traits: '',
     };
 
-  // 数据修复：把署名是用户本人、但 sender 存错成 other/缺失的消息，一次性纠正为 me。
-  // 只认单聊（群聊里成员名会撞），且绝不动 type='ai-reply'（那是角色回复，归对方规则管）
-  // 和 sender='system'（系统消息）。修的是存储里的 sender 本身，修完后“只认 sender”的
-  // 渲染规则就永远是对的，删除/发送再也不会让已纠正的消息翻转。
-  useEffect(() => {
-    if (isGroup) return;
-    const myNames = new Set(
-      [currentUserNameFallback(), activePersona?.name, '我'].map((s) => String(s || '').trim()).filter(Boolean),
-    );
-    if (myNames.size === 0) return;
-    const fixUserSender = (items: any[]) => {
-      let changed = false;
-      const next = items.map((item) => {
-        if (!item || typeof item !== 'object') return item;
-        const sender = String(item.sender || '').trim().toLowerCase();
-        if (sender === 'me' || sender === 'user' || sender === 'system') return item;
-        if (item.type === 'ai-reply') return item;
-        const name = String(item.senderName || '').trim();
-        if (name && myNames.has(name)) {
-          changed = true;
-          return { ...item, sender: 'me', senderType: 'user' };
-        }
-        return item;
-      });
-      return changed ? next : items;
-    };
+  // 注意：旧署名纠正规则已随 role 模型删除——senderName 永不决定方向；
+  // 旧署名消息由存储迁移按 sender 译成 role，认不出的靠多选“移到右边”手动定死。
 
-    setMessages((prev: any[]) => fixUserSender(Array.isArray(prev) ? prev : []));
-
-    try {
-      const fixedKey = 'line:fix-user-sender-v1';
-      if (window.localStorage.getItem(fixedKey)) return;
-      for (let i = 0; i < window.localStorage.length; i++) {
-        const key = window.localStorage.key(i);
-        if (!key || !key.startsWith('line:conversation:')) continue;
-        try {
-          const raw = window.localStorage.getItem(key);
-          if (!raw) continue;
-          const parsed = JSON.parse(raw);
-          if (!Array.isArray(parsed)) continue;
-          const repaired = fixUserSender(parsed);
-          if (repaired !== parsed) window.localStorage.setItem(key, JSON.stringify(repaired));
-        } catch { /* 跳过损坏的历史会话 */ }
-      }
-      window.localStorage.setItem(fixedKey, String(Date.now()));
-    } catch { /* 忽略存储不可用 */ }
-  }, [conversationStorageId, isGroup, setMessages, activePersona?.name]);
 
   // A request belongs to the conversation + persona that started it. If either
   // changes, stale stream callbacks must not write into the newly active context.
@@ -1735,7 +1674,7 @@ export function LineConversationView({
   };
   const simulatedGroupSpeaker = isGroup && simulatedGroupSpeakerId ? groupAiMembers.find(({ character }) => character?.id === simulatedGroupSpeakerId)?.character : null;
   const groupMembers = safeGroupMembers;
-  const groupUnreadCount = messages.filter((message) => message.sender !== 'me' && message.isRead === false).length;
+  const groupUnreadCount = messages.filter((message) => message.role !== 'user' && message.isRead === false).length;
 
   // 群聊 @成员：只在输入框当前 @词时显示候选条。
   const [mentionPickerOpen, setMentionPickerOpen] = useState(false);
@@ -2030,7 +1969,7 @@ export function LineConversationView({
     time: '',
     theme: '',
     letter: '',
-    inviteFrom: 'other' as 'me' | 'other',
+    inviteFrom: 'assistant' as 'user' | 'assistant',
   });
 
   const [offlineInviteTheme, setOfflineInviteTheme] = usePersistentState<'white' | 'midnight' | 'parchment' | 'rose'>(`line:offline-theme:${conversationStorageId}`, 'white');
@@ -2088,7 +2027,7 @@ export function LineConversationView({
       const rangeEnd = messages.length;
       const rangeStart = Math.max(1, rangeEnd - slice.length + 1);
       const lines = slice.map((m: any) => {
-        const speaker = m.sender === 'me' || m.sender === 'user' ? '我' : (m.senderName || m.characterName || m.sender || '群成员');
+        const speaker = m.role === 'user' ? '我' : (m.senderName || m.characterName || '群成员');
         return `${speaker}：${String(m.text || m.content || '').replace(/\s+/g, ' ').slice(0, 200)}`;
       }).filter(Boolean).join('\n');
       const styleText = groupMemorySummaryStyleCustom.trim() || `风格：${groupMemorySummaryStyle}`;
@@ -2252,8 +2191,8 @@ export function LineConversationView({
 
   useEffect(() => {
     const delivered = messages.filter(message =>
-      message.sender === 'other' &&
-      message.type === 'ai-reply' &&
+      message.role === 'assistant' &&
+      message.kind === 'ai-reply' &&
       message.status === 'delivered' &&
       String(message.text || '').trim()
     );
@@ -2297,7 +2236,7 @@ export function LineConversationView({
       if (statusBarProcessingRef.current.has(turnId)) return;
       statusBarProcessingRef.current.add(turnId);
       const turnMessages = messages
-        .filter(message => String(message.turnId || message.id) === turnId && message.sender === 'other' && message.type === 'ai-reply')
+        .filter(message => String(message.turnId || message.id) === turnId && message.role === 'assistant' && message.kind === 'ai-reply')
         .map(message => ({
           id: message.id,
           text: String(message.text || '').trim(),
@@ -2475,8 +2414,8 @@ export function LineConversationView({
         template,
         messagesRef.current
           .filter(message => String(message.id) !== String(sourceMessageId) && !String(message.id).startsWith(String(sourceMessageId) + '-'))
-          .map(message => ({ sender: String(message.sender || 'unknown'), text: message.text, transcript: message.transcript }))
-          .concat({ sender: 'other', text: replyText, transcript: '' }),
+          .map(message => ({ role: resolveMessageRole(message) || 'assistant', text: message.text, transcript: message.transcript }))
+          .concat({ role: 'assistant', text: replyText, transcript: '' }),
       );
       const html = sanitizeHtmlFragment(raw);
       if (!html) return;
@@ -2484,8 +2423,8 @@ export function LineConversationView({
         ...prev,
         {
           id: `html-interlude-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          sender: 'other',
-          type: 'html-interlude',
+          role: 'assistant',
+          kind: 'html-interlude',
           text: '',
           htmlContent: html,
           sourceMessageId,
@@ -2702,8 +2641,8 @@ export function LineConversationView({
 
             setMessages(prev => [...prev, hydrateLineChatMessage({
               id: Date.now(),
-              sender: 'me',
-              type: 'voice',
+              role: 'user',
+              kind: 'voice',
               duration: elapsed,
               transcript,
               mediaRef,
@@ -2855,8 +2794,8 @@ export function LineConversationView({
           const mediaRef = result.url ? await putMedia(result.url) : undefined;
           setMessages((prev) => [...prev, hydrateLineChatMessage({
             id: Date.now(),
-            sender: 'me',
-            type: 'voice',
+            role: 'user',
+            kind: 'voice',
             transcript: prompt,
             duration: Math.max(1, Math.round(prompt.length / 5)),
             mediaRef,
@@ -2867,8 +2806,8 @@ export function LineConversationView({
           // TTS 失败时仍发文字语音条，保证能发出去
           setMessages((prev) => [...prev, hydrateLineChatMessage({
             id: Date.now(),
-            sender: 'me',
-            type: 'voice',
+            role: 'user',
+            kind: 'voice',
             transcript: prompt,
             duration: Math.max(1, Math.round(prompt.length / 5)),
             time: '刚刚',
@@ -2878,8 +2817,8 @@ export function LineConversationView({
       } else {
         setMessages((prev) => [...prev, hydrateLineChatMessage({
           id: Date.now(),
-          sender: 'me',
-          type: 'voice',
+          role: 'user',
+          kind: 'voice',
           transcript: prompt,
           duration: Math.max(1, Math.round(prompt.length / 5)),
           time: '刚刚',
@@ -2979,9 +2918,9 @@ export function LineConversationView({
       lineCardPreview(latest) ||
       latest.text ||
       latest.transcript ||
-      (latest.type === 'offline-invite' ? '💌 线下剧情邀约' : '') ||
-      (latest.type === 'real-media' ? `[媒体] ${latest.fileName || '附件'}` : '') ||
-      (latest.type === 'ai-card' ? `[${latest.title || '多媒体'}]` : '') ||
+      (latest.kind === 'offline-invite' ? '💌 线下剧情邀约' : '') ||
+      (latest.kind === 'real-media' ? `[媒体] ${latest.fileName || '附件'}` : '') ||
+      (latest.kind === 'ai-card' ? `[${latest.title || '多媒体'}]` : '') ||
       '新消息';
 
     onConversationActivity({
@@ -3070,14 +3009,14 @@ export function LineConversationView({
       if (!text) { showToast('生成失败，重试一下'); return; }
       const msg: any = {
         id: 'grp-proactive-' + Date.now(),
-        sender: 'other',
+        role: 'assistant',
         senderType: picked.member.npcId || picked.member.kind === 'npc' ? 'npc' : 'character',
         senderId: (picked.member.kind === 'npc' ? picked.member.npcId || picked.member.id : picked.member.id) || picked.character?.id,
         senderName: picked.member.nickname || picked.character?.name || picked.member.name,
         characterId: picked.character?.id,
         text,
         time: '刚刚',
-        type: 'ai-reply',
+        kind: 'ai-reply',
         status: 'delivered',
         createdAt: new Date().toISOString(),
       };
@@ -3114,7 +3053,7 @@ export function LineConversationView({
     const activeSimulatedSpeaker = isGroup && simulatedGroupSpeaker ? simulatedGroupSpeaker : null;
     const newMsg: any = {
       id: msgId,
-      sender: activeSimulatedSpeaker ? 'other' : 'me',
+      role: activeSimulatedSpeaker ? 'assistant' : 'user',
       senderName: activeSimulatedSpeaker ? activeSimulatedSpeaker.name : (currentUserNameFallback() || activePersona?.name || '我'),
       ...(activeSimulatedSpeaker ? { characterId: activeSimulatedSpeaker.id, simulatedByUser: true } : {}),
       text: userText,
@@ -3126,7 +3065,7 @@ export function LineConversationView({
 
     if (replyingToMsg && overrideText === undefined) {
       newMsg.quote = {
-        sender: replyingToMsg.sender === 'me' ? '我' : (replyingToMsg.senderName || characterProfile.nickname),
+        senderName: replyingToMsg.role === 'user' ? '我' : (replyingToMsg.senderName || characterProfile.nickname),
         text: lineCardPreview(replyingToMsg) || replyingToMsg.text || replyingToMsg.desc || '多媒体内容',
       };
       setReplyingToMsg(null);
@@ -3204,7 +3143,7 @@ export function LineConversationView({
         const offlineMsgId = Date.now() + 1;
         setMessages((prev) => [...prev, {
           id: offlineMsgId,
-          sender: 'other',
+          role: 'assistant',
           senderName: targetChar.name || characterProfile.nickname,
           text: offlineText,
           content: offlineText,
@@ -3284,7 +3223,7 @@ export function LineConversationView({
         const pool = mentioned.length ? mentioned : availableMembers;
 
         // 主发言者：@ 模式只选被 @ 的；否则选"最后发言 NPC 的下一位"
-        const lastGroupSpeaker = [...messages].reverse().find(message => message.sender !== 'me' && message.sender !== 'system-nudge');
+        const lastGroupSpeaker = [...messages].reverse().find(message => message.role !== 'user' && message.kind !== 'system-nudge');
         const lastGroupSpeakerId = String(lastGroupSpeaker?.characterId || lastGroupSpeaker?.metadata?.characterId || '').trim();
         const lastGroupSpeakerIndex = !mentioned.length && lastGroupSpeakerId
           ? pool.findIndex(({ character }) => String(character?.id || '').trim() === lastGroupSpeakerId)
@@ -3348,14 +3287,14 @@ export function LineConversationView({
           ? prev
           : [...prev, {
               id: placeholderId,
-              sender: 'other',
+              role: 'assistant',
               senderType: primary.member.kind === 'npc' ? 'npc' : 'character',
               senderId: (primary.member.kind === 'npc' ? primary.member.npcId || primary.member.id : primary.member.id) || primary.character!.id,
               senderName: primary.member.name,
               characterId: primary.character!.id,
               text: '',
               time: '刚刚',
-              type: 'ai-reply',
+              kind: 'ai-reply',
               showThinking: false,
             }]);
 
@@ -3369,7 +3308,7 @@ export function LineConversationView({
           // 群聊不读角色个人记忆：NPC 在群里只知道群聊记录
           memory: { characterId: '', characterName: '', summary: '', items: [], updatedAt: new Date().toISOString() },
           project: projectManifest,
-          messages: [...messages, newMsg].map(message => ({ ...message, sender: message.sender || 'other' })),
+          messages: [...messages, newMsg].map(message => ({ ...message, role: resolveMessageRole(message) || 'assistant' })),
           userMessage: userText,
           isGroup: true,
           presetOutputEnabled: true,
@@ -3423,7 +3362,7 @@ export function LineConversationView({
               const foundChar = foundMember?.character;
               return {
                 id: placeholderId + '-' + idx,
-                sender: 'other' as const,
+                role: 'assistant' as const,
                 senderType: foundMember?.member.kind === 'npc' ? 'npc' as const : 'character' as const,
                 senderId: (foundMember?.member.kind === 'npc' ? foundMember.member.npcId || foundMember.member.id : foundMember?.member.id) || foundChar?.id || primary.character!.id,
                 // 名字优先级：群内昵称 > 解析出的当前名（NPC/角色改名后能跟上）> 成员快照 > 模型输出的标签。
@@ -3432,7 +3371,7 @@ export function LineConversationView({
                 characterId: foundChar?.id || primary.character!.id,
                 text: part.text,
                 time: '刚刚',
-                type: 'ai-reply' as const,
+                kind: 'ai-reply' as const,
                 showThinking: false,
               };
             }).filter(Boolean) as any[];
@@ -3456,11 +3395,11 @@ export function LineConversationView({
             ...prev.filter(m => !String(m.id).startsWith(String(placeholderId))),
             {
               id: 'group-pass-' + Date.now(),
-              sender: 'other',
+              role: 'assistant',
               senderName: '系统提示',
               text: '群成员们看了看，暂时没接话（AI 判定本轮没有自然回应者）',
               time: '刚刚',
-              type: 'system-nudge',
+              kind: 'system-nudge',
               status: 'sent',
               isRead: true,
               dismissible: true,
@@ -3483,7 +3422,7 @@ export function LineConversationView({
         if (recallParts.length) {
           const recallName = String(recallParts[0].text || '').replace('[撤回]', '').trim() || recallParts[0].rawSpeaker.replace('[撤回]', '').trim();
           setMessages(prev => {
-            const target = [...prev].reverse().find(m => m.sender !== 'me' && m.type !== 'system-nudge' && String(m.senderName || '').includes(recallName));
+            const target = [...prev].reverse().find(m => m.role !== 'user' && m.kind !== 'system-nudge' && String(m.senderName || '').includes(recallName));
             if (!target) return prev;
             return prev.map(m => m.id === target.id ? { ...m, isRecalledByOther: true, recalledByOtherReason: '（对方撤回了一条消息）', text: '对方撤回了一条消息' } : m);
           });
@@ -3504,7 +3443,7 @@ export function LineConversationView({
           const foundChar = foundMember?.character;
           return {
             id: placeholderId + '-' + idx,
-            sender: 'other' as const,
+            role: 'assistant' as const,
             senderType: foundMember?.member.kind === 'npc' ? 'npc' as const : 'character' as const,
             senderId: (foundMember?.member.kind === 'npc' ? foundMember.member.npcId || foundMember.member.id : foundMember?.member.id) || foundChar?.id || primary.character!.id,
             // 名字优先级：群内昵称 > 解析出的当前名（NPC/角色改名后能跟上）> 成员快照 > 模型输出的标签。
@@ -3512,7 +3451,7 @@ export function LineConversationView({
             characterId: foundChar?.id || primary.character!.id,
             text: part.text,
             time: '刚刚',
-            type: 'ai-reply' as const,
+            kind: 'ai-reply' as const,
             showThinking: false,
             status: 'delivered' as const,
             createdAt: new Date().toISOString(),
@@ -3627,11 +3566,11 @@ export function LineConversationView({
           const cleaned = prev.filter(m => activeGroupPlaceholderId == null || !String(m.id).startsWith(String(activeGroupPlaceholderId)));
           return [...cleaned, {
             id: 'group-fail-' + Date.now(),
-            sender: 'other',
+            role: 'assistant',
             senderName: '系统提示',
             text: '群聊回复失败：' + message,
             time: '刚刚',
-            type: 'system-nudge',
+            kind: 'system-nudge',
             status: 'failed',
             error: message,
             dismissible: true,
@@ -3652,10 +3591,10 @@ export function LineConversationView({
         }
         return [...prev, {
           id: replyMsgId,
-          sender: 'other',
+          role: 'assistant',
           text,
           time: '刚刚',
-          type: 'ai-reply',
+          kind: 'ai-reply',
           showThinking: false,
         }];
       });
@@ -3681,10 +3620,10 @@ export function LineConversationView({
           } else {
             const bubble: any = {
               id: bid,
-              sender: 'other',
+              role: 'assistant',
               text, content: text,
               time: '刚刚',
-              type: 'ai-reply',
+              kind: 'ai-reply',
               showThinking: false,
             };
             const phIdx = next.findIndex((m: any) => m.id === replyMsgId);
@@ -3699,10 +3638,10 @@ export function LineConversationView({
         } else {
           next.push({
             id: replyMsgId,
-            sender: 'other',
+            role: 'assistant',
             text: streaming, content: streaming,
             time: '刚刚',
-            type: 'ai-reply',
+            kind: 'ai-reply',
             showThinking: false,
           });
         }
@@ -3735,7 +3674,7 @@ export function LineConversationView({
         worldbooks: activeWorldbooks,
         memory: characterMemory,
         project: projectManifest,
-        messages: [...messages, newMsg].map(message => ({ ...message, sender: message.sender || 'other' })),
+        messages: [...messages, newMsg].map(message => ({ ...message, role: resolveMessageRole(message) || 'assistant' })),
         userMessage: userText,
         isGroup,
         presetOutputEnabled: isGroup,
@@ -3783,7 +3722,7 @@ export function LineConversationView({
         extras: {
           time: formatLineMessageClock({ createdAt: new Date().toISOString() }, chatTimezone, lineTimeDisplayLocale),
           createdAt: new Date().toISOString(),
-          type: 'ai-reply',
+          kind: 'ai-reply',
           status: 'delivered',
           aiModel: result.model,
           matchedWorldbookEntries: result.matchedWorldbookEntries,
@@ -3822,7 +3761,7 @@ export function LineConversationView({
               const audioUrl = `data:audio/mpeg;base64,${res.audioBase64}`;
               setMessages(prev => prev.map(m =>
                 m.id === replyMsgId
-                  ? { ...m, type: 'voice' as const, transcript: finalReplyText, audioUrl, duration: Math.max(1, Math.round(finalReplyText.length / 5)) }
+                  ? { ...m, kind: 'voice' as const, transcript: finalReplyText, audioUrl, duration: Math.max(1, Math.round(finalReplyText.length / 5)) }
                   : m
               ));
             } else {
@@ -3912,7 +3851,7 @@ export function LineConversationView({
           conversationAiSettings(),
           contactName,
           characterMemory,
-          [...messages, newMsg, { sender: 'other', text: result.text }]
+          [...messages, newMsg, { role: 'assistant', text: result.text }]
         ).then(memoryResult => {
           for (const item of memoryResult.items) {
             const content = String(item.content || '').trim();
@@ -4002,8 +3941,8 @@ export function LineConversationView({
     const isSelf = targetName === '自己' || targetName === '我';
     const nudgeMsg = {
       id: nudgeId,
-      sender: 'system',
-      type: 'system-nudge',
+      role: 'system',
+      kind: 'system-nudge',
       text: isSelf ? '你拍了拍自己的头顶，并叹了一口气' : `你拍了拍 ${targetName} 的肩膀`,
       time: '刚刚'
     };
@@ -4014,8 +3953,8 @@ export function LineConversationView({
       setTimeout(() => {
         const responseMsg = {
           id: Date.now() + 1,
-          sender: 'system',
-          type: 'system-nudge',
+          role: 'system',
+          kind: 'system-nudge',
           text: `${targetName} 轻轻揉了揉你的头发，眼神温和：“怎么了？”`,
           time: '刚刚'
         };
@@ -4036,8 +3975,7 @@ export function LineConversationView({
     const note = transferNote.trim();
     const newMsg = {
       id: Date.now(),
-      sender: 'me' as const,
-      type: 'transfer',
+      role: 'user' as const,
       kind: 'transfer' as const,
       text: `[转账] ¥${amount}${note ? ` · ${note}` : ''}`,
       time: '刚刚',
@@ -4079,7 +4017,7 @@ export function LineConversationView({
       }
     }
     const newMsg = {
-      id: Date.now(), sender: 'me' as const, type: 'red-packet', kind: 'red-packet' as const,
+      id: Date.now(), role: 'user' as const, kind: 'red-packet' as const,
       text: `[红包] ¥${amount} · ${blessing}`, time: '刚刚',
       redPacketAmount: amount, redPacketBlessing: blessing, redPacketStatus: 'sent',
       redPacketCount: count, redPacketMode: isGroup ? redPacketMode : 'random', redPacketClaims: [],
@@ -4101,8 +4039,7 @@ export function LineConversationView({
     const address = locationAddress.trim();
     const newMsg = {
       id: Date.now(),
-      sender: 'me' as const,
-      type: 'location',
+      role: 'user' as const,
       kind: 'location' as const,
       text: `[定位] ${name}${address ? ` · ${address}` : ''}`,
       time: '刚刚',
@@ -4170,7 +4107,7 @@ export function LineConversationView({
     if (selectedMsgIds.length === 0) return;
     const myName = currentUserNameFallback() || activePersona?.name || '我';
     setMessages((prev) => prev.map((m) => selectedMsgIds.includes(m.id)
-      ? { ...m, sender: 'me', senderType: 'user', senderName: myName, ...(m.type === 'ai-reply' ? { type: 'text' } : {}), ...(m.kind === 'ai-reply' ? { kind: 'text' } : {}) }
+      ? { ...m, role: 'user', senderType: 'user', senderName: myName, ...(m.kind === 'ai-reply' ? { kind: 'text' } : {}) }
       : m));
     showToast(`已将 ${selectedMsgIds.length} 条消息移到右边`);
     setIsMultiSelectMode(false);
@@ -4183,7 +4120,7 @@ export function LineConversationView({
     const newFavs = toFav.map((m) => ({
       id: Date.now() + Math.random(),
       contactName,
-      sender: m.sender,
+      role: m.role,
       text: m.text || m.desc || '多媒体内容',
       time: m.time,
       savedAt: '刚刚'
@@ -4207,9 +4144,9 @@ export function LineConversationView({
   // 导出聊天记录 (Export Chat Log)
   const handleExportChat = () => {
     const lines = messages
-      .filter((m) => m.type !== 'system-nudge')
+      .filter((m) => m.kind !== 'system-nudge')
       .map((m) => {
-        const senderName = m.sender === 'me' ? '我' : characterProfile.nickname;
+        const senderName = m.role === 'user' ? '我' : characterProfile.nickname;
         const content = m.text || (m.descTitle ? `[${m.title}] ${m.desc}` : '[多媒体消息]');
         return `[${m.time}] ${senderName}: ${content}`;
       })
@@ -4276,11 +4213,11 @@ export function LineConversationView({
       return;
     }
     const cleaned = imported
-      .filter((m: any) => m && typeof m === 'object' && m.sender != null)
+      .filter((m: any) => m && typeof m === 'object' && (m.role != null || m.sender != null))
       .map((m: any, idx: number) => ({
         ...m,
         id: m.id ?? `imported-${Date.now()}-${idx}`,
-        sender: m.sender === 'me' ? 'me' : 'other',
+        role: resolveMessageRole(m) || 'assistant',
         time: m.time || m.createdAt || new Date().toLocaleString(),
       }));
     if (!cleaned.length) {
@@ -4369,7 +4306,7 @@ export function LineConversationView({
       setTimeout(() => {
         const apologyMsg = {
           id: Date.now() + 1,
-          sender: 'other',
+          role: 'assistant',
           text: '……刚才发错了。你什么都没看到对吧？',
           time: '刚刚',
           thinking: '【情境感知】天哪，刚才不小心把没润色过的内心直白独白发出去了！\n【内心欲念】耳根发烫，心跳瞬间飙到130，生怕她觉得我轻浮或太黏人。\n【台词策略】故作镇静，但字里行间难掩局促害羞。',
@@ -4403,7 +4340,7 @@ export function LineConversationView({
           '【关系档案】' + characterProfile.relationship + ' / ' + (characterProfile.bio || ''),
           '【长期记忆】' + (characterMemory.summary || '暂无'),
           '【世界书】' + (worldbooks.flatMap(book => book.enabled ? book.entries.filter(entry => entry.enabled).map(entry => entry.name + ': ' + entry.content) : []).join('\n') || '暂无'),
-          '【最近聊天】' + messages.slice(-12).map(message => (message.sender === 'me' ? '我' : (message.senderName || importedCharacter.name)) + ': ' + (message.text || '')).join('\n'),
+          '【最近聊天】' + messages.slice(-12).map(message => (message.role === 'user' ? '我' : (message.senderName || importedCharacter.name)) + ': ' + (message.text || '')).join('\n'),
           offlineInviteUserPromptTail(),
         ].join('\n\n'),
         temperature: 0.9,
@@ -4415,13 +4352,13 @@ export function LineConversationView({
         time: fields.time,
         theme: fields.theme,
         letter: fields.letter,
-        inviteFrom: 'other',
+        inviteFrom: 'assistant',
       });
       if (autoSend) {
         const inviteId = Date.now();
         const newMsg = buildOfflineInviteChatMessage({
           id: inviteId,
-          from: 'other',
+          from: 'assistant',
           characterName: characterProfile.nickname,
           fields,
         });
@@ -4448,7 +4385,7 @@ export function LineConversationView({
     }
   };
   // 发起线下邀约 (Offline Meetup Invite) —— 始终走统一小票结构
-  const handleSendOfflineInvite = (from: 'me' | 'other') => {
+  const handleSendOfflineInvite = (from: 'user' | 'assistant') => {
     const fields = normalizeOfflineInviteFields({
       location: offlineInviteData.location,
       time: offlineInviteData.time,
@@ -4457,7 +4394,7 @@ export function LineConversationView({
       preview: '',
     });
     if (!fields.theme.trim() && !fields.letter.trim()) {
-      showToast(from === 'other' ? '请先让角色填写邀约，或手动写好内容' : '请先填写邀约标题或正文');
+      showToast(from === 'assistant' ? '请先让角色填写邀约，或手动写好内容' : '请先填写邀约标题或正文');
       return;
     }
     const inviteId = Date.now();
@@ -4483,7 +4420,7 @@ export function LineConversationView({
     });
 
     setShowOfflineInviteModal(false);
-    showToast(from === 'other' ? '角色已向你发起线下邀约 ✉️' : '已向角色发送线下邀约 ✉️');
+    showToast(from === 'assistant' ? '角色已向你发起线下邀约 ✉️' : '已向角色发送线下邀约 ✉️');
   };
 
   // 接受线下邀约：真正交给当前角色模型生成赴约回应。
@@ -4530,7 +4467,7 @@ export function LineConversationView({
           projectManifest.tone,
         ].join('\n'),
         history: messages.slice(-10).map(message => ({
-          role: message.sender === 'other' ? 'assistant' as const : 'user' as const,
+          role: message.role === 'user' ? 'user' as const : 'assistant' as const,
           content: message.text || message.transcript || '[邀约卡片]',
         })),
         userPrompt: [
@@ -4546,7 +4483,7 @@ export function LineConversationView({
 
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
-        sender: 'other',
+        role: 'assistant',
         text: reply,
         time: '刚刚',
         showThinking: false,
@@ -4579,7 +4516,6 @@ export function LineConversationView({
       const nextSession = { ...prevSession, ...extra, status, updatedAt: nowIso };
       return {
         ...item,
-        type: item.type || item.kind || 'music-together',
         kind: item.kind || item.type || 'music-together',
         musicSession: nextSession,
         metadata: {
@@ -4613,7 +4549,6 @@ export function LineConversationView({
         const nextSession = { ...prevSession, status: nextStatus, updatedAt: nowIso, failReason: undefined };
         return {
           ...item,
-          type: item.type || item.kind || 'music-together',
           kind: item.kind || item.type || 'music-together',
           isRead: true,
           musicSession: nextSession,
@@ -4627,21 +4562,21 @@ export function LineConversationView({
         ...patched,
         {
           id: Date.now() + 1,
-          sender: 'other',
+          role: 'assistant',
           senderName: importedCharacter?.name || characterProfile.nickname || contactName,
           text: replyText,
           time: '刚刚',
           createdAt: nowIso,
-          type: 'ai-reply',
+          kind: 'ai-reply',
           showThinking: false,
         },
         ...(accepted
           ? [{
               id: Date.now() + 2,
-              sender: 'system',
+              role: 'system',
               text: 'TA 加入了一起听',
               time: '刚刚',
-              type: 'system-nudge',
+              kind: 'system-nudge',
             }]
           : []),
       ];
@@ -4697,7 +4632,7 @@ export function LineConversationView({
     const msgId = String(inviteMsg?.id || '');
     if (!msgId) return;
     if (musicInviteDecisionBusyRef.current.has(msgId)) return;
-    if (inviteMsg.sender !== 'me') return;
+    if (inviteMsg.role !== 'user') return;
     const card = resolveSongInviteCard(inviteMsg);
     if (card.inviteState !== 'waiting' && card.inviteState !== 'failed') return;
     // 已成功处理过的卡不再请求；失败卡允许重试
@@ -4731,7 +4666,7 @@ export function LineConversationView({
       }
 
       const history = messagesRef.current.slice(-10).map((message) => ({
-        role: (message.sender === 'other' ? 'assistant' : 'user') as 'assistant' | 'user',
+        role: (message.role === 'user' ? 'user' : 'assistant') as 'assistant' | 'user',
         content: String(
           message.text
           || message.transcript
@@ -4810,7 +4745,7 @@ export function LineConversationView({
     for (let i = list.length - 1; i >= 0; i -= 1) {
       const item = list[i];
       if (!isMusicTogetherMessage(item)) continue;
-      if (item.sender !== 'me') continue;
+      if (item.role !== 'user') continue;
       if (musicInvitePendingStatus(item)) return item;
       // 最近一张已是终态就不再往前扫
       break;
@@ -4847,8 +4782,7 @@ export function LineConversationView({
         if (prev.some((item) => String(item.id) === String(message.id))) return prev;
         return [...prev, hydrateLineChatMessage({
           ...message,
-          type: message.type || message.kind || 'music-together',
-          kind: message.kind || message.type || 'music-together',
+          kind: message.kind || message.kind || 'music-together',
         })];
       });
     };
@@ -4903,7 +4837,7 @@ export function LineConversationView({
       const detail = (event as CustomEvent<{ conversationId?: string; message?: Record<string, any> }>).detail;
       if (!detail?.conversationId || detail.conversationId !== conversationStorageId) return;
       const message = detail.message;
-      if (!isMusicTogetherMessage(message) || message?.sender !== 'me') return;
+      if (!isMusicTogetherMessage(message) || message?.role !== 'user') return;
       ensureInviteInMessages(message);
       window.setTimeout(() => kickPendingMusicInviteReply(message), 0);
     };
@@ -4945,7 +4879,7 @@ export function LineConversationView({
           '【长期记忆】' + (characterMemory.summary || '暂无'),
           ...characterMemory.items.slice(0, 12).map(item => '- ' + item.content),
           '【世界书】' + (worldbooks.flatMap(book => book.enabled ? book.entries.filter(entry => entry.enabled).map(entry => entry.name + ': ' + entry.content) : []).join('\n') || '暂无'),
-          '【最近聊天】' + messages.slice(-Math.max(1, groupMemoryContextCount || 20)).map(message => (message.sender === 'me' ? '用户' : (message.senderName || importedCharacter.name)) + ': ' + (message.text || message.transcript || '')).join('\n'),
+          '【最近聊天】' + messages.slice(-Math.max(1, groupMemoryContextCount || 20)).map(message => (message.role === 'user' ? '用户' : (message.senderName || importedCharacter.name)) + ': ' + (message.text || message.transcript || '')).join('\n'),
         ].join('\n'),
         temperature: Math.min(0.8, Number(presetTemp) || 0.7),
         macroNames: { char: importedCharacter.name, user: activePersona?.name },
@@ -4990,7 +4924,7 @@ export function LineConversationView({
           }),
           '【群公告】' + (groupNoticeText || activeGroup?.announcement || '暂无'),
           '【已有关系】' + (activeGroup?.relationships || groupRelationships || []).map(item => item.from + ' → ' + item.to + '：' + item.relation).join('\n'),
-          '【最近聊天】' + messages.slice(-Math.max(1, groupMemoryContextCount || 20)).map(message => (message.sender === 'me' ? '我' : (message.senderName || '角色')) + ': ' + (message.text || '')).join('\n'),
+          '【最近聊天】' + messages.slice(-Math.max(1, groupMemoryContextCount || 20)).map(message => (message.role === 'user' ? '我' : (message.senderName || '角色')) + ': ' + (message.text || '')).join('\n'),
         ].join('\n'),
         temperature: 0.55,
         macroNames: { char: importedCharacter?.name || characterProfile.nickname, user: activePersona?.name },
@@ -5076,7 +5010,7 @@ export function LineConversationView({
           // 群聊不读角色个人记忆：NPC 在群里只知道群聊记录
           memory: { characterId: '', characterName: '', summary: '', items: [], updatedAt: new Date().toISOString() },
           project: projectManifest,
-          messages: messages.map(message => ({ ...message, sender: message.sender || 'other' })),
+          messages: messages.map(message => ({ ...message, role: resolveMessageRole(message) || 'assistant' })),
           userMessage: '请根据最近群聊内容自然继续整个群聊回合。由你综合情境决定哪些成员发言、发几条、如何接话或插话；不要求任何固定成员发言，也不要求固定人数。若当前没有自然回应，可以暂时不发言。不要重复已有内容。',
           isGroup: true,
           presetOutputEnabled: true,
@@ -5127,7 +5061,7 @@ export function LineConversationView({
           const character = found.character || contextMember.character!;
           return {
             id: replyId + idx,
-            sender: 'other' as const,
+            role: 'assistant' as const,
             senderType: found.member.kind === 'npc' ? 'npc' as const : 'character' as const,
             senderId: (found.member.kind === 'npc' ? found.member.npcId || found.member.id : found.member.id) || character.id,
             // 名字优先级：群内昵称 > 解析出的当前名 > 成员快照 > 模型输出的标签。
@@ -5135,7 +5069,7 @@ export function LineConversationView({
             characterId: character.id,
             text: part.text,
             time: '刚刚',
-            type: 'ai-reply' as const,
+            kind: 'ai-reply' as const,
             showThinking: false,
             status: 'delivered' as const,
             createdAt: new Date().toISOString(),
@@ -5204,8 +5138,8 @@ export function LineConversationView({
       return;
     }
 
-    const lastOther = [...messages].reverse().find(m => m.sender === 'other' && m.text?.trim());
-    const lastUser = [...messages].reverse().find(m => m.sender === 'me' && m.text?.trim());
+    const lastOther = [...messages].reverse().find(m => m.role === 'assistant' && m.text?.trim());
+    const lastUser = [...messages].reverse().find(m => m.role === 'user' && m.text?.trim());
     const continuationId = Date.now() + 1;
     const settings = conversationAiSettings();
 
@@ -5224,7 +5158,7 @@ export function LineConversationView({
         worldbooks: activeWorldbooks,
         memory: characterMemory,
         project: projectManifest,
-        messages: messages.map(message => ({ ...message, sender: message.sender || 'other' })),
+        messages: messages.map(message => ({ ...message, role: resolveMessageRole(message) || 'assistant' })),
         // Continue is a new continuation instruction, not a replay of the old user turn.
         // Keeping the full history preserves the last assistant reply in its correct order.
         userMessage: '请接着角色上一条消息自然继续，不要重复已经说过的内容。',
@@ -5260,7 +5194,7 @@ export function LineConversationView({
           if (!clean) return;
           setMessages(prev => {
             if (prev.some(m => m.id === continuationId)) return prev.map(m => m.id === continuationId ? { ...m, text: clean, status: 'sending' } : m);
-            return [...prev, { id: continuationId, sender: 'other', type: 'ai-reply', text: clean, time: '刚刚', status: 'sending', showThinking: false }];
+            return [...prev, { id: continuationId, role: 'assistant', kind: 'ai-reply', text: clean, time: '刚刚', status: 'sending', showThinking: false }];
           });
         },
       });
@@ -5286,8 +5220,8 @@ export function LineConversationView({
         } : m);
         return [...prev, {
           id: continuationId,
-          sender: 'other',
-          type: 'ai-reply',
+          role: 'assistant',
+          kind: 'ai-reply',
           text: finalText,
           time: '刚刚',
           createdAt: new Date().toISOString(),
@@ -5302,7 +5236,7 @@ export function LineConversationView({
       });
       appendLineMessage(conversationStorageId, {
         id: continuationId,
-        sender: 'other',
+        role: 'assistant',
         text: finalText,
         kind: 'text',
         status: 'delivered',
@@ -5313,7 +5247,7 @@ export function LineConversationView({
       const message = error instanceof Error ? error.message : '继续生成失败';
       setMessages(prev => {
         if (prev.some(m => m.id === continuationId)) return prev.map(m => m.id === continuationId ? { ...m, status: 'failed', error: message, text: `回复失败：${message}` } : m);
-        return [...prev, { id: continuationId, sender: 'other', type: 'ai-reply', text: `回复失败：${message}`, time: '刚刚', status: 'failed', error: message }];
+        return [...prev, { id: continuationId, role: 'assistant', kind: 'ai-reply', text: `回复失败：${message}`, time: '刚刚', status: 'failed', error: message }];
       });
       markLineMessageFailed(conversationStorageId, continuationId, message);
       showToast(message.length > 72 ? message.slice(0, 72) + '…' : message);
@@ -5387,7 +5321,7 @@ export function LineConversationView({
         : undefined;
       const card = buildLineVroomCardMessage({
         id: Date.now(),
-        sender: 'me',
+        role: 'user',
         kind,
         text: finalText,
         cardStyle: readStoredLineCardStyle(kind),
@@ -5414,8 +5348,8 @@ export function LineConversationView({
         const mediaRef = result.url ? await putMedia(result.url) : undefined;
         setMessages((prev) => [...prev, hydrateLineChatMessage({
           id: Date.now(),
-          sender: 'me',
-          type: 'voice',
+          role: 'user',
+          kind: 'voice',
           transcript: prompt,
           duration: Math.max(1, Math.round(prompt.length / 5)),
           mediaRef,
@@ -5432,8 +5366,8 @@ export function LineConversationView({
     if (creatorType === 'voice') {
       setMessages((prev) => [...prev, hydrateLineChatMessage({
         id: Date.now(),
-        sender: 'me',
-        type: 'voice',
+        role: 'user',
+        kind: 'voice',
         transcript: prompt,
         duration: Math.max(1, Math.round(prompt.length / 5)),
         time: '刚刚',
@@ -5448,9 +5382,9 @@ export function LineConversationView({
     const info = typeNames[creatorType] || { label: '文字卡片', descTitle: '描述' };
     setMessages((prev) => [...prev, {
       id: Date.now(),
-      sender: 'me',
-      type: 'ai-card',
-      category: creatorType,
+      role: 'user',
+      kind: 'ai-card',
+      metadata: { category: creatorType },
       title: info.label,
       descTitle: info.descTitle,
       desc: prompt,
@@ -5504,9 +5438,9 @@ export function LineConversationView({
 
           const newMsg = {
             id: Date.now(),
-            sender: 'me',
-            type: type === 'voice' ? 'voice' : 'real-media',
-            mediaType: type,
+            role: 'user',
+            kind: type === 'voice' ? 'voice' : 'real-media',
+            metadata: { mediaType: type },
             fileName: file.name,
             mediaRef,
             transcript: type === 'voice' ? '（本地语音消息）' : undefined,
@@ -5550,9 +5484,9 @@ export function LineConversationView({
                   memory: characterMemory,
                   project: projectManifest,
                   messages: [
-                    ...messages.map((message: any) => ({ sender: message.sender || 'other', ...message })),
+                    ...messages.map((message: any) => ({ ...message, role: resolveMessageRole(message) || 'assistant' })),
                     {
-                      sender: 'me',
+                      role: 'user',
                       text: finalTranscript ? `[语音消息转文字] ${finalTranscript}` : '我给你发了一条语音消息，请自然回应。',
                       createdAt: new Date().toISOString(),
                     },
@@ -5565,7 +5499,7 @@ export function LineConversationView({
                 if (result?.text) {
                   setMessages(prev => [...prev, {
                     id: Date.now() + 1,
-                    sender: 'other',
+                    role: 'assistant',
                     text: result.text,
                     time: '刚刚',
                     createdAt: new Date().toISOString(),
@@ -5600,9 +5534,9 @@ export function LineConversationView({
               memory: characterMemory,
               project: projectManifest,
               messages: [
-                ...messages.map((message: any) => ({ sender: message.sender || 'other', ...message })),
+                ...messages.map((message: any) => ({ ...message, role: resolveMessageRole(message) || 'assistant' })),
                 {
-                  sender: 'me',
+                  role: 'user',
                   text: '我给你发了一张图片，请仔细看这张图片的内容，然后自然回应。不要猜测图片内容，如果看不清就说看不清。',
                   createdAt: new Date().toISOString(),
                   imageData: await (async () => {
@@ -5648,7 +5582,7 @@ export function LineConversationView({
                   if (prev.some(message => message.id === replyMsgId)) {
                     return prev.map(message => message.id === replyMsgId ? { ...message, text: streamed, status: 'sending' } : message);
                   }
-                  return [...prev, { id: replyMsgId, sender: 'other', type: 'ai-reply', text: streamed, time: '刚刚', createdAt: new Date().toISOString(), status: 'sending', showThinking: false }];
+                  return [...prev, { id: replyMsgId, role: 'assistant', kind: 'ai-reply', text: streamed, time: '刚刚', createdAt: new Date().toISOString(), status: 'sending', showThinking: false }];
                 });
               },
             });
@@ -5675,8 +5609,8 @@ export function LineConversationView({
               }
               return [...prev, {
                 id: replyMsgId,
-                sender: 'other',
-                type: 'ai-reply',
+                role: 'assistant',
+                kind: 'ai-reply',
                 text: result.text,
                 time: '刚刚',
                 createdAt: new Date().toISOString(),
@@ -5724,9 +5658,9 @@ export function LineConversationView({
       void putMedia(mediaUrl).then(mediaRef => {
         setMessages(prev => [...prev, {
           id: Date.now(),
-          sender: 'me',
-          type: 'real-media',
-          mediaType: type,
+          role: 'user',
+          kind: 'real-media',
+          metadata: { mediaType: type },
           fileName: file.name,
           mediaRef,
           time: '刚刚',
@@ -5811,7 +5745,7 @@ export function LineConversationView({
     }
     const targetIndex = rerollTargetId !== null
       ? messages.findIndex(m => String(m.id) === String(rerollTargetId))
-      : [...messages].map((m, index) => ({ m, index })).reverse().find(item => item.m.sender === 'other' && item.m.type !== 'system-nudge')?.index;
+      : [...messages].map((m, index) => ({ m, index })).reverse().find(item => item.m.role === 'assistant' && item.m.kind !== 'system-nudge')?.index;
     if (targetIndex === undefined || targetIndex < 0 || !importedCharacter) {
       showToast('还没有可以重新生成的角色消息');
       return;
@@ -5828,7 +5762,7 @@ export function LineConversationView({
     );
     typingRequestIdRef.current = turnRequestId;
 
-    const previousUserIndex = [...messages.slice(0, targetIndex)].map((message, index) => ({ message, index })).reverse().find(item => item.message.sender === 'me' && item.message.text?.trim())?.index ?? -1;
+    const previousUserIndex = [...messages.slice(0, targetIndex)].map((message, index) => ({ message, index })).reverse().find(item => item.message.role === 'user' && item.message.text?.trim())?.index ?? -1;
     const previousUser = previousUserIndex >= 0 ? messages[previousUserIndex].text || '' : inputText;
     setShowReroll(false);
     setRerollPrompt('');
@@ -5855,7 +5789,7 @@ export function LineConversationView({
         memory: characterMemory,
         project: projectManifest,
         // Rebuild this turn from its user message; do not leave earlier split assistant bubbles before re-appending the same user turn.
-        messages: messages.slice(0, previousUserIndex >= 0 ? previousUserIndex : targetIndex).map(message => ({ ...message, sender: message.sender || 'other' })),
+        messages: messages.slice(0, previousUserIndex >= 0 ? previousUserIndex : targetIndex).map(message => ({ ...message, role: resolveMessageRole(message) || 'assistant' })),
         userMessage: previousUser || '继续当前对话',
         isGroup,
         groupName: isGroup ? (activeGroup?.name || '') : '',
@@ -6199,7 +6133,7 @@ export function LineConversationView({
                     className="w-full text-left px-2 py-1.5 rounded-md hover:bg-white transition-colors"
                   >
                     <div className="text-[9px] text-[#aaa] mb-0.5">
-                      {result.sender === 'me' ? '我' : contactName} · {result.createdAt ? new Date(result.createdAt).toLocaleString() : ''}
+                      {result.role === 'user' ? '我' : contactName} · {result.createdAt ? new Date(result.createdAt).toLocaleString() : ''}
                     </div>
                     <div className="text-[10.5px] text-[#444] truncate">{result.text || '[媒体消息]'}</div>
                   </button>
@@ -6237,7 +6171,7 @@ export function LineConversationView({
               jumpToLineMessage(unreadAnchorId);
               setShowUnreadJump(false);
               setMessages((prev) => prev.map((message) => (
-                message.sender === 'me' ? message : { ...message, isRead: true }
+                message.role === 'user' ? message : { ...message, isRead: true }
               )));
               markLineConversationRead(conversationStorageId, unreadAnchorId);
             }}
@@ -6260,7 +6194,7 @@ export function LineConversationView({
           if (!msg || msg.deletedAt || msg.isDeleted) return null;
           const previousMessage = visibleMessages[messageIndex - 1];
           const nextMessage = visibleMessages[messageIndex + 1];
-          // 防御性修复：角色消息强制放左边，防止 sender 存错
+          // 方向只认 role：assistant 消息放左边，user 消息放右边
           // AI 回复、带角色身份的消息一律放左边
           const charName = characterProfile.nickname || importedCharacter?.name || '';
           const isMine = (candidate: any) => isLineMessageFromUser(candidate, charName, isGroup ? '' : (currentUserNameFallback() || activePersona?.name || '我'));
@@ -6270,8 +6204,8 @@ export function LineConversationView({
           const bilingualTranslationText = bilingualTextParts.slice(1).join('[[ZH_TRANSLATION]]').trim();
           const showBilingualTranslation = !isMe && bilingualMode === 'auto' && bilingualTextParts.length > 1 && Boolean(bilingualOriginalText && bilingualTranslationText);
           const messageBubbleParts = (isGroup ? [bilingualOriginalText] : splitLineChatText(bilingualOriginalText)).filter(Boolean);
-          const sameAsPrevious = Boolean(previousMessage && isMine(previousMessage) === isMe && previousMessage.type !== 'system-nudge' && msg.type !== 'system-nudge');
-          const sameAsNext = Boolean(nextMessage && isMine(nextMessage) === isMe && nextMessage.type !== 'system-nudge' && msg.type !== 'system-nudge');
+          const sameAsPrevious = Boolean(previousMessage && isMine(previousMessage) === isMe && previousMessage.kind !== 'system-nudge' && msg.kind !== 'system-nudge');
+          const sameAsNext = Boolean(nextMessage && isMine(nextMessage) === isMe && nextMessage.kind !== 'system-nudge' && msg.kind !== 'system-nudge');
           const sameGroupSpeakerAsPreviousForSpacing = Boolean(isGroup && previousMessage && !isMine(previousMessage) && !isMe && String(previousMessage.characterId || previousMessage.metadata?.characterId || previousMessage.senderName || '') === String(msg.characterId || msg.metadata?.characterId || msg.senderName || ''));
           const sameGroupSpeakerAsNextForSpacing = Boolean(isGroup && nextMessage && !isMine(nextMessage) && !isMe && String(nextMessage.characterId || nextMessage.metadata?.characterId || nextMessage.senderName || '') === String(msg.characterId || msg.metadata?.characterId || msg.senderName || ''));
           const effectiveSameAsPrevious = isGroup && !isMe ? sameGroupSpeakerAsPreviousForSpacing : sameAsPrevious;
@@ -6288,7 +6222,7 @@ export function LineConversationView({
             : '';
           const currentDateIsValid = Boolean(currentDate && !Number.isNaN(currentDate.getTime()));
           // 空的 AI 占位消息（生成中、文字还没流进来）：只显示点点点，不显示头像名字时间。
-          const isEmptyAiPlaceholder = msg.sender !== 'me' && msg.type === 'ai-reply' && !String(msg.text || (msg as any).content || '').trim();
+          const isEmptyAiPlaceholder = msg.role !== 'user' && msg.kind === 'ai-reply' && !String(msg.text || (msg as any).content || '').trim();
           const previousDateIsValid = Boolean(previousDate && !Number.isNaN(previousDate.getTime()));
           const showDaySeparator = Boolean(currentDateIsValid
             && (messageIndex === 0 || !previousDateIsValid || currentDay !== previousDay));
@@ -6315,7 +6249,7 @@ export function LineConversationView({
           }
           const showUwuTimeSeparator = uwuTimeLabel !== null;
 
-          if (msg.type === 'html-interlude') {
+          if (msg.kind === 'html-interlude') {
             const safeHtml = sanitizeHtmlFragment(String(msg.htmlContent || ''));
             if (!safeHtml) return null;
             return (
@@ -6328,7 +6262,7 @@ export function LineConversationView({
             );
           }
 
-          if (msg.type === 'music-together' || msg.kind === 'music-together' || msg.type === 'music-invite' || msg.kind === 'music-invite') {
+          if (msg.kind === 'music-together' || msg.kind === 'music-together' || msg.kind === 'music-invite' || msg.kind === 'music-invite') {
             if (msg.status === 'deleted' || msg.deletedAt) return null;
             const hasSession = Boolean(msg.musicSession || msg.metadata?.musicSession);
             if (!hasSession) return null;
@@ -6344,7 +6278,6 @@ export function LineConversationView({
                 const nextSession = { ...prevSession, status, updatedAt: new Date().toISOString() };
                 return {
                   ...item,
-                  type: item.type || item.kind || 'music-together',
                   musicSession: nextSession,
                   metadata: {
                     ...(item.metadata && typeof item.metadata === 'object' ? item.metadata : {}),
@@ -6473,10 +6406,10 @@ export function LineConversationView({
                             }
                             setMessages(prev => [...prev, {
                               id: Date.now() + 1,
-                              sender: 'system',
+                              role: 'system',
                               text: '你加入了一起听',
                               time: '刚刚',
-                              type: 'system-nudge',
+                              kind: 'system-nudge',
                             }]);
                             showToast('已加入一起听');
                           }}
@@ -6581,7 +6514,7 @@ export function LineConversationView({
             );
           }
 
-          if (msg.type === 'system-nudge') {
+          if (msg.kind === 'system-nudge') {
             return (
               <div key={msg.id} data-line-message-id={msg.id} className="flex justify-center my-1.5 animate-in fade-in items-center gap-1.5"
                 onPointerDown={(event) => handleMessagePointerDown(event, msg)}
@@ -6604,14 +6537,14 @@ export function LineConversationView({
             );
           }
 
-          // Resolve group sender by stable character ID first. Name matching is only a
+          // Resolve group speaker by stable character ID first. Name matching is only a
           // legacy fallback when the message has no identity ID; never let a name
           // collision override an explicit ID and show another NPC's avatar.
           const messageCharacterId = String(msg.characterId || msg.metadata?.characterId || '').trim();
           const messageSenderName = String(msg.senderName || '').trim();
           const previousCharacterKey = String(previousMessage?.characterId || previousMessage?.metadata?.characterId || previousMessage?.senderName || '').trim();
           const currentCharacterKey = String(msg.characterId || msg.metadata?.characterId || msg.senderName || '').trim();
-          const sameGroupSpeakerAsPrevious = Boolean(isGroup && !isMe && previousMessage && previousMessage.sender !== 'me' && previousMessage.type !== 'system-nudge' && msg.type !== 'system-nudge' && previousCharacterKey && previousCharacterKey === currentCharacterKey);
+          const sameGroupSpeakerAsPrevious = Boolean(isGroup && !isMe && previousMessage && previousMessage.role !== 'user' && previousMessage.kind !== 'system-nudge' && msg.kind !== 'system-nudge' && previousCharacterKey && previousCharacterKey === currentCharacterKey);
           const messageSenderId = String(msg.senderId || msg.metadata?.senderId || '').trim();
           const groupMessageMember = isGroup && !isMe
             ? (
@@ -6722,7 +6655,7 @@ export function LineConversationView({
           const hasThinking = Boolean(String(thinkingContent).trim()) && showChainOfThoughtInChat;
           // COT 预设指示器：每轮只在第一条 AI 回复上方显示一次，不在每条上重复。
           const prevVisibleMsg = messageIndex > 0 ? visibleMessages[messageIndex - 1] : null;
-          const isAiRoundStart = !prevVisibleMsg || prevVisibleMsg.sender === 'me' || prevVisibleMsg.sender === 'user';
+          const isAiRoundStart = !prevVisibleMsg || prevVisibleMsg.role === 'user';
           const showCotHeader = hasThinking && isAiRoundStart;
           const cotLabel = getActivePromptPreset(isGroup ? 'group' : 'single')?.name || '预设流程';
           const cotStyle = resolvedCotPreset.displayStyle || 'minimal';
@@ -6780,7 +6713,7 @@ export function LineConversationView({
                       ? 'w-9 h-9 bg-[#f8eef1] border-[#e5cbd2] text-[#ae7e89] scale-100 shadow-sm'
                       : 'w-7 h-7 bg-[#fafafa] border-[#ededee] text-[#b5b5b8] scale-90'
                   }`}
-                  aria-label={swipeOffset > 0 ? '引用消息' : (msg.sender === 'me' ? '编辑消息' : '消息菜单')}
+                  aria-label={swipeOffset > 0 ? '引用消息' : (msg.role === 'user' ? '编辑消息' : '消息菜单')}
                 >
                   {swipeOffset > 0 ? <CornerUpLeft className="w-3.5 h-3.5" /> : <Edit3 className="w-3.5 h-3.5" />}
                 </div>
@@ -6842,7 +6775,7 @@ export function LineConversationView({
                   onClick={() => {
                     if (isGroup) {
                       setMessages(prev => prev.map(m =>
-                        String(m.characterId || m.metadata?.characterId || m.senderName || '') === currentCharacterKey && m.sender !== 'me'
+                        String(m.characterId || m.metadata?.characterId || m.senderName || '') === currentCharacterKey && m.role !== 'user'
                           ? { ...m, showThinking: m.id === msg.id ? !m.showThinking : false }
                           : m
                       ));
@@ -6904,7 +6837,7 @@ export function LineConversationView({
                       <CornerUpLeft className="w-3 h-3 shrink-0" />
                       <span className="text-[9px] font-semibold">引用消息</span>
                       <span className="text-[8.5px] opacity-70 truncate">
-                        · {msg.quote.sender || '消息'}
+                        · {msg.quote.senderName || '消息'}
                       </span>
                     </div>
                     <div className={`px-2.5 py-1.5 text-[10px] leading-[1.45] truncate ${
@@ -6916,7 +6849,7 @@ export function LineConversationView({
                 )}
 
                 {/* 2. 主消息体 */}
-                {(msg.type === 'sticker' || msg.kind === 'sticker') && (msg.stickerUrl || msg.mediaRef) ? (
+                {(msg.kind === 'sticker' || msg.kind === 'sticker') && (msg.stickerUrl || msg.mediaRef) ? (
                   <button
                     onClick={() => setLightboxImg(msg.stickerUrl || msg.mediaRef)}
                     onContextMenu={(e) => {
@@ -6933,7 +6866,7 @@ export function LineConversationView({
                       loading="lazy"
                     />
                   </button>
-                ) : msg.type === 'real-media' && (msg.mediaRef || mediaCache[msg.mediaRef]) ? (
+                ) : msg.kind === 'real-media' && (msg.mediaRef || mediaCache[msg.mediaRef]) ? (
                   <button
                     onClick={() => setLightboxImg(mediaCache[msg.mediaRef] || msg.mediaRef)}
                     onContextMenu={(e) => {
@@ -6980,7 +6913,7 @@ export function LineConversationView({
                       </span>
                     )}
                   </div>
-                ) : msg.type === 'contact-card' || (msg as any).kind === 'contact-card' ? (
+                ) : msg.kind === 'contact-card' || (msg as any).kind === 'contact-card' ? (
                   <div
                     onContextMenu={(e) => { e.preventDefault(); setContextMenuMsg(msg); }}
                     className="w-[205px] rounded-[12px] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] px-3.5 py-3 flex items-center gap-3"
@@ -6994,7 +6927,7 @@ export function LineConversationView({
                     </div>
                     <div className="text-[#d0d0d0] text-[14px]">›</div>
                   </div>
-                ) : msg.type === 'transfer' || msg.kind === 'transfer' ? (
+                ) : msg.kind === 'transfer' || msg.kind === 'transfer' ? (
                   <div
                     onContextMenu={(e) => { e.preventDefault(); setContextMenuMsg(msg); }}
                     className="w-[205px] rounded-[12px] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] px-3.5 py-3 flex items-center gap-3"
@@ -7016,7 +6949,7 @@ export function LineConversationView({
                     </div>
                     <div className="text-[#d0d0d0] text-[14px]">›</div>
                   </div>
-                ) : msg.type === 'red-packet' || msg.kind === 'red-packet' ? (
+                ) : msg.kind === 'red-packet' || msg.kind === 'red-packet' ? (
                   <button type="button"
                     onClick={() => { setActiveRedPacket(msg); setShowRedPacketModal(true); }}
                     onContextMenu={(e) => { e.preventDefault(); setContextMenuMsg(msg); }}
@@ -7038,7 +6971,7 @@ export function LineConversationView({
                       {(() => { const packetMeta = msg.metadata && typeof msg.metadata === 'object' ? msg.metadata : {}; const packetClaims = Array.isArray(msg.redPacketClaims) ? msg.redPacketClaims : Array.isArray(packetMeta.claims) ? packetMeta.claims : []; const packetCount = Math.max(1, Number(msg.redPacketCount || packetMeta.count || 1)); const packetStatus = String(msg.redPacketStatus || packetMeta.status || 'sent'); return packetStatus === 'claimed' || packetClaims.length >= packetCount ? `已领完 · ${packetClaims.length}人领取` : packetClaims.length ? `已领取 ${packetClaims.length}/${packetCount}` : isMe ? '已发出 · 点击查看' : '点击领取'; })()}
                     </div>
                   </button>
-                ) : msg.type === 'location' || msg.kind === 'location' ? (
+                ) : msg.kind === 'location' || msg.kind === 'location' ? (
                   <div
                     onContextMenu={(e) => { e.preventDefault(); setContextMenuMsg(msg); }}
                     className="w-[190px] rounded-[16px] overflow-hidden bg-white shadow-[0_6px_20px_rgba(0,0,0,0.1)]"
@@ -7078,12 +7011,12 @@ export function LineConversationView({
                       <div className="flex-1 text-center py-2.5 text-[11px] font-medium text-[#a88040] border-l border-[#f2f0ec]">路线</div>
                     </div>
                   </div>
-                ) : msg.type === 'offline-invite' ? (
+                ) : msg.kind === 'offline-invite' ? (
                   /* 线下邀约 · 小票邀请卡 */
                   <OfflineInviteReceiptCard
                     msg={{
                       id: msg.id,
-                      inviteFrom: msg.inviteFrom || (msg.sender === 'me' ? 'me' : 'other'),
+                      inviteFrom: (msg.inviteFrom === 'me' ? 'user' : msg.inviteFrom === 'other' ? 'assistant' : msg.inviteFrom) || (msg.role === 'user' ? 'user' : 'assistant'),
                       inviteLocation: msg.inviteLocation || msg.metadata?.location || '',
                       inviteTime: msg.inviteTime || msg.metadata?.time || '',
                       inviteTheme: msg.inviteTheme || msg.metadata?.theme || msg.metadata?.title || '',
@@ -7240,7 +7173,7 @@ export function LineConversationView({
                       </div>
                     );
                   })()
-                ) : msg.type === 'ai-card' ? (
+                ) : msg.kind === 'ai-card' ? (
                   /* 文字文件等：保留白色描述卡片 */
                   <div 
                     onContextMenu={(e) => {
@@ -7267,7 +7200,7 @@ export function LineConversationView({
                       </div>
                     </div>
                   </div>
-                ) : msg.type === 'real-media' ? (
+                ) : msg.kind === 'real-media' ? (
                   /* 真实媒体 */
                   <div 
                     onContextMenu={(e) => {
@@ -7276,7 +7209,7 @@ export function LineConversationView({
                     }}
                     className="p-3 rounded-[14px] bg-[#fafafa] border border-[#e8e8e9] space-y-1 text-xs"
                   >
-                    {(msg.mediaType === 'video' && msg.mediaRef && mediaCache[msg.mediaRef]) ? (
+                    {(msg.metadata?.mediaType === 'video' && msg.mediaRef && mediaCache[msg.mediaRef]) ? (
                       <div className="space-y-1.5">
                         <video
                           src={mediaCache[msg.mediaRef]}
@@ -7286,7 +7219,7 @@ export function LineConversationView({
                         />
                         <div className="text-[10px] text-[#999]">{msg.fileName}</div>
                       </div>
-                    ) : (msg.mediaType === 'image' && (msg.mediaUrl || (msg.mediaRef && mediaCache[msg.mediaRef]))) ? (
+                    ) : (msg.metadata?.mediaType === 'image' && (msg.mediaUrl || (msg.mediaRef && mediaCache[msg.mediaRef]))) ? (
                       <div className="space-y-1.5">
                         <img
                           src={msg.mediaUrl || mediaCache[msg.mediaRef]}
@@ -7323,7 +7256,7 @@ export function LineConversationView({
                             ? 'bg-[#f8eef1] border-[#ead9de] text-[#8b6871]'
                             : 'bg-[#f7f7f8] border-[#e9e9eb] text-[#777]'
                         }`}>
-                          <div className="font-medium mb-0.5 truncate">{msg.quote.sender || '消息'}</div>
+                          <div className="font-medium mb-0.5 truncate">{msg.quote.senderName || '消息'}</div>
                           <div className="truncate opacity-80">{msg.quote.text || '多媒体消息'}</div>
                         </div>
                       )}
@@ -7436,7 +7369,7 @@ export function LineConversationView({
                         <div className="space-y-1">
                           {[...importedCharacters.map(ch => ({ name: ch.name, avatar: ch.avatar, desc: '角色' })), ...getNpcs().map(n => ({ name: n.name, avatar: n.avatar, desc: 'NPC' }))].map((p, i) => (
                             <div key={i} onClick={() => {
-                              const newMsg = { id: Date.now(), sender: 'me' as const, type: 'contact-card', kind: 'contact-card' as any, text: `[名片] ${p.name}`, time: '刚刚', contactName: p.name, contactAvatar: p.avatar, contactDesc: p.desc };
+                              const newMsg = { id: Date.now(), role: 'user' as const, kind: 'contact-card' as any, text: `[名片] ${p.name}`, time: '刚刚', contactName: p.name, contactAvatar: p.avatar, contactDesc: p.desc };
                               setMessages(prev => [...prev, newMsg]); appendLineMessage(conversationStorageId, newMsg);
                               setShowContactPicker(false); showToast('名片已发送');
                             }} className="flex items-center gap-3 p-2.5 rounded-[14px] hover:bg-[#f7f7f8] cursor-pointer">
@@ -7503,13 +7436,12 @@ export function LineConversationView({
                               }
                               const newMsg = {
                                 id: Date.now(),
-                                sender: 'me' as const,
-                                type: 'real-media' as const,
+                                role: 'user' as const,
                                 kind: 'real-media' as any,
                                 text: `[AI 生图] ${imageGenPrompt.slice(0, 30)}`,
                                 time: '刚刚',
                                 imageData: `data:image/png;base64,${result.imageBase64}`,
-                                mediaType: 'image' as const,
+                                metadata: { mediaType: 'image' },
                               };
                               setMessages(prev => [...prev, newMsg as any]);
                               appendLineMessage(conversationStorageId, newMsg as any);
@@ -7968,7 +7900,7 @@ export function LineConversationView({
                   {isMe ? (() => {
                     const msgIndex = messages.findIndex((candidate) => String(candidate.id) === String(msg.id));
                     const hasRoleReply = msgIndex >= 0 && messages.slice(msgIndex + 1).some((candidate) =>
-                      candidate.sender !== 'me' && candidate.type !== 'system-nudge'
+                      candidate.role !== 'user' && candidate.kind !== 'system-nudge'
                     );
                     const isRead = hasRoleReply || msg.isRead;
                     // 群聊：单灰勾=已发送，双绿勾=有人回复；单聊：保持已读/未读文字。
@@ -8086,7 +8018,7 @@ export function LineConversationView({
               <div className="flex items-center gap-1.5 truncate">
                 <CornerUpLeft className="w-3.5 h-3.5 shrink-0" />
                 <span className="font-medium text-[#8c5f6b]">
-                  回复 {replyingToMsg.sender === 'me' ? '自己' : characterProfile.nickname}:
+                  回复 {replyingToMsg.role === 'user' ? '自己' : characterProfile.nickname}:
                 </span>
                 <span className="truncate text-[#666] text-[11px]">
                   {lineCardPreview(replyingToMsg) || replyingToMsg.text || replyingToMsg.desc || '多媒体内容'}
@@ -8322,11 +8254,10 @@ export function LineConversationView({
                   // 只发卡，等角色接受后才写入 togetherMusic / 解锁一起听
                   const inviteMsg = {
                     id: Date.now(),
-                    sender: 'me' as const,
+                    role: 'user' as const,
                     senderName: currentUserNameFallback() || activePersona?.name || '我',
                     text: '邀请你一起听歌：《' + title + '》',
                     time: '刚刚',
-                    type: 'music-together',
                     kind: 'music-together',
                     musicSession: session,
                     metadata: { musicSession: session },
@@ -8801,7 +8732,7 @@ export function LineConversationView({
           if (nextClaims.length >= count) showToast('红包已被领完');
           else showToast(`你领取了 ¥${userClaim.amount}，群成员已自动领取`);
         };
-        return <div className="absolute inset-0 z-[90] flex items-center justify-center bg-black/45 p-5" onClick={() => setShowRedPacketModal(false)}><div className="relative w-full max-w-[300px] overflow-hidden rounded-[16px] bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="bg-[#c96e7d] px-4 pb-4 pt-5 text-center text-white"><button type="button" onClick={() => setShowRedPacketModal(false)} className="absolute right-3 top-2 text-[22px] leading-none text-white/80">×</button><div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-[10px] bg-white/15 text-[20px]">🧧</div><div className="text-[12px] text-white/80">{String(packet.sender === 'me' ? '我' : packet.senderName || '群成员')} 的红包</div><div className="mt-1 text-[14px] font-medium">{String(packet.redPacketBlessing || meta.blessing || '恭喜发财')}</div>{alreadyClaimed ? <div className="mt-3 text-[28px] font-semibold">¥{String(claims.find((claim: any) => claim.userId === 'me')?.amount || '0.00')}</div> : <div className="mt-3 text-[13px] text-white/85">{packet.redPacketStatus === 'claimed' ? '红包已领完' : '恭喜发财，大吉大利'}</div>}</div><div className="p-4">{!alreadyClaimed && packet.redPacketStatus !== 'claimed' && claims.length < count && <button type="button" onClick={claimPacket} className="mb-3 w-full rounded-[10px] bg-[#f2c65c] py-2.5 text-[13px] font-semibold text-[#6d4518] active:scale-[0.99]">开红包</button>}{alreadyClaimed && <div className="mb-3 text-center text-[11px] text-[#999]">已领取红包，下面是领取详情</div>}<div className="flex items-center justify-between border-b border-[#f0f0f1] pb-2 text-[11px] text-[#777]"><span>领取详情</span><span>{claims.length}/{count} 个红包</span></div><div className="max-h-[220px] overflow-y-auto">{claims.length ? claims.map((claim: any, index: number) => <div key={`${claim.userId || claim.name}-${index}`} className="flex items-center gap-2.5 border-b border-[#f5f5f6] py-2.5 last:border-0"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f4f4f5] text-[11px] text-[#666]">{String(claim.name || '成员').slice(0, 1)}</div><div className="min-w-0 flex-1"><div className="truncate text-[12px] font-medium text-[#333]">{String(claim.name || '群成员')}</div><div className="mt-0.5 text-[10px] text-[#aaa]">{String(claim.time || '')}</div></div><div className="text-[13px] font-semibold text-[#333]">¥{Number(claim.amount || 0).toFixed(2)}</div></div>) : <div className="py-5 text-center text-[11px] text-[#aaa]">还没有人领取</div>}</div><div className="mt-2 text-[10px] text-[#aaa]">已领取 ¥{claims.reduce((sum: number, claim: any) => sum + Number(claim.amount || 0), 0).toFixed(2)} · 剩余 {Math.max(0, count - claims.length)} 个</div></div></div></div>;
+        return <div className="absolute inset-0 z-[90] flex items-center justify-center bg-black/45 p-5" onClick={() => setShowRedPacketModal(false)}><div className="relative w-full max-w-[300px] overflow-hidden rounded-[16px] bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="bg-[#c96e7d] px-4 pb-4 pt-5 text-center text-white"><button type="button" onClick={() => setShowRedPacketModal(false)} className="absolute right-3 top-2 text-[22px] leading-none text-white/80">×</button><div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-[10px] bg-white/15 text-[20px]">🧧</div><div className="text-[12px] text-white/80">{String(packet.role === 'user' ? '我' : packet.senderName || '群成员')} 的红包</div><div className="mt-1 text-[14px] font-medium">{String(packet.redPacketBlessing || meta.blessing || '恭喜发财')}</div>{alreadyClaimed ? <div className="mt-3 text-[28px] font-semibold">¥{String(claims.find((claim: any) => claim.userId === 'me')?.amount || '0.00')}</div> : <div className="mt-3 text-[13px] text-white/85">{packet.redPacketStatus === 'claimed' ? '红包已领完' : '恭喜发财，大吉大利'}</div>}</div><div className="p-4">{!alreadyClaimed && packet.redPacketStatus !== 'claimed' && claims.length < count && <button type="button" onClick={claimPacket} className="mb-3 w-full rounded-[10px] bg-[#f2c65c] py-2.5 text-[13px] font-semibold text-[#6d4518] active:scale-[0.99]">开红包</button>}{alreadyClaimed && <div className="mb-3 text-center text-[11px] text-[#999]">已领取红包，下面是领取详情</div>}<div className="flex items-center justify-between border-b border-[#f0f0f1] pb-2 text-[11px] text-[#777]"><span>领取详情</span><span>{claims.length}/{count} 个红包</span></div><div className="max-h-[220px] overflow-y-auto">{claims.length ? claims.map((claim: any, index: number) => <div key={`${claim.userId || claim.name}-${index}`} className="flex items-center gap-2.5 border-b border-[#f5f5f6] py-2.5 last:border-0"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f4f4f5] text-[11px] text-[#666]">{String(claim.name || '成员').slice(0, 1)}</div><div className="min-w-0 flex-1"><div className="truncate text-[12px] font-medium text-[#333]">{String(claim.name || '群成员')}</div><div className="mt-0.5 text-[10px] text-[#aaa]">{String(claim.time || '')}</div></div><div className="text-[13px] font-semibold text-[#333]">¥{Number(claim.amount || 0).toFixed(2)}</div></div>) : <div className="py-5 text-center text-[11px] text-[#aaa]">还没有人领取</div>}</div><div className="mt-2 text-[10px] text-[#aaa]">已领取 ¥{claims.reduce((sum: number, claim: any) => sum + Number(claim.amount || 0), 0).toFixed(2)} · 剩余 {Math.max(0, count - claims.length)} 个</div></div></div></div>;
       })()}
 
       {/* 7. AI DEBUG SHEET — show the actual prompt, raw model output and parser result */}
@@ -11593,44 +11524,23 @@ export function LineConversationView({
 
             <button
               onClick={() => {
-                const charName = String(characterProfile.nickname || importedCharacter?.name || '').trim();
-                const myName = String(currentUserNameFallback() || activePersona?.name || '').trim();
+                // role 模型一键修复：只修一种自动可判定的错位——AI 回复（kind ai-reply）
+                // 绝不可能是用户发的，role 错写成 user 的移回 assistant。
+                // senderName / senderType 永不参与方向判断；左边卡住的你的消息
+                // 没有自动信号，靠多选“移到右边”手动定死。
                 let fixedToLeft = 0;
-                let fixedToRight = 0;
                 setMessages((prev: any[]) => prev.map((m: any) => {
                   if (!m) return m;
-                  // 方向一：右边冒充的角色消息 → 移回左边（原有逻辑）
-                  // 保护：署名是你本人的消息，任何自动规则都不许移到左边——角色是角色，你是你。
-                  // characterId 只是“这是哪个角色的会话”，不是“谁发的”，不能单独作为移左的理由。
-                  if (m.sender === 'me') {
-                    const senderNameStr = String(m.senderName || '').trim();
-                    const nameIsMine = Boolean(senderNameStr && (senderNameStr === myName || senderNameStr === '我'));
-                    if (nameIsMine) return m;
-                    const isAiReply = m.type === 'ai-reply';
-                    const nameIsChar = Boolean(senderNameStr && charName && senderNameStr === charName);
-                    const hasCharacterSenderType = m.senderType === 'character' || m.senderType === 'npc';
-                    if (isAiReply || nameIsChar || hasCharacterSenderType) {
-                      fixedToLeft++;
-                      return { ...m, sender: 'other' };
-                    }
-                    return m;
-                  }
-                  // 方向二：左边卡住的你的消息 → 移回右边。只认发送名就是你本人的，
-                  // 避免把角色消息误移（单聊才启用，群聊成员重名风险高）。
-                  if (!isGroup && m.sender !== 'me') {
-                    const senderNameStr = String(m.senderName || '').trim();
-                    const nameIsMine = Boolean(senderNameStr && (senderNameStr === myName || senderNameStr === '我'));
-                    if (nameIsMine) {
-                      fixedToRight++;
-                      return { ...m, sender: 'me', senderType: 'user', ...(m.type === 'ai-reply' ? { type: 'text' } : {}), ...(m.kind === 'ai-reply' ? { kind: 'text' } : {}) };
-                    }
+                  if (m.role === 'user' && m.kind === 'ai-reply') {
+                    fixedToLeft++;
+                    return { ...m, role: 'assistant' };
                   }
                   return m;
                 }));
                 setTimeout(() => showToast(
-                  (fixedToLeft + fixedToRight) > 0
-                    ? `已修复 ${fixedToLeft + fixedToRight} 条错位消息${fixedToRight > 0 ? `（${fixedToRight} 条移回右边）` : ''}`
-                    : '没有发现错位消息'
+                  fixedToLeft > 0
+                    ? `已修复 ${fixedToLeft} 条错位消息`
+                    : '没有发现错位消息（左边卡住的请用多选移到右边）'
                 ), 100);
               }}
               className="w-full py-3 bg-white text-[#ae7e89] rounded-[14px] border border-[#f0f0f1] font-medium cursor-pointer hover:bg-[#faf1f3] transition-colors"
@@ -11982,8 +11892,7 @@ export function LineConversationView({
           setShowStickerSheet(false);
           const newMsg = {
             id: Date.now(),
-            sender: 'me',
-            type: 'sticker',
+            role: 'user',
             kind: 'sticker',
             text: `[表情包] ${name}`,
             stickerName: name,
@@ -12533,7 +12442,7 @@ export function LineConversationView({
             <div className="w-8 h-1 bg-[#ddd] rounded-full mx-auto" />
 
             {/* 系统消息（失败提示等）：只保留删除 */}
-            {contextMenuMsg.type === 'system-nudge' ? (
+            {contextMenuMsg.kind === 'system-nudge' ? (
               <div
                 onClick={() => {
                   setMessages((prev) => prev.filter((m) => String(m.id) !== String(contextMenuMsg.id)));
@@ -12606,7 +12515,7 @@ export function LineConversationView({
               )}
 
               {/* 单条 Reroll：只作用于当前长按的这一条角色消息 */}
-              {contextMenuMsg.sender !== 'me' && contextMenuMsg.type !== 'system-nudge' && contextMenuMsg.text && (
+              {contextMenuMsg.role !== 'user' && contextMenuMsg.kind !== 'system-nudge' && contextMenuMsg.text && (
                 <div onClick={() => {
                   setRerollTargetId(contextMenuMsg.id);
                   setRerollPrompt('只重新生成这一条消息，不要重写同一轮的其他消息。');
@@ -12652,7 +12561,7 @@ export function LineConversationView({
                   const newFav = {
                     id: Date.now(),
                     contactName,
-                    sender: contextMenuMsg.sender,
+                    role: contextMenuMsg.role,
                     text: contextMenuMsg.text || contextMenuMsg.desc || '多媒体内容',
                     time: contextMenuMsg.time,
                     savedAt: '刚刚'
@@ -12682,7 +12591,7 @@ export function LineConversationView({
               </div>
 
               {/* 撤回 (我发的可撤回，角色发的也可令其撤回) */}
-              {contextMenuMsg.sender === 'me' ? (
+              {contextMenuMsg.role === 'user' ? (
                 <>
                 <div
                   onClick={() => handleRecallMessage(contextMenuMsg.id)}
@@ -12695,7 +12604,7 @@ export function LineConversationView({
                   onClick={() => {
                     const targetId = contextMenuMsg.id;
                     setMessages((prev: any[]) => prev.map((m: any) => 
-                      String(m.id) === String(targetId) ? { ...m, sender: 'other' } : m
+                      String(m.id) === String(targetId) ? { ...m, role: 'assistant' } : m
                     ));
                     setContextMenuMsg(null);
                     showToast('已移到左边');
@@ -12713,7 +12622,7 @@ export function LineConversationView({
                     const myName = currentUserNameFallback() || activePersona?.name || '我';
                     setMessages((prev: any[]) => prev.map((m: any) =>
                       String(m.id) === String(targetId)
-                        ? { ...m, sender: 'me', senderType: 'user', senderName: myName, ...(m.type === 'ai-reply' ? { type: 'text' } : {}), ...(m.kind === 'ai-reply' ? { kind: 'text' } : {}) }
+                        ? { ...m, role: 'user', senderType: 'user', senderName: myName, ...(m.kind === 'ai-reply' ? { kind: 'text' } : {}) }
                         : m
                     ));
                     setContextMenuMsg(null);
@@ -12725,7 +12634,7 @@ export function LineConversationView({
                   <span className="text-[#333]">移到右边（修正错位）</span>
                 </div>
               )}
-              {contextMenuMsg.sender !== 'me' && (
+              {contextMenuMsg.role !== 'user' && (
                 <div
                   onClick={() => handleOtherRecallMessage(contextMenuMsg.id, true)}
                   className="py-3 flex items-center gap-3 cursor-pointer hover:bg-neutral-50 px-2 text-[#ae7e89]"
@@ -12821,7 +12730,7 @@ export function LineConversationView({
                     const forwardedId = `forward-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
                     import('../../store/lineRuntime').then(({ appendLineMessage }) => appendLineMessage(f, {
                       id: forwardedId,
-                      sender: 'me',
+                      role: 'user',
                       text: forwardedText,
                       kind: 'text',
                       createdAt: new Date().toISOString(),
@@ -13197,13 +13106,13 @@ export function LineConversationView({
               <div className="grid grid-cols-3 gap-2">
                 {[
                   {
-                    id: 'other',
+                    id: 'assistant',
                     title: '要角色邀请我',
                     desc: '角色自填小票并发送',
                     badge: '推荐',
                   },
                   {
-                    id: 'me',
+                    id: 'user',
                     title: '我发起的邀约',
                     desc: '你来写，再发给对方',
                     badge: '主动',
@@ -13223,7 +13132,7 @@ export function LineConversationView({
                     <button
                       key={mode.id}
                       onClick={() => {
-                        if (mode.id === 'other' || mode.id === 'ai-prompt') {
+                        if (mode.id === 'assistant' || mode.id === 'ai-prompt') {
                           // 角色自己填写全部字段，并直接发出正确小票 HTML
                           void generateRoleOfflineInvite(true);
                         } else {
@@ -13255,7 +13164,7 @@ export function LineConversationView({
             {/* 邀约卡片详情输入表单 */}
             <div className="bg-white rounded-[14px] border border-[#f0f0f1] p-3.5 space-y-3">
               <div className="font-semibold text-xs text-[#222]">
-                {offlineInviteData.inviteFrom === 'other'
+                {offlineInviteData.inviteFrom === 'assistant'
                   ? `【${characterProfile.nickname} 的发函内容】`
                   : '【你的发函内容】'}
               </div>
@@ -13369,7 +13278,7 @@ export function LineConversationView({
             >
               <span>✉</span>
               <span>
-                {offlineInviteData.inviteFrom === 'other'
+                {offlineInviteData.inviteFrom === 'assistant'
                   ? `让 ${characterProfile.nickname} 发送小票邀约到聊天`
                   : '发送我的小票邀约'}
               </span>

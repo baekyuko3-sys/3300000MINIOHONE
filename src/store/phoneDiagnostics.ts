@@ -1,3 +1,4 @@
+import { bareIdentityId } from './lineRuntime';
 /**
  * 手机体检：扫描本地 LINE / 角色数据，找出异常项。
  * 只读诊断，不删除、不修改任何数据；修复走 repairBlankChats / fixMisalignedSenders。
@@ -122,7 +123,7 @@ export function diagnosePhone(): PhoneDiagnosis {
     convMsgs.set(key, msgs);
     totalMsgs += msgs.length;
     for (const m of msgs) {
-      if (m.type === 'ai-reply' && m.sender === 'me') misaligned++;
+      if (m.kind === 'ai-reply' && m.role === 'user') misaligned++;
       if (!String(m.text || m.content || m.desc || '').trim() && !m.kind && !m.mediaRef && !m.imageData) emptyMsgs++;
     }
   }
@@ -133,7 +134,7 @@ export function diagnosePhone(): PhoneDiagnosis {
   for (const item of chats) {
     if (!item || typeof item.id !== 'string') continue;
     chatIds.add(item.id);
-    const msgs = (convMsgs.get('line:conversation:' + item.id) || []).filter((m: any) => m.sender !== 'system' && m.kind !== 'system');
+    const msgs = (convMsgs.get('line:conversation:' + item.id) || []).filter((m: any) => m.role !== 'system' && m.kind !== 'system');
     if (msgs.length === 0) {
       empty.counts.blankChats++;
       if (issues.length < 200) {
@@ -148,7 +149,7 @@ export function diagnosePhone(): PhoneDiagnosis {
 
   // 孤儿会话：有真实消息、无聊天项
   for (const key of convKeys) {
-    const msgs = (convMsgs.get(key) || []).filter((m: any) => m.sender !== 'system' && m.kind !== 'system');
+    const msgs = (convMsgs.get(key) || []).filter((m: any) => m.role !== 'system' && m.kind !== 'system');
     if (msgs.length === 0) continue;
     const suffix = key.slice('line:conversation:'.length);
     if (!chatIds.has(suffix)) {
@@ -179,10 +180,12 @@ export function diagnosePhone(): PhoneDiagnosis {
   const seen = new Map<string, string[]>();
   for (const item of chats) {
     if (!item || item.isGroup) continue;
+    // Owner keys are grouping keys only: strip id prefixes so pre- and
+    // post-migration rows for the same owner still group together.
     const ownerKey = item.npcId
-      ? `npc:${item.npcId}:${item.personaId || ''}`
+      ? `npc:${bareIdentityId(item.npcId)}:${item.personaId || ''}`
       : item.characterId
-        ? `char:${item.characterId}:${item.personaId || ''}`
+        ? `char:${bareIdentityId(item.characterId)}:${item.personaId || ''}`
         : '';
     if (!ownerKey) continue;
     const list = seen.get(ownerKey) || [];
@@ -231,7 +234,7 @@ export function diagnosePhone(): PhoneDiagnosis {
     issues.push({
       kind: 'misaligned-message',
       title: `疑似错位消息：${misaligned} 条`,
-      detail: 'AI 回复（ai-reply）却存成 sender=me，会跑到右边。可用“修复错位消息”一键翻回左边。',
+      detail: 'AI 回复（ai-reply）却存成 role=user，会跑到右边。可用“修复错位消息”一键翻回左边。',
     });
   }
   if (emptyMsgs > 0) {
@@ -248,7 +251,7 @@ export function diagnosePhone(): PhoneDiagnosis {
 }
 
 /**
- * 全局修复错位消息：所有会话里 type=ai-reply 但 sender=me 的消息翻回 other。
+ * 全局修复错位消息：所有会话里 kind=ai-reply 但 role=user 的消息翻回 assistant。
  * ai-reply 按定义就是 AI 发的，不可能是用户消息，安全。
  */
 export function fixMisalignedSenders(): number {
@@ -261,8 +264,8 @@ export function fixMisalignedSenders(): number {
     if (!ok || !Array.isArray(value)) continue;
     let changed = false;
     for (const m of value) {
-      if (m && m.type === 'ai-reply' && m.sender === 'me') {
-        m.sender = 'other';
+      if (m && m.kind === 'ai-reply' && m.role === 'user') {
+        m.role = 'assistant';
         changed = true;
         fixed++;
       }

@@ -224,7 +224,7 @@ export function CharacterProfileView({ onNavigate }: CharacterProfileViewProps) 
   const createBlankCharacter = () => {
     const now = new Date().toISOString();
     const character: ImportedCharacter = {
-      id: `char-manual-${Date.now()}`,
+      id: `char:manual-${Date.now()}`,
       name: '',
       variantLabel: '',
       avatar: '',
@@ -256,8 +256,14 @@ export function CharacterProfileView({ onNavigate }: CharacterProfileViewProps) 
     if (!file) return;
     try {
       const parsed = await parseCharacterFile(file);
+      const rawImportId = String((parsed as any).id || '');
+      // Forward rule: character ids carry the char: prefix (colon, never hyphen).
+      const importId = rawImportId
+        ? (rawImportId.startsWith('char:') ? rawImportId : `char:${rawImportId.replace(/^(?:char|npc)[:-]/i, '')}`)
+        : `char:import-${Date.now()}`;
       const normalizedParsed = {
         ...parsed,
+        id: importId,
         avatar: await compressCharacterAvatar(parsed.avatar || ''),
       };
       setCharacters(prev => {

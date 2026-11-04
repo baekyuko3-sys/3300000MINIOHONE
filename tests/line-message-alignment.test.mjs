@@ -1,28 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isLineMessageFromUser } from '../src/store/lineRuntime.ts';
+import { isLineMessageFromUser, normalizeLineMessage, bareIdentityId, withCharPrefix, withNpcPrefix, npcConversationId } from '../src/store/lineRuntime.ts';
 
-test('LINE uses sender as the sole authority for message direction', () => {
-  assert.equal(isLineMessageFromUser({ sender: 'me' }), true);
-  assert.equal(isLineMessageFromUser({ sender: 'user' }), true);
-  assert.equal(isLineMessageFromUser({ sender: 'other' }), false);
-  assert.equal(isLineMessageFromUser({ sender: 'system' }), false);
+test('LINE uses role as the sole authority for message direction', () => {
+  assert.equal(isLineMessageFromUser({ role: 'user' }), true);
+  assert.equal(isLineMessageFromUser({ role: 'assistant' }), false);
+  assert.equal(isLineMessageFromUser({ role: 'system' }), false);
+  assert.equal(isLineMessageFromUser({}), false);
+  assert.equal(isLineMessageFromUser(null), false);
 });
 
-test('explicit sender always wins over conflicting type, nickname, or senderType metadata', () => {
-  assert.equal(isLineMessageFromUser({ sender: 'me', senderType: 'user', type: 'text', senderName: '我' }), true);
-  assert.equal(isLineMessageFromUser({ sender: 'other', senderType: 'character', type: 'ai-reply', senderName: '程凛' }), false);
-  assert.equal(isLineMessageFromUser({ sender: 'other', type: 'ai-reply' }), false);
-  assert.equal(isLineMessageFromUser({ sender: 'me', type: 'text' }), true);
+test('explicit role always wins over conflicting kind, nickname, or senderType metadata', () => {
+  assert.equal(isLineMessageFromUser({ role: 'user', senderType: 'user', kind: 'text', senderName: '我' }), true);
+  assert.equal(isLineMessageFromUser({ role: 'assistant', senderType: 'character', kind: 'ai-reply', senderName: '程凛' }), false);
+  assert.equal(isLineMessageFromUser({ role: 'assistant', kind: 'ai-reply' }), false);
+  assert.equal(isLineMessageFromUser({ role: 'user', kind: 'text' }), true);
 });
 
-test('legacy messages without sender use senderType only as a fallback', () => {
-  assert.equal(isLineMessageFromUser({ senderType: 'user' }), true);
-  assert.equal(isLineMessageFromUser({ metadata: { senderType: 'user' } }), true);
+test('role-less messages never infer side from senderType, nickname, or kind', () => {
+  assert.equal(isLineMessageFromUser({ senderType: 'user' }), false);
+  assert.equal(isLineMessageFromUser({ metadata: { senderType: 'user' } }), false);
   assert.equal(isLineMessageFromUser({ senderType: 'character' }), false);
   assert.equal(isLineMessageFromUser({ senderType: 'npc' }), false);
   assert.equal(isLineMessageFromUser({ senderType: 'system' }), false);
-  assert.equal(isLineMessageFromUser({ type: 'ai-reply', senderName: '角色' }), false);
+  assert.equal(isLineMessageFromUser({ kind: 'ai-reply', senderName: '角色' }), false);
+  assert.equal(isLineMessageFromUser({ senderName: '我' }), false);
 });
 
 test('LINE bubble wrapper preserves its original width and alignment classes', async () => {
@@ -60,11 +62,41 @@ test('LINE layout exposes semantic classes for editable custom CSS', async () =>
   assert.ok(source.includes('dangerouslySetInnerHTML={{ __html: `${customCss}\\n${offlineInviteCustomCss}` }}'));
 });
 
-test('LINE repairs legacy ai-reply records in active state, not only storage', async () => {
+test('LINE repairs legacy role records via the unified role migration, not sender rules', async () => {
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
-  assert.ok(source.includes("const fixedKey = 'line:fix-ai-reply-sender-v2'"));
-  assert.ok(source.includes("item.type === 'ai-reply' && item.sender !== 'other'"));
-  assert.ok(source.includes("setMessages((prev: any[]) => normalizeAiReplySender"));
-  assert.ok(source.includes("window.localStorage.setItem(key, JSON.stringify(repaired))"));
+  assert.ok(source.includes('runLineStorageMigrations()'));
+  assert.ok(source.includes('normalizeLineMessage(item, index)'));
+  assert.ok(!source.includes('line:fix-ai-reply-sender-v2'));
+  assert.ok(!source.includes('line:fix-user-sender-v1'));
+  assert.ok(!source.includes("normalizeAiReplySender"));
+});
+
+test('normalizeLineMessage translates legacy sender to role and drops sender/type', () => {
+  const user = normalizeLineMessage({ id: 1, sender: 'me', type: 'text', text: 'hi' });
+  assert.equal(user.role, 'user');
+  assert.equal(user.kind, 'text');
+  assert.ok(!('sender' in user));
+  assert.ok(!('type' in user));
+  const assistant = normalizeLineMessage({ id: 2, sender: 'other', type: 'ai-reply', text: 'hello' });
+  assert.equal(assistant.role, 'assistant');
+  assert.equal(assistant.kind, 'ai-reply');
+  const system = normalizeLineMessage({ id: 3, sender: 'system', kind: 'system', text: 'sys' });
+  assert.equal(system.role, 'system');
+  const explicit = normalizeLineMessage({ id: 4, role: 'user', sender: 'other', kind: 'text', text: 'mine' });
+  assert.equal(explicit.role, 'user');
+});
+
+test('identity prefixes use colon and NPC conversation keys stay bare-normalized', () => {
+  assert.equal(withCharPrefix('abc'), 'char:abc');
+  assert.equal(withCharPrefix('char-abc'), 'char:abc');
+  assert.equal(withCharPrefix('char:abc'), 'char:abc');
+  assert.equal(withNpcPrefix('xyz'), 'npc:xyz');
+  assert.equal(withNpcPrefix('npc-xyz'), 'npc:xyz');
+  assert.equal(withNpcPrefix('npc:xyz'), 'npc:xyz');
+  assert.equal(bareIdentityId('char:abc'), 'abc');
+  assert.equal(bareIdentityId('npc-xyz'), 'xyz');
+  assert.equal(npcConversationId('npc:xyz', 'p1'), 'npc:xyz:persona:p1');
+  assert.equal(npcConversationId('npc-xyz', 'p1'), 'npc:xyz:persona:p1');
+  assert.equal(npcConversationId('xyz'), 'npc:xyz:persona:legacy');
 });

@@ -89,7 +89,7 @@ function parseNpcPayload(parsed: any, defaults: {
   const now = new Date().toISOString();
   const { genderChoice, identityCategory, source, boundCharacter, selectedWorldbooks, index } = defaults;
   return {
-    id: 'npc-' + Date.now().toString(36) + '-' + index.toString(36),
+    id: 'npc:' + Date.now().toString(36) + '-' + index.toString(36),
     name: typeof parsed?.name === 'string' && parsed.name.trim() ? parsed.name.trim() : '未命名 NPC',
     gender: genderChoice === '随机' ? (typeof parsed?.gender === 'string' ? parsed.gender : '') : genderChoice,
     age: typeof parsed?.age === 'string' ? parsed.age : '',

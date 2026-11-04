@@ -21,10 +21,9 @@ export type OfflineInviteFields = {
 
 export type OfflineInviteChatMessage = {
   id: number | string;
-  sender: 'me' | 'other';
-  type: 'offline-invite';
+  role: 'user' | 'assistant';
   kind: 'offline-invite';
-  inviteFrom: 'me' | 'other';
+  inviteFrom: 'user' | 'assistant';
   inviteTheme: string;
   invitePreview: string;
   inviteLetter: string;
@@ -130,7 +129,7 @@ export function normalizeOfflineInviteFields(
 
 export function buildOfflineInviteChatMessage(options: {
   id?: number | string;
-  from: 'me' | 'other';
+  from: 'user' | 'assistant';
   characterName: string;
   fields: OfflineInviteFields;
 }): OfflineInviteChatMessage {
@@ -139,8 +138,7 @@ export function buildOfflineInviteChatMessage(options: {
   const createdAt = new Date().toISOString();
   return {
     id,
-    sender: options.from,
-    type: 'offline-invite',
+    role: options.from,
     kind: 'offline-invite',
     inviteFrom: options.from,
     inviteTheme: fields.theme,

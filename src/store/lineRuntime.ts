@@ -7,11 +7,17 @@ export type LineMessageKind =
   | 'text-image' | 'text-video' | 'ai-card' | 'real-media' | 'ai-reply'
   | 'system' | 'offline-invite' | 'music-invite' | 'music-together' | 'call' | 'call-record'
   | 'system-nudge' | 'html-interlude'
-  | 'transfer' | 'red-packet' | 'location';
+  | 'transfer' | 'red-packet' | 'location'
+  | 'contact-card' | 'offline-event';
+
+/** Message side, the ONLY field that decides left/right rendering.
+ *  user = own message (right), assistant = character/NPC reply (left), system = centered.
+ *  senderType decides only avatar/name/character-vs-NPC rules, never side. */
+export type LineMessageRole = 'user' | 'assistant' | 'system' | string;
 
 export interface LineRuntimeMessage {
   id: number | string;
-  sender?: 'me' | 'other' | 'system' | string;
+  role?: LineMessageRole;
   /** Stable group-chat identity; display names are legacy fallbacks only. */
   senderType?: 'npc' | 'character' | 'user' | 'system' | string;
   senderId?: string;
@@ -107,33 +113,53 @@ export function saveLineConversationMessages(id: string, messages: LineRuntimeMe
 }
 
 /**
- * Resolve the visual side of a LINE message from explicit sender identity.
- * Explicit user markers win; explicit NPC/character/system markers stay incoming.
- * Display names are only a legacy fallback and never override an explicit user marker.
- */
-/**
- * 消息方向只由发送者身份决定：
- * - sender=me/user：用户发出，放右侧
- * - sender=other：角色/NPC 发出，放左侧
- * - sender=system：系统消息，不参与左右聊天气泡布局
- * senderType 仅用于旧消息缺少 sender 字段时兜底；昵称和消息类型绝不反向覆盖发送者身份。
+ * Resolve the visual side of a LINE message from role ONLY.
+ * role=user → own message (right); anything else → not mine (left/centered).
+ * senderType, senderName, kind and any other field NEVER decide side.
+ * Legacy sender values are translated to role by normalizeLineMessage at save
+ * time; render must never read them.
  */
 export function isLineMessageFromUser(candidate: any, _activeCharacterName = '', _userName = ''): boolean {
   if (!candidate) return false;
+  return String(candidate.role || '').trim().toLowerCase() === 'user';
+}
 
-  const sender = String(candidate.sender || '').trim().toLowerCase();
-  if (sender === 'me' || sender === 'user') return true;
-  if (sender === 'other' || sender === 'system') return false;
+/** Legacy sender → role, used ONLY by storage migration / normalize (never by render). */
+export function roleFromLegacySender(sender: unknown): 'user' | 'assistant' | 'system' | undefined {
+  const value = String(sender || '').trim().toLowerCase();
+  if (value === 'me' || value === 'user') return 'user';
+  if (value === 'other') return 'assistant';
+  if (value === 'system') return 'system';
+  return undefined;
+}
 
-  // 仅当旧消息没有 sender 时，才读取 senderType 兼容历史数据。
-  if (!sender) {
-    const senderType = String(candidate.senderType || candidate.metadata?.senderType || '').trim().toLowerCase();
-    if (senderType === 'user') return true;
-    if (senderType === 'character' || senderType === 'npc' || senderType === 'system') return false;
-  }
+const KNOWN_KINDS = new Set([
+  'text', 'image', 'video', 'file', 'voice', 'sticker',
+  'text-image', 'text-video', 'ai-card', 'real-media', 'ai-reply',
+  'system', 'offline-invite', 'music-invite', 'music-together', 'call', 'call-record',
+  'system-nudge', 'html-interlude', 'transfer', 'red-packet', 'location',
+  'contact-card', 'offline-event',
+]);
 
-  // 未知或缺失的发送者身份默认不冒充用户消息，避免误排到右侧。
-  return false;
+/** Resolve kind from kind, falling back to legacy type / category values that are valid kinds. */
+export function resolveMessageKind(message: any): LineMessageKind | undefined {
+  const kind = String(message?.kind || '').trim();
+  if (KNOWN_KINDS.has(kind)) return kind as LineMessageKind;
+  const legacyType = String(message?.type || message?.metadata?.cardKind || '').trim();
+  if (KNOWN_KINDS.has(legacyType)) return legacyType as LineMessageKind;
+  const category = String(message?.category || message?.metadata?.category || '').trim().toLowerCase();
+  if (KNOWN_KINDS.has(category)) return category as LineMessageKind;
+  return undefined;
+}
+
+/** Resolve role: explicit role wins; otherwise translate legacy sender (migration path only). */
+export function resolveMessageRole(message: any): 'user' | 'assistant' | 'system' | undefined {
+  const role = String(message?.role || '').trim().toLowerCase();
+  if (role === 'user' || role === 'assistant' || role === 'system') return role;
+  // Defensive: never treat legacy role-shaped values as side signals beyond this map.
+  if (role === 'me') return 'user';
+  if (role === 'other') return 'assistant';
+  return roleFromLegacySender(message?.sender);
 }
 /** AI 误把内部结构化数据块（如角色卡朋友圈 WX_MOMENTS 数据）输出到聊天正文时，去掉它。
  *  块格式：[WX_MOMENTS: Signature="...", Private1="...", ...]，字段值可能含中文逗号但不含裸双引号；
@@ -161,21 +187,37 @@ export function stripLeakedMarkupTags(text: string): string {
 }
 
 export function normalizeLineMessage(message: LineRuntimeMessage, fallbackIndex = 0): LineRuntimeMessage {
+  const raw: any = message as any;
   const legacyTimestamp = (message as LineRuntimeMessage & { timestamp?: string | number }).timestamp;
   const timestampValue = message.createdAt || (
     typeof legacyTimestamp === 'number'
       ? new Date(legacyTimestamp < 1e12 ? legacyTimestamp * 1000 : legacyTimestamp).toISOString()
       : legacyTimestamp
   );
+  // sender / type / top-level category / top-level mediaType are deleted
+  // fields: sender is replaced by role, type is replaced by kind, category
+  // and mediaType fold into metadata.
+  const { sender: _legacySender, type: _legacyType, category: legacyCategory, mediaType: legacyMediaType, ...rest } = raw;
+  const role = resolveMessageRole(raw);
+  const kind = resolveMessageKind(raw);
+  const metadata = { ...(raw.metadata || {}) };
+  if (legacyCategory && !metadata.category) metadata.category = legacyCategory;
+  if (legacyMediaType && !metadata.mediaType) metadata.mediaType = legacyMediaType;
+  if (raw.metadata?.cardKind && !kind) {
+    // cardKind already feeds resolveMessageKind; keep it in metadata for info.
+  }
   return {
-    ...message,
+    ...rest,
     id: message.id ?? `line-msg-${Date.now()}-${fallbackIndex}`,
+    ...(role ? { role } : {}),
+    ...(kind ? { kind } : {}),
+    metadata,
     // 落盘前去掉 AI 误输出的内部数据块（如 WX_MOMENTS）和内部标签（如 </cot>），避免预览和导出里出现原始格式
     ...(typeof message.text === 'string' ? { text: stripLeakedMarkupTags(stripLeakedInternalBlocks(message.text)) } : {}),
     // Do not invent "today" for imported/legacy messages that have no real timestamp.
     // Real timestamps are preserved; new messages already receive createdAt when created.
     ...(timestampValue ? { createdAt: timestampValue } : { createdAt: undefined }),
-    status: message.status || (message.sender === 'me' ? 'sent' : 'delivered'),
+    status: message.status || (role === 'user' ? 'sent' : 'delivered'),
   };
 }
 
@@ -199,7 +241,7 @@ export function appendLineMessage(id: string, message: LineRuntimeMessage): Line
   // Outgoing/system messages must not erase unread incoming messages.
   // Only an unread incoming message increments the counter; a message already
   // marked read leaves the existing count unchanged.
-  const nextUnread = nextMessage.sender === 'other'
+  const nextUnread = nextMessage.role === 'assistant'
     ? (nextMessage.status === 'read' || nextMessage.metadata?.isRead === true ? previousUnread : previousUnread + 1)
     : previousUnread;
 
@@ -335,7 +377,7 @@ export function recordLineCall(
 ) {
   return appendLineMessage(id, {
     id: `call-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    sender: input.direction === 'outgoing' ? 'me' : 'other',
+    role: input.direction === 'outgoing' ? 'user' : 'assistant',
     kind: 'call-record',
     text: input.status === 'missed' ? '未接来电' : `${input.kind === 'video' ? '视频' : '语音'}通话 · ${input.status === 'ended' ? Math.floor(input.duration || 0) + ' 秒' : input.status}`,
     createdAt: new Date().toISOString(),
@@ -636,7 +678,7 @@ function visibleChatMessages(messages: unknown): any[] {
 
 /** 真实对话消息：排除系统提示（如“你们已经是好友了”）。只有系统问候的聊天视为空白。 */
 function realChatMessages(messages: unknown): any[] {
-  return visibleChatMessages(messages).filter((m: any) => m.sender !== 'system' && m.kind !== 'system');
+  return visibleChatMessages(messages).filter((m: any) => m.role !== 'system' && m.kind !== 'system');
 }
 
 function safeReadArray(key: string): any[] {
@@ -690,7 +732,7 @@ export function repairBlankChats(): BlankChatRepairReport {
   const npcs: any[] = safeReadArray('phone:npcs');
   const findCharacter = (id?: string, name?: string) => {
     if (id) {
-      const byId = characters.find((c: any) => c && c.id === id);
+      const byId = characters.find((c: any) => c && (c.id === id || sameIdentityId(c.id, id)));
       if (byId) return byId;
     }
     if (name) return characters.find((c: any) => c && c.name === name) || null;
@@ -698,7 +740,7 @@ export function repairBlankChats(): BlankChatRepairReport {
   };
   const findNpc = (id?: string, name?: string) => {
     if (id) {
-      const byId = npcs.find((n: any) => n && n.id === id);
+      const byId = npcs.find((n: any) => n && (n.id === id || sameIdentityId(n.id, id)));
       if (byId) return byId;
     }
     if (name) return npcs.find((n: any) => n && n.name === name) || null;
@@ -722,7 +764,7 @@ export function repairBlankChats(): BlankChatRepairReport {
     // 空白：按顺序找备用数据
     const candidates: string[] = [];
     if (!item.isGroup) {
-      if (item.npcId) candidates.push(conversationKey(`npc:${item.npcId}:persona:${item.personaId || 'legacy'}`));
+      if (item.npcId) candidates.push(conversationKey(npcConversationId(item.npcId, item.personaId)));
       if (item.characterId) candidates.push(conversationKey(item.characterId));
       if (item.name) candidates.push(conversationKey(item.name));
     }
@@ -865,7 +907,7 @@ export function bindLineRuntimeEvents() {
       // message before emitting this event. Do not append it a second time.
       appendLineMessage(conversationId, {
         id: detail.id || `proactive-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        sender: 'other',
+        role: 'assistant',
         text: String(text),
         kind: detail.kind || 'text',
         createdAt: detail.createdAt || new Date().toISOString(),
@@ -933,7 +975,7 @@ export function bindLineRuntimeEvents() {
 export function buildLineTranscript(id: string, limit = 120) {
   return getLineConversationMessages(id)
     .slice(-limit)
-    .map(message => `${message.sender || 'unknown'}: ${message.text || '[媒体消息]'}`)
+    .map(message => `${message.role || 'unknown'}: ${message.text || '[媒体消息]'}`)
     .join('\n');
 }
 
@@ -957,9 +999,326 @@ export function recordOfflineEventInLine(event: OfflineEvent) {
   if (!id) id = event.characterId || event.characterName;
   appendLineMessage(id, {
     id: `offline-${event.id}-${event.status}`,
-    sender: 'system',
+    role: 'system',
     kind: 'offline-invite',
     text: event.status === 'completed' ? `线下剧情已完成：${event.title}` : `线下剧情状态更新：${event.title}`,
     metadata: { offlineEventId: event.id, location: event.location, time: event.time, status: event.status, ...(event.personaId ? { personaId: event.personaId } : {}) },
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Role + identity-prefix storage migrations (one-time, idempotent).   */
+/* Role decides side ONLY (user/assistant/system). senderType decides  */
+/* only avatar/name/character-vs-NPC rules. sender is deleted.          */
+/* Character ids use char: prefix, NPC ids use npc: prefix (colon).    */
+/* ------------------------------------------------------------------ */
+
+/** Strip a leading char:/npc:/char-/npc- prefix → bare id (for tolerant lookup). */
+export function bareIdentityId(id: unknown): string {
+  return String(id || '').replace(/^(?:char|npc)[:-]/i, '');
+}
+
+export function withCharPrefix(id: unknown): string {
+  const bare = bareIdentityId(id);
+  return bare ? `char:${bare}` : '';
+}
+
+export function withNpcPrefix(id: unknown): string {
+  const bare = bareIdentityId(id);
+  return bare ? `npc:${bare}` : '';
+}
+
+/** NPC conversation key, always built from the bare NPC id so old (npc-xxx)
+ *  and new (npc:xxx) record ids produce the identical key. */
+export function npcConversationId(npcId: string, personaId?: string | null): string {
+  return `npc:${bareIdentityId(npcId)}:persona:${personaId || 'legacy'}`;
+}
+
+/** Prefix-tolerant identity equality: char:X, char-X and X all match. */
+export function sameIdentityId(a: unknown, b: unknown): boolean {
+  const left = bareIdentityId(a);
+  const right = bareIdentityId(b);
+  return Boolean(left) && left === right;
+}
+
+const ROLE_MIGRATION_KEY = 'line:fix-role-v1';
+const ID_PREFIX_MIGRATION_KEY = 'line:fix-id-prefix-v1';
+
+function listConversationKeys(): string[] {
+  if (typeof window === 'undefined') return [];
+  const keys: string[] = [];
+  for (let i = 0; i < window.localStorage.length; i++) {
+    const key = window.localStorage.key(i);
+    if (key && key.startsWith(CONVERSATION_PREFIX)) keys.push(key);
+  }
+  return keys;
+}
+
+function readJsonArray(key: string): any[] {
+  try {
+    const raw = window.localStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/** One-time: give every stored message a role from its legacy sender, drop
+ *  sender/type/top-level category, resolve kind. Idempotent via guard key. */
+export function migrateLineMessagesToRole(): { conversations: number; messages: number } {
+  const empty = { conversations: 0, messages: 0 };
+  if (typeof window === 'undefined') return empty;
+  try {
+    if (window.localStorage.getItem(ROLE_MIGRATION_KEY)) return empty;
+    let conversations = 0;
+    let messages = 0;
+    for (const key of listConversationKeys()) {
+      try {
+        const list = readJsonArray(key);
+        let changed = false;
+        const next = list.map((item: any, index: number) => {
+          if (!item || typeof item !== 'object') return item;
+          const normalized = normalizeLineMessage(item, index);
+          if (JSON.stringify(normalized) !== JSON.stringify(item)) changed = true;
+          return normalized;
+        });
+        if (changed) {
+          window.localStorage.setItem(key, JSON.stringify(next));
+          conversations++;
+          messages += next.length;
+        }
+      } catch {
+        // Corrupt conversation keys are reported by phone diagnostics; skip them.
+      }
+    }
+    window.localStorage.setItem(ROLE_MIGRATION_KEY, '1');
+    return { conversations, messages };
+  } catch {
+    return empty;
+  }
+}
+
+export interface LineIdentityMigrationReport {
+  charactersRenamed: number;
+  npcsRenamed: number;
+  conversationKeysRenamed: number;
+  messageIdentitiesPrefixed: number;
+  skipped: string[];
+}
+
+/**
+ * One-time: prefix character record ids with char: and NPC record ids with
+ * npc:. Only membership-certain renames happen: an id is renamed only when
+ * it is found in the character or NPC store. Conversation keys derived from
+ * renamed character ids are renamed together with their chat-item and
+ * runtime-meta references; npc: conversation keys are intentionally left
+ * alone because npcConversationId() builds them from bare ids, so old and
+ * new NPC ids already produce identical keys. Anything that cannot be
+ * mapped (names, stale ids, c_/group- keys) is left unchanged and reported.
+ */
+export function migrateLineIdentityPrefixes(): LineIdentityMigrationReport {
+  const report: LineIdentityMigrationReport = {
+    charactersRenamed: 0,
+    npcsRenamed: 0,
+    conversationKeysRenamed: 0,
+    messageIdentitiesPrefixed: 0,
+    skipped: [],
+  };
+  if (typeof window === 'undefined') return report;
+  try {
+    if (window.localStorage.getItem(ID_PREFIX_MIGRATION_KEY)) return report;
+    const skip = (sample: string) => {
+      if (report.skipped.length < 20) report.skipped.push(sample);
+    };
+
+    // 1. Character + NPC store records.
+    const charMap = new Map<string, string>();
+    const characters = readJsonArray('phone:characters');
+    let charsChanged = false;
+    const nextCharacters = characters.map((record: any) => {
+      if (!record || typeof record !== 'object' || typeof record.id !== 'string' || !record.id) return record;
+      if (record.id.startsWith('char:')) return record;
+      const nextId = withCharPrefix(record.id);
+      if (!nextId || nextId === record.id) return record;
+      charMap.set(record.id, nextId);
+      charsChanged = true;
+      report.charactersRenamed++;
+      return { ...record, id: nextId };
+    });
+    if (charsChanged) window.localStorage.setItem('phone:characters', JSON.stringify(nextCharacters));
+
+    const npcMap = new Map<string, string>();
+    const npcs = readJsonArray('phone:npcs');
+    let npcsChanged = false;
+    const nextNpcs = npcs.map((record: any) => {
+      if (!record || typeof record !== 'object') return record;
+      let next = record;
+      if (typeof record.id === 'string' && record.id && !record.id.startsWith('npc:')) {
+        const nextId = withNpcPrefix(record.id);
+        if (nextId && nextId !== record.id) {
+          npcMap.set(record.id, nextId);
+          npcsChanged = true;
+          report.npcsRenamed++;
+          next = { ...next, id: nextId };
+        }
+      }
+      for (const field of ['boundCharacterId', 'sourceCharacterId'] as const) {
+        const value = (next as any)[field];
+        if (typeof value === 'string' && value && !value.startsWith('char:')) {
+          if (charMap.has(value)) {
+            next = { ...next, [field]: charMap.get(value) };
+            npcsChanged = true;
+          } else {
+            skip(`npc bound ${field}=${value} (no character record)`);
+          }
+        }
+      }
+      return next;
+    });
+    if (npcsChanged) window.localStorage.setItem('phone:npcs', JSON.stringify(nextNpcs));
+
+    const mapId = (value: unknown): string | null => {
+      if (typeof value !== 'string' || !value) return null;
+      if (value.startsWith('char:') || value.startsWith('npc:')) return null;
+      if (charMap.has(value)) return charMap.get(value) as string;
+      if (npcMap.has(value)) return npcMap.get(value) as string;
+      return null;
+    };
+
+    // 2. Conversation keys derived from renamed character/NPC ids, plus the
+    // chat-item and runtime-meta rows that point at those conversations.
+    const renameConversationRefs = (rows: any[]): boolean => {
+      let changed = false;
+      for (const row of rows) {
+        if (!row || typeof row !== 'object') continue;
+        if (typeof row.id === 'string' && (charMap.has(row.id) || npcMap.has(row.id))) {
+          row.id = mapId(row.id);
+          changed = true;
+        }
+        if (typeof row.characterId === 'string') {
+          const mapped = mapId(row.characterId);
+          if (mapped) { row.characterId = mapped; changed = true; }
+        }
+        if (typeof row.npcId === 'string') {
+          const mapped = mapId(row.npcId);
+          if (mapped) { row.npcId = mapped; changed = true; }
+        }
+      }
+      return changed;
+    };
+    for (const key of listConversationKeys()) {
+      const suffix = key.slice(CONVERSATION_PREFIX.length);
+      const mapped = mapId(suffix);
+      if (!mapped) continue;
+      const newKey = CONVERSATION_PREFIX + mapped;
+      if (window.localStorage.getItem(newKey) !== null) {
+        skip(`conversation key collision: ${suffix} -> ${mapped}`);
+        continue;
+      }
+      const value = window.localStorage.getItem(key);
+      if (value === null) continue;
+      window.localStorage.setItem(newKey, value);
+      window.localStorage.removeItem(key);
+      report.conversationKeysRenamed++;
+    }
+    const chatItems = readJsonArray('line:chat-items');
+    if (renameConversationRefs(chatItems)) window.localStorage.setItem('line:chat-items', JSON.stringify(chatItems));
+    try {
+      const metaRaw = window.localStorage.getItem(META_KEY);
+      const meta = metaRaw ? JSON.parse(metaRaw) : {};
+      if (meta && typeof meta === 'object') {
+        let metaChanged = false;
+        for (const [metaId, row] of Object.entries<any>(meta)) {
+          const mapped = mapId(metaId);
+          if (mapped) {
+            meta[mapped] = row;
+            delete meta[metaId];
+            metaChanged = true;
+          }
+          if (row && typeof row === 'object') {
+            if (typeof row.characterId === 'string') {
+              const next = mapId(row.characterId);
+              if (next) { row.characterId = next; metaChanged = true; }
+            }
+            if (typeof row.npcId === 'string') {
+              const next = mapId(row.npcId);
+              if (next) { row.npcId = next; metaChanged = true; }
+            }
+          }
+        }
+        if (metaChanged) window.localStorage.setItem(META_KEY, JSON.stringify(meta));
+      }
+    } catch {
+      // Meta is rebuilt from chat items; a corrupt blob must not block migration.
+    }
+
+    // 3. Friends list + group members (mechanical, membership-mapped only).
+    const friends = readJsonArray('line:friends-list');
+    if (renameConversationRefs(friends)) window.localStorage.setItem('line:friends-list', JSON.stringify(friends));
+    const groups = readJsonArray('line:groups');
+    let groupsChanged = false;
+    for (const group of groups) {
+      if (!group || typeof group !== 'object' || !Array.isArray(group.members)) continue;
+      for (const member of group.members) {
+        if (!member || typeof member !== 'object') continue;
+        for (const field of ['characterId', 'npcId'] as const) {
+          if (typeof member[field] === 'string') {
+            const mapped = mapId(member[field]);
+            if (mapped) { member[field] = mapped; groupsChanged = true; }
+          }
+        }
+      }
+    }
+    if (groupsChanged) window.localStorage.setItem('line:groups', JSON.stringify(groups));
+
+    // 4. Message identity fields, membership-mapped only. Anything not found
+    // in either store is left unchanged (name, stale id, or bound reference).
+    for (const key of listConversationKeys()) {
+      try {
+        const list = readJsonArray(key);
+        let changed = false;
+        const next = list.map((item: any) => {
+          if (!item || typeof item !== 'object') return item;
+          let nextItem = item;
+          let itemChanged = false;
+          for (const field of ['senderId', 'characterId', 'npcId'] as const) {
+            if (typeof nextItem[field] === 'string') {
+              const mapped = mapId(nextItem[field]);
+              if (mapped) { nextItem = { ...nextItem, [field]: mapped }; itemChanged = true; }
+            }
+          }
+          if (nextItem.metadata && typeof nextItem.metadata === 'object') {
+            for (const field of ['characterId', 'npcId'] as const) {
+              if (typeof nextItem.metadata[field] === 'string') {
+                const mapped = mapId(nextItem.metadata[field]);
+                if (mapped) {
+                  nextItem = { ...nextItem, metadata: { ...nextItem.metadata, [field]: mapped } };
+                  itemChanged = true;
+                }
+              }
+            }
+          }
+          if (itemChanged) { changed = true; report.messageIdentitiesPrefixed++; }
+          return nextItem;
+        });
+        if (changed) window.localStorage.setItem(key, JSON.stringify(next));
+      } catch {
+        // Skip corrupt conversation keys; diagnostics reports them.
+      }
+    }
+
+    window.localStorage.setItem(ID_PREFIX_MIGRATION_KEY, '1');
+    return report;
+  } catch {
+    return report;
+  }
+}
+
+/** Run both one-time storage migrations (guarded, safe to call on mount). */
+export function runLineStorageMigrations(): { role: { conversations: number; messages: number }; identity: LineIdentityMigrationReport } {
+  return {
+    role: migrateLineMessagesToRole(),
+    identity: migrateLineIdentityPrefixes(),
+  };
 }

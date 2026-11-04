@@ -370,7 +370,7 @@ export function MusicScreenView({ onNavigate }: MusicScreenViewProps) {
     if (!existingRaw) {
       window.localStorage.setItem(chatKey, JSON.stringify([{
         id: Date.now(),
-        sender: 'me',
+        role: 'user',
         senderName: '我',
         text: '邀请一起听歌：《' + session.track.name + '》',
         time: '刚刚',

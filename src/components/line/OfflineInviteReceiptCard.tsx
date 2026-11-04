@@ -5,7 +5,8 @@ export type OfflineInviteReceiptTheme = 'white' | 'midnight' | 'parchment' | 'ro
 type OfflineInviteReceiptCardProps = {
   msg: {
     id: number | string;
-    inviteFrom?: 'me' | 'other' | string;
+    role?: 'user' | 'assistant' | string;
+    inviteFrom?: 'user' | 'assistant' | 'me' | 'other' | string;
     inviteLocation?: string;
     inviteTime?: string;
     inviteTheme?: string;
@@ -52,7 +53,9 @@ export function OfflineInviteReceiptCard({
   onDecline,
   onContextMenu,
 }: OfflineInviteReceiptCardProps) {
-  const fromOther = msg.inviteFrom !== 'me';
+  // Role decides who sent it; legacy inviteFrom ('other'/'me') only bridges
+  // stored invites that predate the role migration.
+  const fromOther = msg.role ? msg.role !== 'user' : (msg.inviteFrom === 'other' || msg.inviteFrom === 'assistant');
   const displayName = fromOther ? characterName : userName;
   // 邀约标题：例「要不要和我一起去看看？」
   const title = (msg.inviteTheme || '').trim() || '要不要和我一起去看看？';

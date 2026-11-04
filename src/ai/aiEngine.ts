@@ -56,7 +56,8 @@ export interface AiReplyInput {
   memory?: CharacterMemory | null;
   project?: ProjectManifest | null;
   messages: Array<{
-    sender: 'me' | 'other' | 'system' | string;
+    role?: 'user' | 'assistant' | 'system' | string;
+    sender?: string;
     text?: string;
     transcript?: string;
     desc?: string;
@@ -386,7 +387,7 @@ function buildMessageTimeContext(input: AiReplyInput): string {
   const messages = input.messages as Array<AiReplyInput['messages'][number] & { createdAt?: string | number; timestamp?: string | number }>;
   let userIndex = -1;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index].sender === 'me' && String(messages[index].text || '').trim()) {
+    if (messageApiRole(messages[index]) === 'user' && String(messages[index].text || '').trim()) {
       userIndex = index;
       break;
     }
@@ -649,6 +650,19 @@ function mediaContextLabel(message: AiReplyInput['messages'][number]): string {
   return '[多媒体消息]';
 }
 
+/** Role of a chat message for AI APIs. Role wins; legacy sender only bridges old rows. */
+function messageApiRole(message: any): 'user' | 'assistant' | 'system' {
+  if (message?.role === 'user' || message?.role === 'assistant' || message?.role === 'system') return message.role;
+  if (message?.sender === 'me' || message?.sender === 'user') return 'user';
+  if (message?.sender === 'system') return 'system';
+  return 'assistant';
+}
+
+function messageSpeaker(message: any, characterName: string): string {
+  const role = messageApiRole(message);
+  return role === 'assistant' ? characterName : role === 'user' ? '用户' : '系统';
+}
+
 function conversationTurnText(message: AiReplyInput['messages'][number]): string {
   if (isLineVroomCard(message)) return lineCardHistoryText(message);
   return String(message.text || message.transcript || message.desc || mediaContextLabel(message) || '').trim();
@@ -679,7 +693,7 @@ function buildConversationMessages(input: AiReplyInput) {
   for (let index = eligible.length - 1; index >= 0; index -= 1) {
     const message = eligible[index];
     const text = conversationTurnText(message);
-    if (message.sender === 'me' && text === currentUserText) {
+    if (messageApiRole(message) === 'user' && text === currentUserText) {
       currentTurnIndex = index;
       break;
     }
@@ -689,7 +703,7 @@ function buildConversationMessages(input: AiReplyInput) {
     .slice(-(turnBudget * 2));
 
   const history = historySource.map(message => ({
-    role: message.sender === 'other' ? 'assistant' as const : 'user' as const,
+    role: (messageApiRole(message) === 'assistant' ? 'assistant' : 'user') as 'assistant' | 'user',
     content: input.isGroup && message.senderName
       ? '[' + message.senderName + '] ' + conversationTurnText(message)
       : conversationTurnText(message),
@@ -1846,12 +1860,12 @@ export async function generateStatusBarContent(
   settings: AiSettings,
   characterName: string,
   preset: { name: string; promptSuffix?: string; regex: string; html: string },
-  conversation: Array<{ sender: string; text?: string; transcript?: string }>,
+  conversation: Array<{ role?: string; sender?: string; text?: string; transcript?: string }>,
   currentStatus?: string,
   userName?: string,
 ): Promise<string> {
   const recent = conversation.slice(-16).map(message => {
-    const speaker = message.sender === 'other' ? characterName : message.sender === 'me' ? '用户' : '系统';
+    const speaker = messageSpeaker(message, characterName);
     return speaker + ': ' + (message.text || message.transcript || '[媒体]');
   }).join('\n');
 
@@ -1945,10 +1959,10 @@ export async function generateHtmlInterlude(
   settings: AiSettings,
   characterName: string,
   htmlTemplate: string,
-  conversation: Array<{ sender: string; text?: string; transcript?: string }>,
+  conversation: Array<{ role?: string; sender?: string; text?: string; transcript?: string }>,
 ): Promise<string> {
   const recent = conversation.slice(-18).map(message => {
-    const speaker = message.sender === 'other' ? characterName : message.sender === 'me' ? '用户' : '系统';
+    const speaker = messageSpeaker(message, characterName);
     return speaker + ': ' + (message.text || message.transcript || '[媒体]');
   }).join('\n');
 
@@ -2097,7 +2111,7 @@ export async function summarizeConversationMemory(
   settings: AiSettings,
   characterName: string,
   currentMemory: CharacterMemory,
-  messages: Array<{ sender: string; text?: string; transcript?: string }>,
+  messages: Array<{ role?: string; sender?: string; text?: string; transcript?: string }>,
 ): Promise<{ summary: string; items: Array<{ content: string; kind: 'fact' | 'diary' | 'relationship' | 'preference' | 'event'; importance: number }> }> {
   const appSettings = readAppSettings();
   if (!appSettings.memoryEnabled) return { summary: currentMemory.summary, items: [] };
@@ -2105,7 +2119,7 @@ export async function summarizeConversationMemory(
   const conversation = messages
     .slice(-Math.max(10, appSettings.memoryContextMessages || 40))
     .map(message => {
-      const speaker = message.sender === 'other' ? characterName : message.sender === 'me' ? '用户' : '系统';
+      const speaker = messageSpeaker(message, characterName);
       return speaker + ': ' + (message.text || message.transcript || '[媒体消息]');
     })
     .join('\n');
