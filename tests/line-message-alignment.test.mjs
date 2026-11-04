@@ -55,6 +55,22 @@ test('opening a chat clears its unread badge synchronously', async () => {
   assert.ok(source.includes("window.localStorage.setItem('line:chat-items', JSON.stringify(parsed.map((c: any) => (c?.id === chatId ? { ...c, unread: 0 } : c))))"));
 });
 
+test('friends tab has side-by-side character / NPC / group tabs, no persona notice row', async () => {
+  // The friends tab is grouped by three side-by-side tabs instead of one flat
+  // list; the "当前是..." notice row is gone, and the friend row no longer
+  // renders the internal 角色卡联系人 note as its subtitle.
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/components/line/LineAppView.tsx', import.meta.url), 'utf8');
+  assert.ok(source.includes("useState<'character' | 'npc' | 'group'>('character')"));
+  assert.ok(source.includes('characterFriends.length'));
+  assert.ok(source.includes('npcFriends.length'));
+  assert.ok(source.includes('groupChats.length'));
+  assert.ok(source.includes('shownTabFriends'));
+  assert.ok(!source.includes('只显示绑定的'));
+  assert.ok(!source.includes(`<div className="text-[10px] text-[#aaa] mt-1 truncate">\n                      {friend.note}\n                    </div>`));
+  assert.ok(source.includes("friend.variantLabel !== '默认版本'"));
+});
+
 test('chat list time comes from the real timestamp, never a missing field', () => {
   // Missing/invalid timestamps read as just-created, never as a wrong date.
   assert.equal(formatChatListTime(undefined), '刚刚');

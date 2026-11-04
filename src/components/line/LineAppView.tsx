@@ -227,6 +227,8 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   // Search queries
   const [chatSearch, setChatSearch] = useState('');
   const [friendSearch, setFriendSearch] = useState('');
+  // 好友页三组并排切换：角色 / NPC / 群组，默认看角色。
+  const [friendGroupTab, setFriendGroupTab] = useState<'character' | 'npc' | 'group'>('character');
 
   // Toast
   const updateChannelSettings = (channel: 'chat' | 'moments', patch: Partial<ChannelAiSettings>) => {
@@ -1278,6 +1280,15 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     return true;
   });
 
+  // 好友页三组的数据：角色 / NPC 按好友条目分，群组按当前人设下的群聊算。
+  const characterFriends = visibleFriends.filter((f) => !f.npcId);
+  const npcFriends = visibleFriends.filter((f) => Boolean(f.npcId));
+  const groupChats = personaChats.filter((c) => c.isGroup);
+  const shownTabFriends = (friendGroupTab === 'npc' ? npcFriends : characterFriends).filter((f) =>
+    f.name.toLowerCase().includes(friendSearch.toLowerCase()) ||
+    f.note.toLowerCase().includes(friendSearch.toLowerCase())
+  );
+
   const resolveFriendAvatar = (friend: LineFriend) => {
     if (friend.npcId) {
       const npc = allLineNpcs.find(item => item && item.id === friend.npcId);
@@ -2020,20 +2031,77 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
             />
           </div>
 
+          {/* Group tabs: 角色 / NPC / 群组（并排切换） */}
+          <div className="mx-4 mb-3 p-[3px] bg-[#f6f6f7] rounded-[11px] flex">
+            {([
+              { id: 'character', label: `角色 · ${characterFriends.length}` },
+              { id: 'npc', label: `NPC · ${npcFriends.length}` },
+              { id: 'group', label: `群组 · ${groupChats.length}` },
+            ] as const).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setFriendGroupTab(tab.id)}
+                className={`flex-1 py-2 rounded-[8px] text-[12px] transition-colors ${friendGroupTab === tab.id ? 'bg-white shadow-sm text-[#303134] font-medium' : 'text-[#999]'}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
           {/* Friends List */}
           <div className="divide-y divide-[#f2f2f2]">
-            {hasBounds && (
-              <button onClick={() => setPersonaHomeOpen(true)} className="w-full mx-4 my-2 p-3 rounded-2xl bg-white border border-[#eeeeef] text-left flex items-center gap-2">
-                <span className="text-[13px] text-[#555]">○</span>
-                <span className="text-[10px] text-[#777]">当前是「{activePersona?.name}」的 LINE · 只显示绑定的 {boundIds.length} 位好友 · 点我管理人设卡</span>
-              </button>
+            {friendGroupTab === 'group' && (groupChats.length === 0 ? (
+              <div className="px-5 py-10 text-center">
+                <div className="text-[13px] text-[#999]">暂无群组</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedGroupFriends([]);
+                    setSelectedGroupNpcIds([]);
+                    setGroupModalExpandedChars([]);
+                    setNewGroupName('');
+                    setShowGroupModal(true);
+                  }}
+                  className="mt-3 px-4 py-2 rounded-full bg-[#202124] text-white text-[12px]"
+                >
+                  创建群组
+                </button>
+              </div>
+            ) : (
+              groupChats.map((group) => {
+                const groupDetail = getLineGroupById(group.groupId || group.id);
+                const memberCount = groupDetail?.members?.length;
+                return (
+                  <div
+                    key={group.id}
+                    onClick={() => {
+                      clearChatUnreadNow(group.id);
+                      markLineConversationRead(group.id);
+                      markLineNotificationsReadForConversation(group.id);
+                      setActiveChatId(group.id);
+                    }}
+                    className="h-[67px] px-5 flex items-center cursor-pointer hover:bg-[#fafafa] active:bg-[#f5f5f5] transition-colors"
+                  >
+                    <div className="w-[49px] h-[49px] rounded-full bg-[#f1f1f2] border border-[#e8e8e9] flex items-center justify-center shrink-0 overflow-hidden">
+                      <NpcAvatar name={group.name} avatar={groupDetail?.avatar} className="w-full h-full" textClassName="text-[18px]" />
+                    </div>
+                    <div className="ml-3 flex-1 min-w-0">
+                      <div className="text-[14px] text-[#303134] font-medium truncate">{group.name}</div>
+                      {memberCount ? (
+                        <div className="text-[10px] text-[#aaa] mt-1 truncate">{memberCount} 位成员</div>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })
+            ))}
+            {friendGroupTab !== 'group' && shownTabFriends.length === 0 && (
+              <div className="px-5 py-10 text-center text-[13px] text-[#999]">
+                {friendSearch ? '没有找到相关好友' : (friendGroupTab === 'npc' ? '暂无 NPC 好友' : '暂无好友')}
+              </div>
             )}
-            {visibleFriends
-              .filter((f) =>
-                f.name.toLowerCase().includes(friendSearch.toLowerCase()) ||
-                f.note.toLowerCase().includes(friendSearch.toLowerCase())
-              )
-              .map((friend, idx) => (
+            {friendGroupTab !== 'group' && shownTabFriends.map((friend, idx) => (
                 <div
                   key={friend.npcId || friend.characterId || friend.name + '-' + idx}
                   onClick={() => { setFriendSettingsOpen(false); setFriendEditing(false); setCharacterProfileStyleOpen(false); setCharacterProfileManageOpen(false); setFriendProfile(friend); }}
@@ -2045,10 +2113,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
 
                   <div className="ml-3 flex-1 min-w-0">
                     <div className="text-[14px] text-[#303134] font-medium">
-                      {friend.name} {friend.variantLabel && <span className="text-[8px] text-[#aaa]">· {friend.variantLabel}</span>}
-                    </div>
-                    <div className="text-[10px] text-[#aaa] mt-1 truncate">
-                      {friend.note}
+                      {friend.name} {friend.variantLabel && friend.variantLabel !== '默认版本' && <span className="text-[8px] text-[#aaa]">· {friend.variantLabel}</span>}
                     </div>
                   </div>
 
