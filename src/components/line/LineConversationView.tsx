@@ -4107,6 +4107,17 @@ export function LineConversationView({
     setSelectedMsgIds([]);
   };
 
+  const handleBatchMoveRight = () => {
+    if (selectedMsgIds.length === 0) return;
+    const myName = currentUserNameFallback() || activePersona?.name || '我';
+    setMessages((prev) => prev.map((m) => selectedMsgIds.includes(m.id)
+      ? { ...m, sender: 'me', senderType: 'user', senderName: myName, ...(m.type === 'ai-reply' ? { type: 'text' } : {}), ...(m.kind === 'ai-reply' ? { kind: 'text' } : {}) }
+      : m));
+    showToast(`已将 ${selectedMsgIds.length} 条消息移到右边`);
+    setIsMultiSelectMode(false);
+    setSelectedMsgIds([]);
+  };
+
   const handleBatchFavorite = () => {
     if (selectedMsgIds.length === 0) return;
     const toFav = messages.filter((m) => selectedMsgIds.includes(m.id));
@@ -8049,6 +8060,15 @@ export function LineConversationView({
               >
                 <Share2 className="w-4 h-4 text-[#555]" />
                 <span>合并转发</span>
+              </button>
+
+              <button
+                onClick={handleBatchMoveRight}
+                disabled={selectedMsgIds.length === 0}
+                className="flex flex-col items-center gap-0.5 text-[10px] text-[#555] disabled:opacity-30 cursor-pointer"
+              >
+                <ArrowRight className="w-4 h-4 text-[#ae7e89]" />
+                <span>移到右边 ({selectedMsgIds.length})</span>
               </button>
 
               <button
