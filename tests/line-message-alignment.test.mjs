@@ -59,3 +59,12 @@ test('LINE layout exposes semantic classes for editable custom CSS', async () =>
   assert.ok(source.includes('line-message-avatar--other'));
   assert.ok(source.includes('dangerouslySetInnerHTML={{ __html: `${customCss}\\n${offlineInviteCustomCss}` }}'));
 });
+
+test('LINE repairs legacy ai-reply records in active state, not only storage', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
+  assert.ok(source.includes("const fixedKey = 'line:fix-ai-reply-sender-v2'"));
+  assert.ok(source.includes("item.type === 'ai-reply' && item.sender !== 'other'"));
+  assert.ok(source.includes("setMessages((prev: any[]) => normalizeAiReplySender"));
+  assert.ok(source.includes("window.localStorage.setItem(key, JSON.stringify(repaired))"));
+});
