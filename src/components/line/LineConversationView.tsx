@@ -11541,13 +11541,16 @@ export function LineConversationView({
                 setMessages((prev: any[]) => prev.map((m: any) => {
                   if (!m) return m;
                   // 方向一：右边冒充的角色消息 → 移回左边（原有逻辑）
+                  // 保护：署名是你本人的消息，任何自动规则都不许移到左边——角色是角色，你是你。
+                  // characterId 只是“这是哪个角色的会话”，不是“谁发的”，不能单独作为移左的理由。
                   if (m.sender === 'me') {
                     const senderNameStr = String(m.senderName || '').trim();
+                    const nameIsMine = Boolean(senderNameStr && (senderNameStr === myName || senderNameStr === '我'));
+                    if (nameIsMine) return m;
                     const isAiReply = m.type === 'ai-reply';
-                    const hasCharId = Boolean(m.characterId || m.npcId || m.metadata?.characterId);
                     const nameIsChar = Boolean(senderNameStr && charName && senderNameStr === charName);
                     const hasCharacterSenderType = m.senderType === 'character' || m.senderType === 'npc';
-                    if (isAiReply || hasCharId || nameIsChar || hasCharacterSenderType) {
+                    if (isAiReply || nameIsChar || hasCharacterSenderType) {
                       fixedToLeft++;
                       return { ...m, sender: 'other' };
                     }
