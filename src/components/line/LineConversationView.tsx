@@ -229,6 +229,12 @@ function readImageFileAsDataUrl(file: File, maxDim = 1024): Promise<string> {
   return readAndCompressImage(file, maxDim);
 }
 
+// 系统消息（role=system / kind=system / system-nudge）一律居中显示，不当作角色或我的气泡。
+const isSystemLike = (m: any): boolean => !!m && (
+  m.kind === 'system-nudge' || m.kind === 'system' ||
+  (m.role === 'system' && (!m.kind || m.kind === 'text' || m.kind === 'ai-reply')) // 带卡片渲染的 system 消息（邀约等）不受影响
+);
+
 function splitLineChatText(text: string): string[] {
   const normalized = text.replace(/\r\n/g, '\n').trim();
   if (!normalized) return [''];
@@ -3223,7 +3229,7 @@ export function LineConversationView({
         const pool = mentioned.length ? mentioned : availableMembers;
 
         // 主发言者：@ 模式只选被 @ 的；否则选"最后发言 NPC 的下一位"
-        const lastGroupSpeaker = [...messages].reverse().find(message => message.role !== 'user' && message.kind !== 'system-nudge');
+        const lastGroupSpeaker = [...messages].reverse().find(message => message.role !== 'user' && !isSystemLike(message));
         const lastGroupSpeakerId = String(lastGroupSpeaker?.characterId || lastGroupSpeaker?.metadata?.characterId || '').trim();
         const lastGroupSpeakerIndex = !mentioned.length && lastGroupSpeakerId
           ? pool.findIndex(({ character }) => String(character?.id || '').trim() === lastGroupSpeakerId)
@@ -6204,8 +6210,8 @@ export function LineConversationView({
           const bilingualTranslationText = bilingualTextParts.slice(1).join('[[ZH_TRANSLATION]]').trim();
           const showBilingualTranslation = !isMe && bilingualMode === 'auto' && bilingualTextParts.length > 1 && Boolean(bilingualOriginalText && bilingualTranslationText);
           const messageBubbleParts = (isGroup ? [bilingualOriginalText] : splitLineChatText(bilingualOriginalText)).filter(Boolean);
-          const sameAsPrevious = Boolean(previousMessage && isMine(previousMessage) === isMe && previousMessage.kind !== 'system-nudge' && msg.kind !== 'system-nudge');
-          const sameAsNext = Boolean(nextMessage && isMine(nextMessage) === isMe && nextMessage.kind !== 'system-nudge' && msg.kind !== 'system-nudge');
+          const sameAsPrevious = Boolean(previousMessage && isMine(previousMessage) === isMe && !isSystemLike(previousMessage) && !isSystemLike(msg));
+          const sameAsNext = Boolean(nextMessage && isMine(nextMessage) === isMe && !isSystemLike(nextMessage) && !isSystemLike(msg));
           const sameGroupSpeakerAsPreviousForSpacing = Boolean(isGroup && previousMessage && !isMine(previousMessage) && !isMe && String(previousMessage.characterId || previousMessage.metadata?.characterId || previousMessage.senderName || '') === String(msg.characterId || msg.metadata?.characterId || msg.senderName || ''));
           const sameGroupSpeakerAsNextForSpacing = Boolean(isGroup && nextMessage && !isMine(nextMessage) && !isMe && String(nextMessage.characterId || nextMessage.metadata?.characterId || nextMessage.senderName || '') === String(msg.characterId || msg.metadata?.characterId || msg.senderName || ''));
           const effectiveSameAsPrevious = isGroup && !isMe ? sameGroupSpeakerAsPreviousForSpacing : sameAsPrevious;
@@ -6514,7 +6520,7 @@ export function LineConversationView({
             );
           }
 
-          if (msg.kind === 'system-nudge') {
+          if (isSystemLike(msg)) {
             return (
               <div key={msg.id} data-line-message-id={msg.id} className="flex justify-center my-1.5 animate-in fade-in items-center gap-1.5"
                 onPointerDown={(event) => handleMessagePointerDown(event, msg)}
@@ -6544,7 +6550,7 @@ export function LineConversationView({
           const messageSenderName = String(msg.senderName || '').trim();
           const previousCharacterKey = String(previousMessage?.characterId || previousMessage?.metadata?.characterId || previousMessage?.senderName || '').trim();
           const currentCharacterKey = String(msg.characterId || msg.metadata?.characterId || msg.senderName || '').trim();
-          const sameGroupSpeakerAsPrevious = Boolean(isGroup && !isMe && previousMessage && previousMessage.role !== 'user' && previousMessage.kind !== 'system-nudge' && msg.kind !== 'system-nudge' && previousCharacterKey && previousCharacterKey === currentCharacterKey);
+          const sameGroupSpeakerAsPrevious = Boolean(isGroup && !isMe && previousMessage && previousMessage.role !== 'user' && !isSystemLike(previousMessage) && !isSystemLike(msg) && previousCharacterKey && previousCharacterKey === currentCharacterKey);
           const messageSenderId = String(msg.senderId || msg.metadata?.senderId || '').trim();
           const groupMessageMember = isGroup && !isMe
             ? (
@@ -7241,8 +7247,8 @@ export function LineConversationView({
                   </div>
                 ) : (
                   /* 常规文本气泡 (支持引用、长按菜单、表情反应) */
-                  <div className="relative">
-                    <div className={`flex flex-col gap-1 ${isMe ? 'items-end' : 'items-start'}`}>
+                  <div className="relative min-w-0 max-w-full">
+                    <div className={`flex flex-col gap-1 min-w-0 max-w-full ${isMe ? 'items-end' : 'items-start'}`}>
                       {/* 群聊角色名放在气泡上方，避免显示在气泡下方显得重复累赘；同一人连续发言只在第一条显示名字；空占位不显示名字 */}
                       {isGroup && !isMe && !effectiveSameAsPrevious && !isEmptyAiPlaceholder && (
                         <div className="text-[10px] leading-tight text-[#9a777f] px-1 mb-0.5 font-medium">
@@ -7273,7 +7279,7 @@ export function LineConversationView({
                             e.preventDefault();
                             setContextMenuMsg(msg);
                           }}
-                          className={`w-fit max-w-full rounded-[16px] px-3 py-1.5 text-[13px] leading-[1.5] whitespace-pre-wrap break-words select-text shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
+                          className={`w-fit max-w-full rounded-[16px] px-3 py-1.5 text-[13px] leading-[1.5] whitespace-pre-wrap [overflow-wrap:anywhere] select-text shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
                             isMe
                               ? 'bubble-me bg-[#f7eef0] text-[#303034]'
                               : 'bubble-other bg-[#f5f5f6] text-[#303034]'
@@ -7889,18 +7895,20 @@ export function LineConversationView({
                 )
               )}
 
+              </div>
+
               {/* Timestamp belongs below the message bubble, matching LINE's compact layout.
                   同一人连续发言时只在最后一条显示时间（C 版折叠），避免同一时间重复刷屏；空占位不显示时间。 */}
               {!msg.isRecalled && (currentDateIsValid || msg.time) && !effectiveSameAsNext && !isEmptyAiPlaceholder && (
                 <div
                   title={formatLineMessageExactDateTime(msg, chatTimezone, lineTimeDisplayLocale)}
                   aria-label={formatLineMessageExactDateTime(msg, chatTimezone, lineTimeDisplayLocale)}
-                  className={`w-full mt-0.5 flex min-h-[12px] items-center gap-1 px-1 text-[9px] leading-[1.2] text-[#a6a6aa] ${isMe ? 'justify-end' : 'justify-start'}`}
+                  className={`w-full mt-0.5 flex min-h-[12px] items-center gap-1 text-[9px] leading-[1.2] text-[#a6a6aa] ${isMe ? (showMyAvatar ? 'justify-end pr-[43px]' : 'justify-end pr-1') : 'justify-start pl-[43px]'}`}
                 >
                   {isMe ? (() => {
                     const msgIndex = messages.findIndex((candidate) => String(candidate.id) === String(msg.id));
                     const hasRoleReply = msgIndex >= 0 && messages.slice(msgIndex + 1).some((candidate) =>
-                      candidate.role !== 'user' && candidate.kind !== 'system-nudge'
+                      candidate.role !== 'user' && !isSystemLike(candidate)
                     );
                     const isRead = hasRoleReply || msg.isRead;
                     // 群聊：单灰勾=已发送，双绿勾=有人回复；单聊：保持已读/未读文字。
@@ -7917,7 +7925,6 @@ export function LineConversationView({
                 </div>
               )}
 
-              </div>
             </div>
               </div>
           );
@@ -13332,3 +13339,4 @@ export function LineConversationView({
     </div>
   );
 }
+
