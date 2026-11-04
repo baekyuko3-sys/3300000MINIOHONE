@@ -1745,9 +1745,9 @@ export function LineConversationView({
   const worldbooks = Array.isArray(storedWorldbooks)
     ? storedWorldbooks.filter((book): book is WorldBook => !!book && typeof book === 'object' && Array.isArray(book.entries))
     : [];
-  const [storedLineFriends] = usePersistentState<Array<{ name: string; characterId?: string; note?: string; online?: boolean; pinyin?: string }>>('line:friends-list', []);
+  const [storedLineFriends] = usePersistentState<Array<{ name: string; characterId?: string; npcId?: string; personaId?: string; note?: string; online?: boolean; pinyin?: string }>>('line:friends-list', []);
   const lineFriends = Array.isArray(storedLineFriends)
-    ? storedLineFriends.filter((friend): friend is { name: string; characterId?: string; note?: string; online?: boolean; pinyin?: string } => !!friend && typeof friend === 'object')
+    ? storedLineFriends.filter((friend): friend is { name: string; characterId?: string; npcId?: string; personaId?: string; note?: string; online?: boolean; pinyin?: string } => !!friend && typeof friend === 'object')
     : [];
   const forwardRecipients = Array.from(new Set([
     ...lineFriends.map(friend => friend.name).filter(Boolean),
@@ -12127,6 +12127,11 @@ export function LineConversationView({
         const inviteableFriends = lineFriends.filter(f => {
           const q = groupInviteSearch.trim().toLowerCase();
           if (q && !String(f.name || '').toLowerCase().includes(q) && !String(f.note || '').toLowerCase().includes(q)) return false;
+          // 只显示当前人设的好友，和好友页同一套规则：NPC 好友须绑定当前人设；
+          // 当前人设绑定了角色时，角色好友只显示绑定角色（无 characterId 的旧条目沿用好友页的放行规则）。
+          if (resolvedPersonaId && f.npcId && f.personaId !== resolvedPersonaId) return false;
+          const inviteBoundIds: string[] = Array.isArray((activePersona as any)?.boundCharacterIds) ? (activePersona as any).boundCharacterIds : [];
+          if (inviteBoundIds.length > 0 && !f.npcId && f.characterId && !inviteBoundIds.includes(f.characterId)) return false;
           // 已在群里的不显示
           const members = activeGroup?.members || [];
           return !members.some(m => m.name === f.name || (f.characterId && m.characterId === f.characterId));

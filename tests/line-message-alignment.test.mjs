@@ -83,6 +83,19 @@ test('bound friends are backfilled continuously, not just once', async () => {
   assert.ok(source.includes('return added ? next : prev;'));
 });
 
+test('group invite list only shows the current persona\'s friends', async () => {
+  // The invite picker used the raw friends list (every persona's bound
+  // characters), so strangers showed up as inviteable. It must apply the
+  // friends tab's persona filter: NPC friends gated by persona, character
+  // friends gated by the current persona's bound characters.
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
+  const picker = source.slice(source.indexOf('const inviteableFriends'));
+  assert.ok(picker.includes('f.personaId !== resolvedPersonaId'));
+  assert.ok(picker.includes('boundCharacterIds'));
+  assert.ok(picker.includes('inviteBoundIds.includes(f.characterId)'));
+});
+
 test('group invite verifies the save before announcing it', async () => {
   // A swallowed storage write used to leave a fake success prompt in the chat
   // while the member list stayed unchanged. The handler must re-read the group
