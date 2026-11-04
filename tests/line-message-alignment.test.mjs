@@ -83,6 +83,17 @@ test('bound friends are backfilled continuously, not just once', async () => {
   assert.ok(source.includes('return added ? next : prev;'));
 });
 
+test('group invite posts a visible system announcement in the chat', async () => {
+  // Inviting only updated the group record, so the chat showed nothing and
+  // the new member looked like they never joined. The invite must leave a
+  // system message in the conversation itself.
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
+  assert.ok(source.includes('system-group-invite-'));
+  assert.ok(source.includes('你邀请了 ${addedNames.join'));
+  assert.ok(source.includes('加入群聊'));
+});
+
 test('chat list time comes from the real timestamp, never a missing field', () => {
   // Missing/invalid timestamps read as just-created, never as a wrong date.
   assert.equal(formatChatListTime(undefined), '刚刚');

@@ -12158,6 +12158,7 @@ export function LineConversationView({
                   if (!activeGroup || groupInviteSelected.length === 0) return;
                   const members = [...activeGroup.members];
                   let added = 0;
+                  const addedNames: string[] = [];
                   for (const key of groupInviteSelected) {
                     if (!key.startsWith('friend:')) continue;
                     const friendName = key.slice(7);
@@ -12177,12 +12178,22 @@ export function LineConversationView({
                       avatar: c?.avatar || '',
                     });
                     added += 1;
+                    addedNames.push(f.name);
                   }
                   if (added === 0) {
                     showToast('所选好友已在群里');
                     return;
                   }
                   saveGroupUpdate({ ...activeGroup, members, updatedAt: new Date().toISOString() });
+                  // 群里留一条可见的邀请提示：光改成员记录，对话里看不到，新成员像没进群。
+                  appendLineMessage(conversationStorageId, {
+                    id: `system-group-invite-${Date.now()}`,
+                    role: 'system',
+                    senderType: 'system',
+                    kind: 'system',
+                    text: `你邀请了 ${addedNames.join('、')} 加入群聊`,
+                    createdAt: new Date().toISOString(),
+                  });
                   setShowGroupInvitePicker(false);
                   setGroupInviteSelected([]);
                   showToast(`已邀请 ${added} 位好友进群`);
