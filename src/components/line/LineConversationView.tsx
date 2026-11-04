@@ -5789,7 +5789,7 @@ export function LineConversationView({
         userMessage: previousUser || '继续当前对话',
         isGroup,
         groupName: isGroup ? (activeGroup?.name || '') : '',
-        authorNote: [lineConversationRules, '重新生成要求：' + instruction + '；这次只重新生成被选中的这一条消息，不要额外生成其他消息。'].filter(Boolean).join('\n'),
+        authorNote: [lineConversationRules, '重新生成要求：' + (instruction || '换一个说法、换一个反应，不要重复上一版的句子和结构') + '；这次只重新生成被选中的这一条消息，不要额外生成其他消息。'].filter(Boolean).join('\n'),
         statusBarPreset: turnStatusPreset,
         stylePreset: activeCotPreset?.title || selectedPreset,
         cotTarget: isGroup ? 'group' : 'line',
@@ -11515,21 +11515,41 @@ export function LineConversationView({
             <button
               onClick={() => {
                 const charName = String(characterProfile.nickname || importedCharacter?.name || '').trim();
-                let fixed = 0;
+                const myName = String(currentUserNameFallback() || activePersona?.name || '').trim();
+                let fixedToLeft = 0;
+                let fixedToRight = 0;
                 setMessages((prev: any[]) => prev.map((m: any) => {
-                  if (!m || m.sender !== 'me') return m;
-                  const senderNameStr = String(m.senderName || '').trim();
-                  const isAiReply = m.type === 'ai-reply';
-                  const hasCharId = Boolean(m.characterId || m.npcId || m.metadata?.characterId);
-                  const nameIsChar = Boolean(senderNameStr && charName && senderNameStr === charName);
-                  const hasCharacterSenderType = m.senderType === 'character' || m.senderType === 'npc';
-                  if (isAiReply || hasCharId || nameIsChar || hasCharacterSenderType) {
-                    fixed++;
-                    return { ...m, sender: 'other' };
+                  if (!m) return m;
+                  // 方向一：右边冒充的角色消息 → 移回左边（原有逻辑）
+                  if (m.sender === 'me') {
+                    const senderNameStr = String(m.senderName || '').trim();
+                    const isAiReply = m.type === 'ai-reply';
+                    const hasCharId = Boolean(m.characterId || m.npcId || m.metadata?.characterId);
+                    const nameIsChar = Boolean(senderNameStr && charName && senderNameStr === charName);
+                    const hasCharacterSenderType = m.senderType === 'character' || m.senderType === 'npc';
+                    if (isAiReply || hasCharId || nameIsChar || hasCharacterSenderType) {
+                      fixedToLeft++;
+                      return { ...m, sender: 'other' };
+                    }
+                    return m;
+                  }
+                  // 方向二：左边卡住的你的消息 → 移回右边。只认发送名就是你本人的，
+                  // 避免把角色消息误移（单聊才启用，群聊成员重名风险高）。
+                  if (!isGroup && m.sender !== 'me') {
+                    const senderNameStr = String(m.senderName || '').trim();
+                    const nameIsMine = Boolean(senderNameStr && (senderNameStr === myName || senderNameStr === '我'));
+                    if (nameIsMine) {
+                      fixedToRight++;
+                      return { ...m, sender: 'me', senderType: 'user', ...(m.type === 'ai-reply' ? { type: 'text' } : {}), ...(m.kind === 'ai-reply' ? { kind: 'text' } : {}) };
+                    }
                   }
                   return m;
                 }));
-                setTimeout(() => showToast(fixed > 0 ? `已修复 ${fixed} 条错位消息` : '没有发现错位消息'), 100);
+                setTimeout(() => showToast(
+                  (fixedToLeft + fixedToRight) > 0
+                    ? `已修复 ${fixedToLeft + fixedToRight} 条错位消息${fixedToRight > 0 ? `（${fixedToRight} 条移回右边）` : ''}`
+                    : '没有发现错位消息'
+                ), 100);
               }}
               className="w-full py-3 bg-white text-[#ae7e89] rounded-[14px] border border-[#f0f0f1] font-medium cursor-pointer hover:bg-[#faf1f3] transition-colors"
             >
