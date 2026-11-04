@@ -138,6 +138,17 @@ export function isLineMessageFromUser(candidate: any, activeCharacterName = ''):
   return true;
 }
 
+/** AI 误把内部结构化数据块（如角色卡朋友圈 WX_MOMENTS 数据）输出到聊天正文时，去掉它。
+ *  块格式：[WX_MOMENTS: Signature="...", Private1="...", ...]，字段值可能含中文逗号但不含裸双引号；
+ *  若块被截断没有右括号，则从标记起截到文末（这类块只会出现在正文末尾）。 */
+export function stripLeakedInternalBlocks(text: string): string {
+  if (!text || !text.includes('[WX_')) return text;
+  let out = text.replace(/\[WX_[A-Z0-9_]+:(?:[^"\]]|"[^"]*")*\]/g, '');
+  const leftover = out.indexOf('[WX_');
+  if (leftover >= 0) out = out.slice(0, leftover);
+  return out.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+$/gm, '').trimEnd();
+}
+
 export function normalizeLineMessage(message: LineRuntimeMessage, fallbackIndex = 0): LineRuntimeMessage {
   const legacyTimestamp = (message as LineRuntimeMessage & { timestamp?: string | number }).timestamp;
   const timestampValue = message.createdAt || (
@@ -148,6 +159,8 @@ export function normalizeLineMessage(message: LineRuntimeMessage, fallbackIndex 
   return {
     ...message,
     id: message.id ?? `line-msg-${Date.now()}-${fallbackIndex}`,
+    // 落盘前去掉 AI 误输出的内部数据块（如 WX_MOMENTS），避免预览和导出里出现原始格式
+    ...(typeof message.text === 'string' ? { text: stripLeakedInternalBlocks(message.text) } : {}),
     // Do not invent "today" for imported/legacy messages that have no real timestamp.
     // Real timestamps are preserved; new messages already receive createdAt when created.
     ...(timestampValue ? { createdAt: timestampValue } : { createdAt: undefined }),

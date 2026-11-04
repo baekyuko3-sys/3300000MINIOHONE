@@ -71,7 +71,7 @@ import {
 } from '../../store/lineMediaCards';
 import { appendLineMessage, editLineMessage, toggleLineReaction, setLineMessageFavorite, recordLineCall, markLineMessageFailed, clearLineConversation, recallLineMessage, updateLineMessage } from '../../store/lineRuntime';
 import { saveCallRecord, getCallHistory, deleteCallRecord, formatCallDuration, type CallRecord } from '../../store/callHistory';
-import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, searchLineMessages, isLineMessageFromUser, type LineRuntimeMessage } from '../../store/lineRuntime';
+import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, searchLineMessages, isLineMessageFromUser, stripLeakedInternalBlocks, type LineRuntimeMessage } from '../../store/lineRuntime';
 import { isLineTurnRequestCurrent, releaseLineTypingRequest } from '../../store/lineTurnGuard';
 import { fetchLineWeather, formatLineWeather, type LineWeatherSnapshot } from '../../store/lineReality';
 import { getRecentMomentsForGroup, maybePostGroupMomentAfterRound } from '../../store/momentsAfterChat';
@@ -6194,7 +6194,7 @@ export function LineConversationView({
           const charName = characterProfile.nickname || importedCharacter?.name || '';
           const isMe = isLineMessageFromUser(msg, charName);
           const bilingualTextParts = String(msg.text || '').split('[[ZH_TRANSLATION]]');
-          const bilingualOriginalText = bilingualTextParts[0].trim();
+          const bilingualOriginalText = stripLeakedInternalBlocks(bilingualTextParts[0]).trim();
           const bilingualTranslationText = bilingualTextParts.slice(1).join('[[ZH_TRANSLATION]]').trim();
           const showBilingualTranslation = !isMe && bilingualMode === 'auto' && bilingualTextParts.length > 1 && Boolean(bilingualOriginalText && bilingualTranslationText);
           const messageBubbleParts = (isGroup ? [bilingualOriginalText] : splitLineChatText(bilingualOriginalText)).filter(Boolean);

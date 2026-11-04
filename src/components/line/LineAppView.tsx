@@ -29,7 +29,7 @@ import { isCharacterOnline } from '../../store/characterStatus';
 import { VroomImage } from '../VroomImage';
 import { putMedia } from '../../store/mediaVault';
 import { markCharacterRead } from '../../store/worldRuntime';
-import { getLineConversationMeta, markLineConversationRead, markLineNotificationsReadForConversation, touchLineConversation } from '../../store/lineRuntime';
+import { getLineConversationMeta, markLineConversationRead, markLineNotificationsReadForConversation, stripLeakedInternalBlocks, touchLineConversation } from '../../store/lineRuntime';
 import { reportPersistenceIssue } from '../../store/usePersistentState';
 import { generateCreativeText, listOpenAiCompatibleModels, resolveChannelAiSettings, testAiConnection, type AiSettings } from '../../ai/aiEngine';
 import { useImagePresets, useMinimaxKey, useVoicePresets, type ImagePreset, type VoicePreset } from '../../ai/imageGen';
@@ -1860,7 +1860,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                         {item.draft}
                       </span>
                     ) : (
-                      item.preview
+                      stripLeakedInternalBlocks(item.preview || '')
                     )}
                   </div>
                 </div>
