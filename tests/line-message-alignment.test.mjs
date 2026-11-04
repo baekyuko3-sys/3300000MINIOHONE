@@ -25,7 +25,7 @@ test('legacy sender display names do not override explicit user identity', () =>
 test('LINE bubble wrapper preserves its original width and alignment classes', async () => {
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
-  assert.match(source, /className=\\{\\`line-message-bubble min-w-0 flex flex-col \\$\\{isGroup && !isMe \\?/);
+  assert.match(source, /className=\{\`line-message-bubble min-w-0 flex flex-col \$\{isGroup && !isMe \?/);
   assert.ok(source.includes("'max-w-[78%] relative touch-pan-y select-none ' + (isMe ? 'items-end' : 'items-start')"));
   assert.ok(source.includes('line-message-row w-full flex flex-nowrap items-end gap-2 transition-transform'));
   assert.ok(source.includes('line-message-row--me justify-end'));
