@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft, Bell, CheckCircle2, Database, Download, Image as ImageIcon, KeyRound,
   Mic2, RefreshCw, Save, Server, Shield, SlidersHorizontal, Smartphone, Sparkles,
-  Trash2, Volume2, Wifi, BellRing
+  Trash2, Volume2, Wifi, BellRing, Wrench
 } from 'lucide-react';
 import type { ScreenType } from '../../types';
 import type { ImportedCharacter } from '../../data/characterImport';
@@ -25,6 +25,7 @@ import {
   startBackgroundRuntime,
 } from '../../store/backgroundRuntime';
 import { getGitHubSyncConfig, getGitHubToken, pullSnapshotFromGitHub, saveGitHubSyncConfig, saveGitHubToken, syncSnapshotToGitHub, testGitHubSync } from '../../store/githubSync';
+import { repairBlankChats } from '../../store/lineRuntime';
 
 function collectLocalData(includeSecrets = true) {
   const data: Record<string, unknown> = {};
@@ -444,6 +445,23 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
       notify('备份导出失败：' + (error instanceof Error ? error.message : '未知错误'));
     } finally {
       setBackingUp(false);
+    }
+  };
+
+  const repairBlank = () => {
+    if (!window.confirm('一键修复空白聊天：\n\n1. 空白但别处有数据的聊天 → 把数据恢复回来；\n2. 哪里都没数据的空白聊天 → 从列表删掉；\n3. 有消息但列表里没有的会话 → 能认出主人的会恢复显示。\n\n带消息的数据不会被删。确定执行吗？')) return;
+    try {
+      const r = repairBlankChats();
+      const lines = [
+        `修复完成：正常 ${r.healthy} 个`,
+        r.restored.length ? `恢复数据 ${r.restored.length} 个：${r.restored.map(x => `${x.name}（${x.messages}条）`).join('、')}` : '',
+        r.recovered.length ? `找回会话 ${r.recovered.length} 个：${r.recovered.map(x => `${x.name}（${x.messages}条）`).join('、')}` : '',
+        r.deleted.length ? `清除空白 ${r.deleted.length} 个：${r.deleted.join('、')}` : '',
+        r.orphanedLeft ? `另有 ${r.orphanedLeft} 个有消息但认不出主人的会话未动（数据还在）` : '',
+      ].filter(Boolean);
+      notify(lines.join('\n'));
+    } catch (e) {
+      notify('修复失败：' + (e instanceof Error ? e.message : '未知错误'));
     }
   };
 
@@ -1069,6 +1087,7 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
               <div className="text-[8px] leading-relaxed text-[#8b8782]">建议使用只允许该仓库内容读写的 Fine-grained Token。Token 不会写进 GitHub，也不会包含进项目备份。</div>
             </div>
             <button onClick={() => onNavigate('project-studio')} className="mt-2 w-full py-2.5 rounded-xl bg-white/75 border border-[rgba(40,36,31,.12)] text-[10px] flex items-center justify-center gap-1.5"><Smartphone className="w-3.5 h-3.5 text-[#8b7560]" />Studio · AI 编程工作台</button>
+            <button onClick={repairBlank} className="mt-2 w-full py-2.5 rounded-xl bg-white/75 border border-[rgba(40,36,31,.12)] text-[10px] flex items-center justify-center gap-1.5"><Wrench className="w-3.5 h-3.5 text-[#8b7560]" />修复空白聊天（恢复数据 / 清除空聊天）</button>
             <button onClick={clearAll} className="mt-2 w-full py-2.5 rounded-xl bg-white/60 border border-[#cba6a0]/30 text-[#9b625b] text-[10px] flex items-center justify-center gap-1.5"><Trash2 className="w-3.5 h-3.5" />清空全部本机数据</button>
           </section>
         )}

@@ -597,6 +597,203 @@ export function removeLineConversationData(id: string, options: { removeChatItem
   window.dispatchEvent(new CustomEvent('sane333:line-notifications-changed'));
 }
 
+export interface BlankChatRepairReport {
+  healthy: number;
+  restored: Array<{ name: string; messages: number; from: string }>;
+  recovered: Array<{ name: string; messages: number }>;
+  deleted: string[];
+  orphanedLeft: number;
+}
+
+function visibleChatMessages(messages: unknown): any[] {
+  if (!Array.isArray(messages)) return [];
+  return messages.filter((m: any) => m && typeof m === 'object' && !m.deletedAt && !m.isDeleted);
+}
+
+function safeReadArray(key: string): any[] {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function lastMessagePreview(messages: any[]): { preview: string; time: string } {
+  const visible = visibleChatMessages(messages);
+  const last = visible[visible.length - 1];
+  if (!last) return { preview: '', time: '' };
+  const text = String(last.text || last.content || last.desc || '');
+  return {
+    preview: text ? (text.length > 30 ? text.slice(0, 30) + '…' : text) : (last.kind === 'image' ? '[图片]' : last.kind === 'voice' ? '[语音]' : ''),
+    time: String(last.time || last.createdAt || ''),
+  };
+}
+
+/**
+ * 一键修复空白聊天：
+ * 1. 聊天项有、消息为空 → 先到处找数据（旧版 NPC key / 角色 id / 名字 / 消息里的角色标识），找到就恢复到当前会话；
+ * 2. 实在哪都找不到数据 → 删掉这个空白聊天项；
+ * 3. 有消息但没有聊天项的孤儿会话 → 能认出主人的，重建聊天项恢复显示；认不出的不动，只计数。
+ * 绝不删除任何带消息的数据，只删“确实空”的聊天项。
+ */
+export function repairBlankChats(): BlankChatRepairReport {
+  const report: BlankChatRepairReport = { healthy: 0, restored: [], recovered: [], deleted: [], orphanedLeft: 0 };
+  if (typeof window === 'undefined') return report;
+
+  const chats: any[] = safeReadArray('line:chat-items');
+
+  // 所有会话 key → 消息
+  const convMap = new Map<string, any[]>();
+  const convKeys: string[] = [];
+  for (let i = 0; i < window.localStorage.length; i++) {
+    const key = window.localStorage.key(i);
+    if (key && key.startsWith(CONVERSATION_PREFIX)) {
+      convKeys.push(key);
+      convMap.set(key, safeReadArray(key));
+    }
+  }
+  const usedKeys = new Set<string>();
+
+  const characters: any[] = safeReadArray('phone:characters');
+  const npcs: any[] = safeReadArray('phone:npcs');
+  const findCharacter = (id?: string, name?: string) => {
+    if (id) {
+      const byId = characters.find((c: any) => c && c.id === id);
+      if (byId) return byId;
+    }
+    if (name) return characters.find((c: any) => c && c.name === name) || null;
+    return null;
+  };
+  const findNpc = (id?: string, name?: string) => {
+    if (id) {
+      const byId = npcs.find((n: any) => n && n.id === id);
+      if (byId) return byId;
+    }
+    if (name) return npcs.find((n: any) => n && n.name === name) || null;
+    return null;
+  };
+
+  const keptChats: any[] = [];
+  const meta = readJson<Record<string, LineConversationMeta>>(META_KEY, {});
+  let metaChanged = false;
+
+  for (const item of chats) {
+    if (!item || typeof item !== 'object' || typeof item.id !== 'string') continue;
+    const directKey = conversationKey(item.id);
+    const directMsgs = visibleChatMessages(convMap.get(directKey) || []);
+    if (directMsgs.length > 0) {
+      report.healthy++;
+      usedKeys.add(directKey);
+      keptChats.push(item);
+      continue;
+    }
+    // 空白：按顺序找备用数据
+    const candidates: string[] = [];
+    if (!item.isGroup) {
+      if (item.npcId) candidates.push(conversationKey(`npc:${item.npcId}:persona:${item.personaId || 'legacy'}`));
+      if (item.characterId) candidates.push(conversationKey(item.characterId));
+      if (item.name) candidates.push(conversationKey(item.name));
+    }
+    let foundKey: string | null = null;
+    for (const key of candidates) {
+      if (visibleChatMessages(convMap.get(key) || []).length > 0) { foundKey = key; break; }
+    }
+    if (!foundKey && !item.isGroup) {
+      // 按消息内容匹配：某会话的消息里带有该聊天的角色标识
+      for (const key of convKeys) {
+        if (usedKeys.has(key) || key === directKey || candidates.includes(key)) continue;
+        const msgs = visibleChatMessages(convMap.get(key) || []);
+        if (!msgs.length) continue;
+        const hit = msgs.some((m: any) =>
+          (item.characterId && (m.characterId === item.characterId || m.metadata?.characterId === item.characterId)) ||
+          (item.npcId && (m.npcId === item.npcId || m.metadata?.npcId === item.npcId)) ||
+          (item.name && m.senderName === item.name)
+        );
+        if (hit) { foundKey = key; break; }
+      }
+    }
+    if (foundKey) {
+      const msgs = convMap.get(foundKey) || [];
+      writeJson(directKey, msgs);
+      convMap.set(directKey, msgs);
+      usedKeys.add(directKey);
+      usedKeys.add(foundKey);
+      const { preview, time } = lastMessagePreview(msgs);
+      keptChats.push({ ...item, preview: preview || item.preview, time: time || item.time, unread: 0 });
+      report.restored.push({ name: String(item.name || item.id), messages: visibleChatMessages(msgs).length, from: foundKey.replace(CONVERSATION_PREFIX, '') });
+      continue;
+    }
+    // 确实没数据：删聊天项 + 清 meta
+    report.deleted.push(String(item.name || item.id));
+    if (meta[item.id]) { delete meta[item.id]; metaChanged = true; }
+  }
+
+  // 孤儿会话：有消息、无聊天项，能认出主人的重建
+  for (const key of convKeys) {
+    if (usedKeys.has(key)) continue;
+    const msgs = visibleChatMessages(convMap.get(key) || []);
+    if (!msgs.length) continue;
+    const suffix = key.slice(CONVERSATION_PREFIX.length);
+    let owner: any = null;
+    let ownerKind: 'character' | 'npc' | null = null;
+    const npcMatch = suffix.match(/^npc:([^:]+):persona:/);
+    if (npcMatch) {
+      owner = findNpc(npcMatch[1]);
+      ownerKind = owner ? 'npc' : null;
+    }
+    if (!owner) {
+      const ch = findCharacter(suffix, suffix);
+      if (ch) { owner = ch; ownerKind = 'character'; }
+    }
+    if (!owner) {
+      // 从消息里找角色标识
+      for (const m of msgs) {
+        const cid = m.characterId || m.metadata?.characterId;
+        const nid = m.npcId || m.metadata?.npcId;
+        if (nid && findNpc(nid)) { owner = findNpc(nid); ownerKind = 'npc'; break; }
+        if (cid && findCharacter(cid)) { owner = findCharacter(cid); ownerKind = 'character'; break; }
+        if (m.senderName) {
+          const byName = findNpc(undefined, m.senderName) || findCharacter(undefined, m.senderName);
+          if (byName) { owner = byName; ownerKind = findNpc(undefined, m.senderName) ? 'npc' : 'character'; break; }
+        }
+      }
+    }
+    if (!owner || !ownerKind) { report.orphanedLeft++; continue; }
+    // 该主人已有聊天项就不再重建，避免重复
+    const alreadyListed = keptChats.some((c: any) =>
+      ownerKind === 'npc' ? c.npcId === owner.id : (c.characterId === owner.id && !c.npcId)
+    );
+    if (alreadyListed) { usedKeys.add(key); continue; }
+    const { preview, time } = lastMessagePreview(msgs);
+    const newId = 'recovered-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+    // 恢复后的会话统一挂到新聊天项 id 下
+    writeJson(conversationKey(newId), msgs);
+    keptChats.push({
+      id: newId,
+      name: owner.name || suffix,
+      characterId: ownerKind === 'character' ? owner.id : (owner.boundCharacterId || undefined),
+      npcId: ownerKind === 'npc' ? owner.id : undefined,
+      time: time || '刚刚',
+      preview,
+      unread: 0,
+      isPinned: false,
+      isMuted: false,
+      draft: '',
+      isGroup: false,
+    });
+    report.recovered.push({ name: String(owner.name || suffix), messages: msgs.length });
+    usedKeys.add(key);
+  }
+
+  writeJson('line:chat-items', keptChats);
+  if (metaChanged) writeJson(META_KEY, meta);
+  window.dispatchEvent(new CustomEvent('sane333:line-runtime-changed'));
+  return report;
+}
+
 export function bindLineRuntimeEvents() {
   if (typeof window === 'undefined') return () => {};
   const onProactive = (event: Event) => {
