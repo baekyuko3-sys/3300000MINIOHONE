@@ -790,35 +790,43 @@ export function LineConversationView({
   );
   // Old/local data can be malformed. A bad conversation record must never prevent
   // the chat screen itself from opening.
-  // 数据修复：AI 回复但 sender 存错成 'me' 的消息，一次性纠正为 'other'
+  // 数据修复：ai-reply 是角色生成的回复，绝不可能是用户发送。
+  // 先修复当前会话的 React state（不能只改 localStorage，否则当前页面仍显示旧方向），
+  // 再用版本标记一次性修复其他历史会话。
   useEffect(() => {
+    const normalizeAiReplySender = (items: any[]) => {
+      let changed = false;
+      const next = items.map(item => {
+        if (!item || typeof item !== 'object') return item;
+        if (item.type === 'ai-reply' && item.sender !== 'other') {
+          changed = true;
+          return { ...item, sender: 'other', senderType: item.senderType === 'npc' ? 'npc' : 'character' };
+        }
+        return item;
+      });
+      return changed ? next : items;
+    };
+
+    setMessages((prev: any[]) => normalizeAiReplySender(Array.isArray(prev) ? prev : []));
+
     try {
-      const fixedKey = 'line:fix-ai-reply-sender-v1';
+      const fixedKey = 'line:fix-ai-reply-sender-v2';
       if (window.localStorage.getItem(fixedKey)) return;
-      let fixedCount = 0;
       for (let i = 0; i < window.localStorage.length; i++) {
         const key = window.localStorage.key(i);
         if (!key || !key.startsWith('line:conversation:')) continue;
         try {
           const raw = window.localStorage.getItem(key);
           if (!raw) continue;
-          const arr = JSON.parse(raw);
-          if (!Array.isArray(arr)) continue;
-          let changed = false;
-          for (const m of arr) {
-            if (m && m.type === 'ai-reply' && m.sender === 'me') {
-              m.sender = 'other';
-              changed = true;
-              fixedCount++;
-            }
-          }
-          if (changed) window.localStorage.setItem(key, JSON.stringify(arr));
-        } catch { /* 跳过坏数据 */ }
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) continue;
+          const repaired = normalizeAiReplySender(parsed);
+          if (repaired !== parsed) window.localStorage.setItem(key, JSON.stringify(repaired));
+        } catch { /* 跳过损坏的历史会话 */ }
       }
       window.localStorage.setItem(fixedKey, String(Date.now()));
-      if (fixedCount > 0) console.log(`[LINE] 已修复 ${fixedCount} 条 sender 存错的 AI 回复`);
-    } catch { /* 忽略 */ }
-  }, []);
+    } catch { /* 忽略存储不可用 */ }
+  }, [conversationStorageId, setMessages]);
   // useMemo 稳定引用：否则每次渲染都生成新数组，依赖 messages 的 effect 会无限循环。
   const messages = useMemo(() => Array.isArray(storedMessages)
     ? storedMessages
