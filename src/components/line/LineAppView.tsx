@@ -962,7 +962,17 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
           // Runtime events can fire while a conversation is marking itself read.
           // Preserve the existing array reference when persisted chat data is unchanged,
           // preventing a parent rerender loop from repeatedly refreshing the same list.
-          setChatItems(prev => JSON.stringify(prev) === JSON.stringify(parsed) ? prev : parsed);
+          // localStorage 写入有 300ms 防抖，可能滞后于内存：直接整体替换会把刚创建
+          // （如发起聊天新建的项）又覆盖掉，导致聊天窗口打不开又弹回列表。
+          // 所以改为合并：localStorage 的项（带最新预览/未读）为准，内存里多出的项保留在前面。
+          setChatItems(prev => {
+            const list = Array.isArray(prev) ? prev : [];
+            if (JSON.stringify(list) === JSON.stringify(parsed)) return prev;
+            const parsedIds = new Set(parsed.map((item: any) => item?.id));
+            const onlyInMemory = list.filter(c => c && !parsedIds.has(c.id));
+            if (!onlyInMemory.length) return parsed;
+            return [...onlyInMemory, ...parsed];
+          });
         }
       } catch {
         // Keep current in-memory list.
@@ -3938,6 +3948,15 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                         relationship: 'new-friend',
                       };
                       setChatItems(prev => [newChat, ...prev]);
+                      // 同步写一份进 localStorage：刷新事件读 localStorage 时一定能看到新项，
+                      // 不会被 300ms 防抖滞后的旧列表覆盖回去。
+                      try {
+                        const rawChats = window.localStorage.getItem('line:chat-items');
+                        const existingChats = rawChats ? JSON.parse(rawChats) : [];
+                        if (Array.isArray(existingChats) && !existingChats.some((c: any) => c?.id === newChatId)) {
+                          window.localStorage.setItem('line:chat-items', JSON.stringify([newChat, ...existingChats]));
+                        }
+                      } catch { /* ignore */ }
                       // 新好友系统提示
                       import('../../store/lineRuntime').then(({ appendLineMessage }) => {
                         appendLineMessage(newChatId, {
