@@ -33,7 +33,7 @@ test('LINE bubble content wrapper is a flex column so side alignment classes tak
 test('LINE outgoing avatar stays inside the same horizontal row as its bubble', async () => {
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
-  const rowStart = source.indexOf('w-full flex items-end gap-2 transition-transform');
+  const rowStart = source.indexOf('w-full flex flex-nowrap items-end gap-2 transition-transform');
   const outgoingAvatar = source.indexOf('{/* Optional user avatar */}', rowStart);
   const rowEnd = source.indexOf('{/* Timestamp belongs below the message bubble', outgoingAvatar);
   assert.ok(rowStart >= 0 && outgoingAvatar > rowStart && rowEnd > outgoingAvatar);
