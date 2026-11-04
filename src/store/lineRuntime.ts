@@ -131,9 +131,8 @@ export function isLineMessageFromUser(candidate: any, activeCharacterName = '', 
   // 消息也会带它，之前这里把它一律判成角色消息，导致用户消息跑到左边。
   const messageKind = String(candidate.type || candidate.kind || '').trim().toLowerCase();
   const hasStrongCharacterIdentity = Boolean(
-    messageKind === 'ai-reply' ||
-    candidate.senderType === 'character' ||
-    candidate.senderType === 'npc'
+    senderType === 'character' ||
+    senderType === 'npc'
   );
   if (hasStrongCharacterIdentity) return false;
 
