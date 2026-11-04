@@ -37,5 +37,5 @@ test('LINE outgoing avatar stays inside the same horizontal row as its bubble', 
   const rowEnd = source.indexOf('{/* Timestamp belongs below the message bubble', outgoingAvatar);
   assert.ok(rowStart >= 0 && outgoingAvatar > rowStart && rowEnd > outgoingAvatar);
   assert.match(source.slice(outgoingAvatar, rowEnd), /\{isMe && showMyAvatar &&/);
-  assert.match(source.slice(outgoingAvatar, rowEnd), /<\/div>\s*$/);
+  assert.match(source.slice(outgoingAvatar, rowEnd), /\n\s*<\/div>\s*$/);
 });
