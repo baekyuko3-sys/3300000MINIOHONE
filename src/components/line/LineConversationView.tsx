@@ -84,7 +84,7 @@ import {
   Edit3, Brain, Play, Check, Trash2, Copy, Sparkle, Terminal,
   Phone, Search, CornerUpLeft, Share2, Download, AlertCircle, VolumeX,
   CheckSquare, Square, Pin, PinOff, Bell, BellOff, Bookmark, BookmarkCheck,
-  FileDown, FileUp, MessageCircle, Heart, Music2, Headphones, MoreHorizontal, ArrowLeft
+  FileDown, FileUp, MessageCircle, Heart, Music2, Headphones, MoreHorizontal, ArrowLeft, ArrowRight
 } from 'lucide-react';
 
 const SONG_INVITE_COLOR_SETS: Array<[string, string, string]> = [
@@ -6193,16 +6193,17 @@ export function LineConversationView({
           // 防御性修复：角色消息强制放左边，防止 sender 存错
           // AI 回复、带角色身份的消息一律放左边
           const charName = characterProfile.nickname || importedCharacter?.name || '';
-          const isMe = isLineMessageFromUser(msg, charName);
+          const isMine = (candidate: any) => isLineMessageFromUser(candidate, charName, isGroup ? '' : (currentUserNameFallback() || activePersona?.name || '我'));
+          const isMe = isMine(msg);
           const bilingualTextParts = String(msg.text || '').split('[[ZH_TRANSLATION]]');
           const bilingualOriginalText = stripLeakedMarkupTags(stripLeakedInternalBlocks(bilingualTextParts[0])).trim();
           const bilingualTranslationText = bilingualTextParts.slice(1).join('[[ZH_TRANSLATION]]').trim();
           const showBilingualTranslation = !isMe && bilingualMode === 'auto' && bilingualTextParts.length > 1 && Boolean(bilingualOriginalText && bilingualTranslationText);
           const messageBubbleParts = (isGroup ? [bilingualOriginalText] : splitLineChatText(bilingualOriginalText)).filter(Boolean);
-          const sameAsPrevious = Boolean(previousMessage && isLineMessageFromUser(previousMessage) === isMe && previousMessage.type !== 'system-nudge' && msg.type !== 'system-nudge');
-          const sameAsNext = Boolean(nextMessage && isLineMessageFromUser(nextMessage) === isMe && nextMessage.type !== 'system-nudge' && msg.type !== 'system-nudge');
-          const sameGroupSpeakerAsPreviousForSpacing = Boolean(isGroup && previousMessage && !isLineMessageFromUser(previousMessage) && !isMe && String(previousMessage.characterId || previousMessage.metadata?.characterId || previousMessage.senderName || '') === String(msg.characterId || msg.metadata?.characterId || msg.senderName || ''));
-          const sameGroupSpeakerAsNextForSpacing = Boolean(isGroup && nextMessage && !isLineMessageFromUser(nextMessage) && !isMe && String(nextMessage.characterId || nextMessage.metadata?.characterId || nextMessage.senderName || '') === String(msg.characterId || msg.metadata?.characterId || msg.senderName || ''));
+          const sameAsPrevious = Boolean(previousMessage && isMine(previousMessage) === isMe && previousMessage.type !== 'system-nudge' && msg.type !== 'system-nudge');
+          const sameAsNext = Boolean(nextMessage && isMine(nextMessage) === isMe && nextMessage.type !== 'system-nudge' && msg.type !== 'system-nudge');
+          const sameGroupSpeakerAsPreviousForSpacing = Boolean(isGroup && previousMessage && !isMine(previousMessage) && !isMe && String(previousMessage.characterId || previousMessage.metadata?.characterId || previousMessage.senderName || '') === String(msg.characterId || msg.metadata?.characterId || msg.senderName || ''));
+          const sameGroupSpeakerAsNextForSpacing = Boolean(isGroup && nextMessage && !isMine(nextMessage) && !isMe && String(nextMessage.characterId || nextMessage.metadata?.characterId || nextMessage.senderName || '') === String(msg.characterId || msg.metadata?.characterId || msg.senderName || ''));
           const effectiveSameAsPrevious = isGroup && !isMe ? sameGroupSpeakerAsPreviousForSpacing : sameAsPrevious;
           const effectiveSameAsNext = isGroup && !isMe ? sameGroupSpeakerAsNextForSpacing : sameAsNext;
           const currentDateRaw = msg.createdAt || msg.timestamp;
@@ -12604,6 +12605,25 @@ export function LineConversationView({
                 </div>
                 </>
               ) : (
+                <div
+                  onClick={() => {
+                    const targetId = contextMenuMsg.id;
+                    const myName = currentUserNameFallback() || activePersona?.name || '我';
+                    setMessages((prev: any[]) => prev.map((m: any) =>
+                      String(m.id) === String(targetId)
+                        ? { ...m, sender: 'me', senderType: 'user', senderName: myName, ...(m.type === 'ai-reply' ? { type: 'text' } : {}), ...(m.kind === 'ai-reply' ? { kind: 'text' } : {}) }
+                        : m
+                    ));
+                    setContextMenuMsg(null);
+                    showToast('已移到右边');
+                  }}
+                  className="py-3 flex items-center gap-3 cursor-pointer hover:bg-neutral-50 px-2 text-[#ae7e89]"
+                >
+                  <ArrowRight className="w-4 h-4" />
+                  <span className="text-[#333]">移到右边（修正错位）</span>
+                </div>
+              )}
+              {contextMenuMsg.sender !== 'me' && (
                 <div
                   onClick={() => handleOtherRecallMessage(contextMenuMsg.id, true)}
                   className="py-3 flex items-center gap-3 cursor-pointer hover:bg-neutral-50 px-2 text-[#ae7e89]"

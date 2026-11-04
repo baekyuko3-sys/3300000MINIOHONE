@@ -111,13 +111,19 @@ export function saveLineConversationMessages(id: string, messages: LineRuntimeMe
  * Explicit user markers win; explicit NPC/character/system markers stay incoming.
  * Display names are only a legacy fallback and never override an explicit user marker.
  */
-export function isLineMessageFromUser(candidate: any, activeCharacterName = ''): boolean {
+export function isLineMessageFromUser(candidate: any, activeCharacterName = '', userName = ''): boolean {
   if (!candidate) return false;
   const sender = String(candidate.sender || '').trim().toLowerCase();
   const senderType = String(candidate.senderType || candidate.metadata?.senderType || '').trim().toLowerCase();
 
+  if (sender === 'system' || senderType === 'system') return false;
   if (senderType === 'user' || sender === 'user') return true;
-  if (sender === 'other' || sender === 'system' || senderType === 'character' || senderType === 'npc' || senderType === 'system') return false;
+  // 单聊里发送名就是用户本人时，就是用户消息——哪怕 sender 存错了（如 AI 回复流程误标）。
+  // userName 只在单聊传入，群聊不启用，避免成员重名误判。
+  const senderNameEarly = String(candidate.senderName || '').trim();
+  const userNameTrimmed = String(userName || '').trim();
+  if (senderNameEarly && userNameTrimmed && senderNameEarly === userNameTrimmed) return true;
+  if (sender === 'other' || senderType === 'character' || senderType === 'npc') return false;
   if (sender !== 'me') return false;
 
   // sender 已是 'me'：只有强角色信号才能把它推到左边。
