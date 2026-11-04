@@ -17,6 +17,20 @@ test('explicit role always wins over conflicting kind, nickname, or senderType m
   assert.equal(isLineMessageFromUser({ role: 'user', kind: 'text' }), true);
 });
 
+test('clear chat offers two buttons: messages only, or messages plus memory', async () => {
+  // Delete message != delete memory: the settings panel must offer both, and
+  // the confirm dialog must run the mode the user picked.
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
+  assert.ok(source.includes('清空当前聊天'));
+  assert.ok(source.includes('清空聊天加记忆'));
+  assert.ok(source.includes('清除群聊记录加记忆'));
+  assert.ok(source.includes("openClearConfirm('chat')"));
+  assert.ok(source.includes("openClearConfirm('chatMemory')"));
+  assert.ok(source.includes('handleClearChat(clearMode === \'chatMemory\')'));
+  assert.ok(source.includes('已清空聊天记录（记忆已保留）'));
+});
+
 test('chat list time comes from the real timestamp, never a missing field', () => {
   // Missing/invalid timestamps read as just-created, never as a wrong date.
   assert.equal(formatChatListTime(undefined), '刚刚');

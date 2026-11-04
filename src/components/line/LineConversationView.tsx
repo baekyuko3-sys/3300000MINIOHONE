@@ -1384,6 +1384,12 @@ export function LineConversationView({
   const [showFavoritesModal, setShowFavoritesModal] = useState(false);
   const [showGroupNotice, setShowGroupNotice] = useState(true);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  // 清空分两档：只清消息 / 消息+记忆一起清（删消息≠删记忆，由用户每次选）。
+  const [clearMode, setClearMode] = useState<'chat' | 'chatMemory'>('chat');
+  const openClearConfirm = (mode: 'chat' | 'chatMemory') => {
+    setClearMode(mode);
+    setShowClearConfirm(true);
+  };
   const [nudgeAvatar, setNudgeAvatar] = useState(false);
   const [localPinned, setLocalPinned] = useState(isPinned);
   const [localMuted, setLocalMuted] = useState(isMuted);
@@ -4254,9 +4260,18 @@ export function LineConversationView({
   };
 
   // 清空聊天记录 (Clear Chat)
-  const handleClearChat = () => {
+  // 两档：withMemory=false 只清消息，记忆不动；true 则消息+记忆一起清。
+  // 删消息≠删记忆，记忆只在用户明确选了“加记忆”时才动。
+  const handleClearChat = (withMemory: boolean) => {
     clearLineConversation(conversationStorageId);
-    // 同时清空角色记忆，否则角色还记得删掉的事
+    if (!withMemory) {
+      setMessages([]);
+      setLoadedMessageCount(LINE_PAGE_SIZE);
+      setShowClearConfirm(false);
+      setShowSettings(false);
+      showToast(isGroup ? '已清空群聊记录（记忆已保留）' : '已清空聊天记录（记忆已保留）');
+      return;
+    }
     try {
       if (isGroup) {
         const memberIds = groupAiMembers
@@ -10058,8 +10073,9 @@ export function LineConversationView({
                 <ChevronDown className="w-4 h-4 text-[#ae7e89] shrink-0" />
               </summary>
               <div className="px-3.5 pb-3.5 space-y-2 border-t border-[#f1dfe4] pt-3">
-                <div className="text-[10px] text-[#999] leading-relaxed">清除当前群聊的全部消息；群成员、公告、预设和世界书选择会保留。</div>
-                <button type="button" onClick={() => setShowClearConfirm(true)} className="w-full py-2.5 rounded-[10px] border border-[#f0dce2] bg-[#fffafb] text-[11px] font-medium text-[#b16f7f]">清除群聊记录</button>
+                <div className="text-[10px] text-[#999] leading-relaxed">清除当前群聊的全部消息；群成员、公告、预设和世界书选择会保留；记忆默认不动，要清选第二个按钮。</div>
+                <button type="button" onClick={() => openClearConfirm('chat')} className="w-full py-2.5 rounded-[10px] border border-[#f0dce2] bg-[#fffafb] text-[11px] font-medium text-[#b16f7f]">清除群聊记录</button>
+                <button type="button" onClick={() => openClearConfirm('chatMemory')} className="w-full py-2.5 rounded-[10px] border border-[#f0d0d3] bg-[#fffafb] text-[11px] font-medium text-[#b16f7f]">清除群聊记录加记忆</button>
               </div>
             </details>
           </div>
@@ -11540,10 +11556,16 @@ export function LineConversationView({
             </div>
 
             <button
-              onClick={() => setShowClearConfirm(true)}
+              onClick={() => openClearConfirm('chat')}
               className="w-full py-3 bg-white text-rose-500 rounded-[14px] border border-[#f0f0f1] font-medium cursor-pointer hover:bg-rose-50/30 transition-colors"
             >
-              清空聊天记录
+              清空当前聊天
+            </button>
+            <button
+              onClick={() => openClearConfirm('chatMemory')}
+              className="w-full py-3 bg-white text-rose-600 rounded-[14px] border border-[#f0d0d3] font-medium cursor-pointer hover:bg-rose-50/50 transition-colors"
+            >
+              清空聊天加记忆
             </button>
           </div>
 
@@ -12799,9 +12821,11 @@ export function LineConversationView({
               <Trash2 className="w-6 h-6 stroke-[1.7]" />
             </div>
             <div>
-              <div className="font-semibold text-sm text-[#222]">确认清空聊天记录？</div>
+              <div className="font-semibold text-sm text-[#222]">{clearMode === 'chatMemory' ? '确认清空聊天加记忆？' : '确认清空当前聊天？'}</div>
               <div className="text-[11px] text-[#888] mt-1 leading-relaxed">
-                {isGroup ? `将清空群聊「${activeGroup?.name || contactName}」的所有消息记录，群成员和群聊设定会保留。` : `将清空与 ${characterProfile.nickname} 的所有对话记录，此操作不可恢复。`}
+                {clearMode === 'chatMemory'
+                  ? (isGroup ? `将清空群聊「${activeGroup?.name || contactName}」的所有消息记录，并同时清空群成员记忆和群总结，群成员和群聊设定会保留，此操作不可恢复。` : `将清空与 ${characterProfile.nickname} 的所有对话记录，并同时清空角色记忆，此操作不可恢复。`)
+                  : (isGroup ? `将清空群聊「${activeGroup?.name || contactName}」的所有消息记录，记忆不动，群成员和群聊设定会保留。` : `将清空与 ${characterProfile.nickname} 的所有对话记录，记忆不动，此操作不可恢复。`)}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
@@ -12812,10 +12836,10 @@ export function LineConversationView({
                 取消
               </button>
               <button
-                onClick={handleClearChat}
+                onClick={() => handleClearChat(clearMode === 'chatMemory')}
                 className="py-2.5 rounded-[12px] bg-rose-500 text-white font-medium cursor-pointer hover:bg-rose-600 shadow-xs"
               >
-                确认清空
+                {clearMode === 'chatMemory' ? '确认清空加记忆' : '确认清空'}
               </button>
             </div>
           </div>
