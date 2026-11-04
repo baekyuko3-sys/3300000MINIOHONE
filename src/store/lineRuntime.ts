@@ -610,6 +610,11 @@ function visibleChatMessages(messages: unknown): any[] {
   return messages.filter((m: any) => m && typeof m === 'object' && !m.deletedAt && !m.isDeleted);
 }
 
+/** 真实对话消息：排除系统提示（如“你们已经是好友了”）。只有系统问候的聊天视为空白。 */
+function realChatMessages(messages: unknown): any[] {
+  return visibleChatMessages(messages).filter((m: any) => m.sender !== 'system' && m.kind !== 'system');
+}
+
 function safeReadArray(key: string): any[] {
   try {
     const raw = window.localStorage.getItem(key);
@@ -683,7 +688,7 @@ export function repairBlankChats(): BlankChatRepairReport {
   for (const item of chats) {
     if (!item || typeof item !== 'object' || typeof item.id !== 'string') continue;
     const directKey = conversationKey(item.id);
-    const directMsgs = visibleChatMessages(convMap.get(directKey) || []);
+    const directMsgs = realChatMessages(convMap.get(directKey) || []);
     if (directMsgs.length > 0) {
       report.healthy++;
       usedKeys.add(directKey);
@@ -699,13 +704,13 @@ export function repairBlankChats(): BlankChatRepairReport {
     }
     let foundKey: string | null = null;
     for (const key of candidates) {
-      if (visibleChatMessages(convMap.get(key) || []).length > 0) { foundKey = key; break; }
+      if (realChatMessages(convMap.get(key) || []).length > 0) { foundKey = key; break; }
     }
     if (!foundKey && !item.isGroup) {
       // 按消息内容匹配：某会话的消息里带有该聊天的角色标识
       for (const key of convKeys) {
         if (usedKeys.has(key) || key === directKey || candidates.includes(key)) continue;
-        const msgs = visibleChatMessages(convMap.get(key) || []);
+        const msgs = realChatMessages(convMap.get(key) || []);
         if (!msgs.length) continue;
         const hit = msgs.some((m: any) =>
           (item.characterId && (m.characterId === item.characterId || m.metadata?.characterId === item.characterId)) ||
@@ -723,18 +728,19 @@ export function repairBlankChats(): BlankChatRepairReport {
       usedKeys.add(foundKey);
       const { preview, time } = lastMessagePreview(msgs);
       keptChats.push({ ...item, preview: preview || item.preview, time: time || item.time, unread: 0 });
-      report.restored.push({ name: String(item.name || item.id), messages: visibleChatMessages(msgs).length, from: foundKey.replace(CONVERSATION_PREFIX, '') });
+      report.restored.push({ name: String(item.name || item.id), messages: realChatMessages(msgs).length, from: foundKey.replace(CONVERSATION_PREFIX, '') });
       continue;
     }
-    // 确实没数据：删聊天项 + 清 meta
+    // 确实没真实对话：删聊天项 + 清 meta + 删会话 key，否则聊天列表的恢复逻辑会用残留的系统问候把它复活
     report.deleted.push(String(item.name || item.id));
     if (meta[item.id]) { delete meta[item.id]; metaChanged = true; }
+    try { window.localStorage.removeItem(directKey); } catch { /* ignore */ }
   }
 
-  // 孤儿会话：有消息、无聊天项，能认出主人的重建
+  // 孤儿会话：有真实消息、无聊天项，能认出主人的重建
   for (const key of convKeys) {
     if (usedKeys.has(key)) continue;
-    const msgs = visibleChatMessages(convMap.get(key) || []);
+    const msgs = realChatMessages(convMap.get(key) || []);
     if (!msgs.length) continue;
     const suffix = key.slice(CONVERSATION_PREFIX.length);
     let owner: any = null;

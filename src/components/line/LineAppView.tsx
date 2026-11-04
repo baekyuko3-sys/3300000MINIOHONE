@@ -877,7 +877,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         if (!raw) continue;
         const stored = JSON.parse(raw);
         if (!Array.isArray(stored) || !stored.length) continue;
-        const realMessages = stored.filter((message: any) => message && typeof message === 'object' && message.type !== 'system-nudge');
+        const realMessages = stored.filter((message: any) => message && typeof message === 'object' && message.type !== 'system-nudge' && message.sender !== 'system' && message.kind !== 'system');
         if (!realMessages.length) continue;
         const latest = realMessages[realMessages.length - 1];
         const existing = chatItems.find(item => item.id === id);

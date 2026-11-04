@@ -128,12 +128,12 @@ export function diagnosePhone(): PhoneDiagnosis {
   }
   empty.messageCount = totalMsgs;
 
-  // 空白聊天：聊天项在、直接会话无消息
+  // 空白聊天：聊天项在、直接会话无真实对话消息（只有系统问候也算空白）
   const chatIds = new Set<string>();
   for (const item of chats) {
     if (!item || typeof item.id !== 'string') continue;
     chatIds.add(item.id);
-    const msgs = convMsgs.get('line:conversation:' + item.id) || [];
+    const msgs = (convMsgs.get('line:conversation:' + item.id) || []).filter((m: any) => m.sender !== 'system' && m.kind !== 'system');
     if (msgs.length === 0) {
       empty.counts.blankChats++;
       if (issues.length < 200) {
@@ -146,9 +146,9 @@ export function diagnosePhone(): PhoneDiagnosis {
     }
   }
 
-  // 孤儿会话：有消息、无聊天项
+  // 孤儿会话：有真实消息、无聊天项
   for (const key of convKeys) {
-    const msgs = convMsgs.get(key) || [];
+    const msgs = (convMsgs.get(key) || []).filter((m: any) => m.sender !== 'system' && m.kind !== 'system');
     if (msgs.length === 0) continue;
     const suffix = key.slice('line:conversation:'.length);
     if (!chatIds.has(suffix)) {
