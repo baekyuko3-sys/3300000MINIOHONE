@@ -6754,7 +6754,7 @@ export function LineConversationView({
                 </div>
               )}
               <div
-                className={`line-message-row w-full flex flex-nowrap items-end gap-2 transition-transform duration-75 ease-out ${isMe ? 'line-message-row--me justify-end' : 'line-message-row--other justify-start'}`}
+                className={`line-message-row w-full flex flex-row flex-nowrap items-end gap-2 transition-transform duration-75 ease-out ${isMe ? 'line-message-row--me justify-end' : 'line-message-row--other justify-start'}`}
                 data-message-side={isMe ? 'me' : 'other'}
                 style={{ transform: swipingMessageId === msg.id ? `translateX(${swipeOffset}px)` : 'translateX(0)' }}
               >
