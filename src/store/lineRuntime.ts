@@ -120,17 +120,16 @@ export function isLineMessageFromUser(candidate: any, activeCharacterName = ''):
   if (sender === 'other' || sender === 'system' || senderType === 'character' || senderType === 'npc' || senderType === 'system') return false;
   if (sender !== 'me') return false;
 
+  // sender 已是 'me'：只有强角色信号才能把它推到左边。
+  // 裸 characterId/npcId 只是“这是哪个角色的会话”，不是“谁发的”——用户在角色会话里发的
+  // 消息也会带它，之前这里把它一律判成角色消息，导致用户消息跑到左边。
   const messageKind = String(candidate.type || candidate.kind || '').trim().toLowerCase();
-  const hasCharacterIdentity = Boolean(
+  const hasStrongCharacterIdentity = Boolean(
     messageKind === 'ai-reply' ||
     candidate.senderType === 'character' ||
-    candidate.senderType === 'npc' ||
-    candidate.characterId ||
-    candidate.npcId ||
-    candidate.metadata?.characterId ||
-    candidate.metadata?.npcId
+    candidate.senderType === 'npc'
   );
-  if (hasCharacterIdentity) return false;
+  if (hasStrongCharacterIdentity) return false;
 
   const senderName = String(candidate.senderName || '').trim();
   const characterName = String(activeCharacterName || '').trim();

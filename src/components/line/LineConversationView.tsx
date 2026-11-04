@@ -7094,7 +7094,7 @@ export function LineConversationView({
                       <div className={`flex flex-col gap-1.5 ${isMe ? 'items-end' : 'items-start'}`}>
                         {/* AI 语音转换：保留原文，语音作为附件 */}
                         {msg.text && (
-                          <div className={`max-w-[75%] px-3 py-1.5 rounded-[16px] text-[13.5px] leading-relaxed break-words ${
+                          <div className={`w-fit max-w-[75%] px-3 py-1.5 rounded-[16px] text-[13.5px] leading-relaxed break-words ${
                             isMe ? 'bubble-me bg-[#f7eef0] text-[#303034]' : 'bubble-other bg-[#f5f5f6] text-[#303034]'
                           }`}>
                             {msg.text}
@@ -7267,7 +7267,7 @@ export function LineConversationView({
                             e.preventDefault();
                             setContextMenuMsg(msg);
                           }}
-                          className={`max-w-full rounded-[16px] px-3 py-1.5 text-[13px] leading-[1.5] whitespace-pre-wrap select-text shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
+                          className={`w-fit max-w-full rounded-[16px] px-3 py-1.5 text-[13px] leading-[1.5] whitespace-pre-wrap break-words select-text shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
                             isMe
                               ? 'bubble-me bg-[#f7eef0] text-[#303034]'
                               : 'bubble-other bg-[#f5f5f6] text-[#303034]'
