@@ -7876,6 +7876,8 @@ export function LineConversationView({
                   )}
 
                   {/* 单条消息操作通过左右滑动触发：左滑编辑，右滑引用。这里不再常驻按钮，保持气泡紧凑。 */}
+                </div>
+
                 {/* Optional user avatar */}
               {isMe && showMyAvatar && (
                 sameAsPrevious ? (
