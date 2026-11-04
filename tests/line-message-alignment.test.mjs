@@ -21,3 +21,10 @@ test('legacy sender display names do not override explicit user identity', () =>
   assert.equal(isLineMessageFromUser({ sender: 'me', senderName: '程凛' }, '程凛'), false);
   assert.equal(isLineMessageFromUser({ sender: 'other', senderName: '我' }, '程凛'), false);
 });
+
+test('LINE bubble content wrapper is a flex column so side alignment classes take effect', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
+  assert.match(source, /className=\{\`min-w-0 flex flex-col \$\{isGroup && !isMe \?/);
+  assert.match(source, /max-w-\[78%\][^\`]*\$\{isMe \? 'items-end' : 'items-start'\}/);
+});
