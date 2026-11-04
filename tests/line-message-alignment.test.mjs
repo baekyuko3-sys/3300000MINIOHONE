@@ -27,7 +27,11 @@ test('LINE bubble wrapper preserves its original width and alignment classes', a
   const source = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
   assert.match(source, /className=\{\`min-w-0 flex flex-col \$\{isGroup && !isMe \?/);
   assert.ok(source.includes("'max-w-[78%] relative touch-pan-y select-none ' + (isMe ? 'items-end' : 'items-start')"));
-  assert.ok(source.includes('w-full flex flex-nowrap items-end gap-2 transition-transform'));
+  assert.ok(source.includes('line-message-row w-full flex flex-nowrap items-end gap-2 transition-transform'));
+  assert.ok(source.includes('line-message-row--me justify-end'));
+  assert.ok(source.includes('line-message-row--other justify-start'));
+  assert.ok(!source.includes("isMe ? 'ml-auto ' : ''"));
+  assert.ok(!source.includes("style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end'"));
   assert.ok(source.includes('w-fit max-w-full rounded-[16px] px-3 py-1.5 text-[13px] leading-[1.5] whitespace-pre-wrap break-words select-text'));
 });
 
@@ -42,4 +46,14 @@ test('LINE outgoing message uses its single existing optional avatar after the b
   assert.match(source.slice(existingAvatar, rowEnd), /\{isMe && showMyAvatar &&/);
   assert.equal(source.split('自己的头像：放在消息气泡右侧').length - 1, 0);
   assert.match(source.slice(bubbleContainer, existingAvatar), /max-w-\[78%\]/);
+});
+
+test('LINE layout exposes semantic classes for editable custom CSS', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
+  assert.ok(source.includes('line-message-row'));
+  assert.ok(source.includes('line-message-bubble'));
+  assert.ok(source.includes('line-message-avatar--me'));
+  assert.ok(source.includes('line-message-avatar--other'));
+  assert.ok(source.includes('dangerouslySetInnerHTML={{ __html: `${customCss}\\n${offlineInviteCustomCss}` }}'));
 });
