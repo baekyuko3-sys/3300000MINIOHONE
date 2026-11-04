@@ -184,6 +184,17 @@ test('safe storage cleanup only removes logs, histories and snapshots', async ()
   assert.ok(settings.includes('cleanupSafeStorageBloat'));
 });
 
+test('chat send button is always clickable (no disabled-when-empty)', async () => {
+  // The paper-plane send button must never be disabled: it stays colored and
+  // tappable even with empty input; the empty-input guard in onClick/handleSend
+  // still prevents an empty message from going out.
+  const { readFile } = await import('node:fs/promises');
+  const view = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
+  assert.ok(view.includes('aria-label="发送并请求回复"'));
+  assert.equal(view.includes('disabled={!inputText.trim()}'), false);
+  assert.ok(view.includes("text-[#ae7e89]`}"));
+});
+
 test('group invite picker shows already-in-group friends and persistent failure reasons', async () => {
   // Members must not be hidden silently: the picker shows them greyed out
   // with an explicit already-in-group mark. And a failed invite must leave
