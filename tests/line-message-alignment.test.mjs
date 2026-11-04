@@ -71,6 +71,18 @@ test('friends tab has side-by-side character / NPC / group tabs, no persona noti
   assert.ok(source.includes("friend.variantLabel !== '默认版本'"));
 });
 
+test('bound friends are backfilled continuously, not just once', async () => {
+  // The old one-time backfill left personas bound later with no friend
+  // entries (chats visible, friends tab empty). The sync must re-run when
+  // personas or characters change, add only what is missing, and stay a
+  // no-op when nothing is missing.
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/components/line/LineAppView.tsx', import.meta.url), 'utf8');
+  assert.ok(!source.includes('bound-friend-sync-v1'));
+  assert.ok(source.includes('}, [userPersonas, importedCharacters]);'));
+  assert.ok(source.includes('return added ? next : prev;'));
+});
+
 test('chat list time comes from the real timestamp, never a missing field', () => {
   // Missing/invalid timestamps read as just-created, never as a wrong date.
   assert.equal(formatChatListTime(undefined), '刚刚');

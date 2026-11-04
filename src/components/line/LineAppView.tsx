@@ -1171,29 +1171,30 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       .map(f => ({ ...f, note: typeof f.note === 'string' ? f.note : '', pinyin: typeof f.pinyin === 'string' ? f.pinyin : '' }))
     : [];
 
-  // 一次性补齐：已绑定但没有好友条目的角色，自动建好友（只跑一次）。
+  // 持续补齐：人设、绑定或角色变化时，自动给已绑定但没有好友条目的角色建好友。
+  // 只加缺的，已有的不动；没缺的直接返回原数组，不触发多余写入。
+  // 旧的一次性标记已不再使用，之前跑过的用户也会重新补齐。
   useEffect(() => {
-    if (window.localStorage.getItem('sane333:bound-friend-sync-v1')) return;
     const boundIds = new Set<string>();
     for (const p of userPersonas) {
       if (Array.isArray((p as any)?.boundCharacterIds)) {
         for (const id of (p as any).boundCharacterIds) if (id) boundIds.add(String(id));
       }
     }
-    if (!boundIds.size) { window.localStorage.setItem('sane333:bound-friend-sync-v1', 'done'); return; }
+    if (!boundIds.size) return;
     setFriendsList((prev: LineFriend[]) => {
+      let added = false;
       const next = [...prev];
       for (const cid of boundIds) {
         if (next.some(f => !f.deleted && !f.npcId && (f as any).characterId === cid)) continue;
         const ch = importedCharacters.find(c => c.id === cid);
         if (!ch) continue;
         next.unshift({ name: ch.name || '未命名', characterId: cid, kind: 'character', note: '角色卡联系人', online: true, pinyin: '' } as LineFriend);
+        added = true;
       }
-      return next;
+      return added ? next : prev;
     });
-    window.localStorage.setItem('sane333:bound-friend-sync-v1', 'done');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [userPersonas, importedCharacters]);
 
   // 补已有角色好友的空备注
   useEffect(() => {
