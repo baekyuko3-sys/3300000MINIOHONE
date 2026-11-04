@@ -148,6 +148,20 @@ export function stripLeakedInternalBlocks(text: string): string {
   return out.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+$/gm, '').trimEnd();
 }
 
+/** AI 误把内部标签（如残留的 </cot>、未闭合的 <cot> 块）输出到聊天正文时，去掉它们。
+ *  思维链显示读的是 message.thinking 等独立字段，不靠正文标签，所以正文里清掉是安全的。 */
+export function stripLeakedMarkupTags(text: string): string {
+  if (!text || !text.includes('<')) return text;
+  let out = text;
+  // 成对的内部块（含未闭合的）连内容一起去掉
+  out = out.replace(/<(cot|thinking|analysis|preset_flow|think|thought|summary|decision)\b[^>]*>[\s\S]*?(<\/\1\s*>|$)/gi, '');
+  out = out.replace(/<action\b[^>]*>[\s\S]*?(<\/action\s*>|$)/gi, '');
+  out = out.replace(/<(statusbar|status)\b[^>]*>[\s\S]*?(<\/\1\s*>|$)/gi, '');
+  // 残留的单个开/闭标签（包括落单的 </cot>）
+  out = out.replace(/<\/?(?:cot|thinking|analysis|preset_flow|think|thought|summary|decision|action|statusbar|status|message|final|response|output|assistant|user|system)\b[^>]*>/gi, '');
+  return out.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+$/gm, '').trim();
+}
+
 export function normalizeLineMessage(message: LineRuntimeMessage, fallbackIndex = 0): LineRuntimeMessage {
   const legacyTimestamp = (message as LineRuntimeMessage & { timestamp?: string | number }).timestamp;
   const timestampValue = message.createdAt || (
@@ -158,8 +172,8 @@ export function normalizeLineMessage(message: LineRuntimeMessage, fallbackIndex 
   return {
     ...message,
     id: message.id ?? `line-msg-${Date.now()}-${fallbackIndex}`,
-    // 落盘前去掉 AI 误输出的内部数据块（如 WX_MOMENTS），避免预览和导出里出现原始格式
-    ...(typeof message.text === 'string' ? { text: stripLeakedInternalBlocks(message.text) } : {}),
+    // 落盘前去掉 AI 误输出的内部数据块（如 WX_MOMENTS）和内部标签（如 </cot>），避免预览和导出里出现原始格式
+    ...(typeof message.text === 'string' ? { text: stripLeakedMarkupTags(stripLeakedInternalBlocks(message.text)) } : {}),
     // Do not invent "today" for imported/legacy messages that have no real timestamp.
     // Real timestamps are preserved; new messages already receive createdAt when created.
     ...(timestampValue ? { createdAt: timestampValue } : { createdAt: undefined }),

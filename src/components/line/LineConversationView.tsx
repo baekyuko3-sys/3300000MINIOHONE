@@ -71,7 +71,7 @@ import {
 } from '../../store/lineMediaCards';
 import { appendLineMessage, editLineMessage, toggleLineReaction, setLineMessageFavorite, recordLineCall, markLineMessageFailed, clearLineConversation, recallLineMessage, updateLineMessage } from '../../store/lineRuntime';
 import { saveCallRecord, getCallHistory, deleteCallRecord, formatCallDuration, type CallRecord } from '../../store/callHistory';
-import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, searchLineMessages, isLineMessageFromUser, stripLeakedInternalBlocks, type LineRuntimeMessage } from '../../store/lineRuntime';
+import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, searchLineMessages, isLineMessageFromUser, stripLeakedInternalBlocks, stripLeakedMarkupTags, type LineRuntimeMessage } from '../../store/lineRuntime';
 import { isLineTurnRequestCurrent, releaseLineTypingRequest } from '../../store/lineTurnGuard';
 import { fetchLineWeather, formatLineWeather, type LineWeatherSnapshot } from '../../store/lineReality';
 import { getRecentMomentsForGroup, maybePostGroupMomentAfterRound } from '../../store/momentsAfterChat';
@@ -232,9 +232,10 @@ function readImageFileAsDataUrl(file: File, maxDim = 1024): Promise<string> {
 function splitLineChatText(text: string): string[] {
   const normalized = text.replace(/\r\n/g, '\n').trim();
   if (!normalized) return [''];
-  const lines = normalized.split('\n').map((line) => line.trim()).filter(Boolean);
-  if (lines.length > 1 && lines.every((line) => Array.from(line).length <= 80)) return lines;
-  return [normalized];
+  // 只有空行（段落分隔）才拆成多个气泡；单个换行保留在气泡内换行显示。
+  // 否则一句回复会被拆成一竖排小气泡，看起来全错了。
+  const parts = normalized.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
+  return parts.length ? parts : [normalized];
 }
 function cleanGroupGeneratedText(text: string): string {
   let value = String(text || '').replace(/\r\n/g, '\n');
@@ -6194,7 +6195,7 @@ export function LineConversationView({
           const charName = characterProfile.nickname || importedCharacter?.name || '';
           const isMe = isLineMessageFromUser(msg, charName);
           const bilingualTextParts = String(msg.text || '').split('[[ZH_TRANSLATION]]');
-          const bilingualOriginalText = stripLeakedInternalBlocks(bilingualTextParts[0]).trim();
+          const bilingualOriginalText = stripLeakedMarkupTags(stripLeakedInternalBlocks(bilingualTextParts[0])).trim();
           const bilingualTranslationText = bilingualTextParts.slice(1).join('[[ZH_TRANSLATION]]').trim();
           const showBilingualTranslation = !isMe && bilingualMode === 'auto' && bilingualTextParts.length > 1 && Boolean(bilingualOriginalText && bilingualTranslationText);
           const messageBubbleParts = (isGroup ? [bilingualOriginalText] : splitLineChatText(bilingualOriginalText)).filter(Boolean);
