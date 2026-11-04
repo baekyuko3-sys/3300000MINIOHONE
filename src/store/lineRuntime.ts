@@ -140,6 +140,11 @@ export function isLineMessageFromUser(candidate: any, activeCharacterName = '', 
   const senderName = String(candidate.senderName || '').trim();
   const characterName = String(activeCharacterName || '').trim();
   if (senderName && characterName && senderName === characterName) return false;
+
+  // sender='me' 且带有非角色的发送者名称时，应保留为用户消息。
+  // 旧逻辑仅凭 type='ai-reply' 就把它推到左侧，会误伤被错误标注类型的用户消息。
+  // 只有缺少发送者名称、又带 ai-reply 类型时，才继续按 AI 回复的防御规则处理。
+  if (messageKind === 'ai-reply' && !senderName) return false;
   return true;
 }
 
