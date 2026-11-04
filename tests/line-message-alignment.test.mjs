@@ -42,6 +42,19 @@ test('chat list hides the version badge when no version is set', async () => {
   assert.ok(source.includes("(character?.variantLabel || character?.characterVersion || '')"));
 });
 
+test('opening a chat clears its unread badge synchronously', async () => {
+  // The list tap used to clear unread only in memory while storage still
+  // held 1 behind a 300ms debounce; markLineConversationRead then fired a
+  // runtime event whose refresh read the stale storage and restored the 1.
+  // Opening must now write the cleared value to storage synchronously,
+  // before any event fires.
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/components/line/LineAppView.tsx', import.meta.url), 'utf8');
+  assert.ok(source.includes('clearChatUnreadNow(item.id)'));
+  assert.ok(source.includes('const clearChatUnreadNow = (chatId: string) => {'));
+  assert.ok(source.includes("window.localStorage.setItem('line:chat-items', JSON.stringify(parsed.map((c: any) => (c?.id === chatId ? { ...c, unread: 0 } : c))))"));
+});
+
 test('chat list time comes from the real timestamp, never a missing field', () => {
   // Missing/invalid timestamps read as just-created, never as a wrong date.
   assert.equal(formatChatListTime(undefined), '刚刚');

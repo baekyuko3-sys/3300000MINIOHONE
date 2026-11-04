@@ -784,6 +784,25 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   // Chat Data with Pin, Mute, Draft, and Group capabilities
   const [chatItemsRaw, setChatItems] = usePersistentState<LineChatItem[]>('line:chat-items', []);
 
+  // 点开聊天必须立刻清掉未读：内存清掉后，localStorage 写入还有 300ms
+  // 防抖；而 markLineConversationRead 会同步触发 line-runtime-changed，
+  // 刷新逻辑读到旧存储会把未读 1 盖回来，导致点开也清不掉。
+  // 所以这里同步写存储，先于任何事件触发。
+  const clearChatUnreadNow = (chatId: string) => {
+    setChatItems((prev) => prev.map((c) => (c.id === chatId ? { ...c, unread: 0 } : c)));
+    try {
+      const raw = window.localStorage.getItem('line:chat-items');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          window.localStorage.setItem('line:chat-items', JSON.stringify(parsed.map((c: any) => (c?.id === chatId ? { ...c, unread: 0 } : c))));
+        }
+      }
+    } catch {
+      // keep in-memory clear
+    }
+  };
+
   // Legacy chats without personaId are intentionally NOT reassigned on every
   // persona switch. Reassigning them here would make A/B personas leak into
   // each other's history. New chats always receive the currently selected persona.
@@ -1834,7 +1853,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                       setSwipedChatId(null);
                       return;
                     }
-                    setChatItems((prev) => prev.map((c) => (c.id === item.id ? { ...c, unread: 0 } : c)));
+                    clearChatUnreadNow(item.id);
                     markLineConversationRead(item.id);
                     markLineNotificationsReadForConversation(item.id);
                     setActiveChatId(item.id);
@@ -3947,6 +3966,9 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                     onClick={() => {
                       if (chat) {
                         setFriendProfile(null);
+                        clearChatUnreadNow(chat.id);
+                        markLineConversationRead(chat.id);
+                        markLineNotificationsReadForConversation(chat.id);
                         setActiveChatId(chat.id);
                         return;
                       }
@@ -5088,6 +5110,11 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                     });
                     setAddCharacterChatFriend(null);
                     setFriendSearchQuery('');
+                    if (existingChat) {
+                      clearChatUnreadNow(targetChatId);
+                      markLineConversationRead(targetChatId);
+                      markLineNotificationsReadForConversation(targetChatId);
+                    }
                     setActiveChatId(targetChatId);
                     // 新好友系统提示：你们已经是好友了，开始聊天吧
                     if (!existingChat) {
