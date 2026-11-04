@@ -6,7 +6,7 @@ import { getProjectManifest } from './projectManifest';
 import { readAppSettings } from './appSettings';
 import { generateCreativeText, readStoredAiSettings } from '../ai/aiEngine';
 import { emitWorldEvent, setCharacterRuntime, syncWorldCharacters, readSchedulesForCharacter } from './worldRuntime';
-import { appendLineMessage, getLineConversationMessages, saveLineConversationMessages } from './lineRuntime';
+import { appendLineMessage, getLineConversationMessages, saveLineConversationMessages, isLineMessageAiVisible } from './lineRuntime';
 import { upsertOfflineEvent } from './offlineEvents';
 import {
   buildOfflineInviteChatMessage,
@@ -189,7 +189,7 @@ async function generateLifeText(
   const target = resolveProactiveTarget(character, schedule);
   const personaId = target.personaId;
   const memory = getCharacterMemory(character.id, character.name, personaId);
-  const recentMessages = target.conversationId ? getLineConversationMessages(target.conversationId).slice(-10) : [];
+  const recentMessages = target.conversationId ? getLineConversationMessages(target.conversationId).filter(isLineMessageAiVisible).slice(-10) : [];
   return generateCreativeText({
     settings,
     systemPrompt: [
@@ -217,7 +217,7 @@ async function generateOfflineInviteFields(
   const target = resolveProactiveTarget(character, schedule);
   const personaId = target.personaId;
   const memory = getCharacterMemory(character.id, character.name, personaId);
-  const recentMessages = target.conversationId ? getLineConversationMessages(target.conversationId).slice(-12) : [];
+  const recentMessages = target.conversationId ? getLineConversationMessages(target.conversationId).filter(isLineMessageAiVisible).slice(-12) : [];
   const raw = await generateCreativeText({
     settings,
     systemPrompt: offlineInviteSystemPrompt(character.name),
@@ -267,7 +267,7 @@ async function generateProactiveMessage(
     character,
   });
   const recentMessages = target.conversationId
-    ? getLineConversationMessages(target.conversationId).slice(-12)
+    ? getLineConversationMessages(target.conversationId).filter(isLineMessageAiVisible).slice(-12)
     : [];
   const lastInteraction = recentMessages.at(-1)?.createdAt ? Date.parse(recentMessages.at(-1)!.createdAt!) : 0;
   const offlineMinutes = lastInteraction ? Math.max(0, Math.floor((Date.now() - lastInteraction) / 60000)) : null;
@@ -394,7 +394,7 @@ async function runNpcPrivateProactive(today: string, state: ProactiveState) {
     ) continue;
     // Do not create a visible empty chat until the NPC has actually generated
     // a message. A NO_MESSAGE response or AI failure should leave the chat list unchanged.
-    const history = getLineConversationMessages(chatId).slice(-12);
+    const history = getLineConversationMessages(chatId).filter(isLineMessageAiVisible).slice(-12);
     const runtimeContext = buildNpcRuntimeContext(npc, 'online-chat', personaId);
     const userPrompt = [
       '你是 LINE 中的 NPC「' + npc.name + '」，现在可以主动给已经成为好友的用户发一条私聊。',
@@ -682,3 +682,4 @@ export async function runProactiveCatchup() {
     if (dirty) saveLocal('phone:proactive-state', state);
   }
 }
+
