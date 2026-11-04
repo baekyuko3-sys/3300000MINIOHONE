@@ -83,6 +83,18 @@ test('bound friends are backfilled continuously, not just once', async () => {
   assert.ok(source.includes('return added ? next : prev;'));
 });
 
+test('group invite verifies the save before announcing it', async () => {
+  // A swallowed storage write used to leave a fake success prompt in the chat
+  // while the member list stayed unchanged. The handler must re-read the group
+  // and only announce when every invited name is really in the record.
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
+  assert.ok(source.includes('成员保存失败，没有加上，请重试'));
+  assert.ok(source.includes('getLineGroupById(activeGroup.id)'));
+  const store = await readFile(new URL('../src/store/lineGroups.ts', import.meta.url), 'utf8');
+  assert.ok(store.includes('upsertLineGroup(group: LineGroup): boolean'));
+});
+
 test('group invite posts a visible system announcement in the chat', async () => {
   // Inviting only updated the group record, so the chat showed nothing and
   // the new member looked like they never joined. The invite must leave a

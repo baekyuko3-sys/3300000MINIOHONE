@@ -1554,7 +1554,7 @@ export function LineConversationView({
 
   const activeGroup = isGroup ? (getLineGroupById(conversationId || conversationStorageId) || getLineGroupByName(contactName)) : null;
   const [, setGroupRevision] = useState(0);
-  const saveGroupUpdate = (group: any) => { upsertLineGroup(group); setGroupRevision(value => value + 1); };
+  const saveGroupUpdate = (group: any) => { const ok = upsertLineGroup(group); setGroupRevision(value => value + 1); return ok; };
   const safeGroupMembers = Array.isArray(activeGroup?.members)
     ? activeGroup.members.filter((member: any) => !!member && typeof member === 'object')
     : [];
@@ -12184,7 +12184,14 @@ export function LineConversationView({
                     showToast('所选好友已在群里');
                     return;
                   }
-                  saveGroupUpdate({ ...activeGroup, members, updatedAt: new Date().toISOString() });
+                  const savedOk = saveGroupUpdate({ ...activeGroup, members, updatedAt: new Date().toISOString() });
+                  // 保存后立刻回读验证：写存储失败会被静默吞掉，绝不能再发一条假的成功提示。
+                  const savedGroup = savedOk ? getLineGroupById(activeGroup.id) : null;
+                  const allSaved = !!savedGroup && addedNames.every(n => (savedGroup.members || []).some((m: any) => m && m.name === n));
+                  if (!allSaved) {
+                    showToast('成员保存失败，没有加上，请重试');
+                    return;
+                  }
                   // 群里留一条可见的邀请提示：光改成员记录，对话里看不到，新成员像没进群。
                   appendLineMessage(conversationStorageId, {
                     id: `system-group-invite-${Date.now()}`,

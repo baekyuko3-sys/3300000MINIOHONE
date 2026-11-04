@@ -47,16 +47,19 @@ export function getLineGroupByName(name: string): LineGroup | null {
   return getLineGroups().find(group => group.name === name) || null;
 }
 
-export function upsertLineGroup(group: LineGroup): void {
-  if (typeof window === 'undefined') return;
+export function upsertLineGroup(group: LineGroup): boolean {
+  if (typeof window === 'undefined') return false;
   try {
     const groups = getLineGroups();
     const next = groups.some(item => item.id === group.id)
       ? groups.map(item => item.id === group.id ? group : item)
       : [group, ...groups];
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    return true;
   } catch {
-    // Storage failure must not break LINE.
+    // Storage failure must not break LINE, but callers must know the save failed
+    // instead of showing a fake success (invite prompt with no member added).
+    return false;
   }
 }
 
