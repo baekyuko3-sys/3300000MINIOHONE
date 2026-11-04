@@ -29,7 +29,7 @@ import { isCharacterOnline } from '../../store/characterStatus';
 import { VroomImage } from '../VroomImage';
 import { putMedia } from '../../store/mediaVault';
 import { markCharacterRead } from '../../store/worldRuntime';
-import { getLineConversationMeta, markLineConversationRead, markLineNotificationsReadForConversation, stripLeakedInternalBlocks, stripLeakedMarkupTags, touchLineConversation, runLineStorageMigrations } from '../../store/lineRuntime';
+import { getLineConversationMeta, markLineConversationRead, markLineNotificationsReadForConversation, stripLeakedInternalBlocks, stripLeakedMarkupTags, touchLineConversation, runLineStorageMigrations, removeLineConversationData, formatChatListTime } from '../../store/lineRuntime';
 import { reportPersistenceIssue } from '../../store/usePersistentState';
 import { generateCreativeText, listOpenAiCompatibleModels, resolveChannelAiSettings, testAiConnection, type AiSettings } from '../../ai/aiEngine';
 import { useImagePresets, useMinimaxKey, useVoicePresets, type ImagePreset, type VoicePreset } from '../../ai/imageGen';
@@ -882,9 +882,18 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         const raw = window.localStorage.getItem(key);
         if (!raw) continue;
         const stored = JSON.parse(raw);
-        if (!Array.isArray(stored) || !stored.length) continue;
-        const realMessages = stored.filter((message: any) => message && typeof message === 'object' && message.kind !== 'system-nudge' && message.role !== 'system' && message.kind !== 'system');
-        if (!realMessages.length) continue;
+        if (!Array.isArray(stored)) continue;
+        const realMessages = stored.filter((message: any) => message && typeof message === 'object' && message.kind !== 'system-nudge' && message.role !== 'system' && message.kind !== 'system' && message.status !== 'deleted' && !message.deletedAt);
+        if (!realMessages.length) {
+          // No visible messages: the conversation is empty or all-deleted.
+          // Reset a stale list entry instead of leaving its old preview/time
+          // behind. New-chat placeholders are not real previews, keep them.
+          const existing = chatItems.find(item => item.id === id);
+          if (existing && existing.preview !== '打个招呼吧' && existing.preview !== '你们已经成为好友，打个招呼吧') {
+            recovered.push({ ...existing, preview: '暂无消息', time: '' });
+          }
+          continue;
+        }
         const latest = realMessages[realMessages.length - 1];
         const existing = chatItems.find(item => item.id === id);
         const runtimeMeta = getLineConversationMeta(id);
@@ -935,7 +944,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
           // Only preserve the persona explicitly stored on the exact matching chat item.
           personaId: existing?.personaId || undefined,
           groupId: existing?.groupId || group?.id,
-          time: latest?.time || '刚刚',
+          time: formatChatListTime(latest?.createdAt || latest?.timestamp),
           preview,
           unread: existing?.unread || 0,
           isPinned: existing?.isPinned || false,
@@ -1881,6 +1890,9 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    // Delete the conversation data too, not just the list entry,
+                    // otherwise the recovery effect restores it on next mount.
+                    removeLineConversationData(item.id);
                     setChatItems((prev) => prev.filter((chat) => chat.id !== item.id));
                     setSwipedChatId(null);
                     showToast('聊天已删除');

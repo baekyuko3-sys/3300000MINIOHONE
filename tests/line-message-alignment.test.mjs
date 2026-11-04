@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isLineMessageFromUser, normalizeLineMessage, bareIdentityId, withCharPrefix, withNpcPrefix, npcConversationId } from '../src/store/lineRuntime.ts';
+import { isLineMessageFromUser, normalizeLineMessage, bareIdentityId, withCharPrefix, withNpcPrefix, npcConversationId, formatChatListTime } from '../src/store/lineRuntime.ts';
 
 test('LINE uses role as the sole authority for message direction', () => {
   assert.equal(isLineMessageFromUser({ role: 'user' }), true);
@@ -15,6 +15,29 @@ test('explicit role always wins over conflicting kind, nickname, or senderType m
   assert.equal(isLineMessageFromUser({ role: 'assistant', senderType: 'character', kind: 'ai-reply', senderName: '程凛' }), false);
   assert.equal(isLineMessageFromUser({ role: 'assistant', kind: 'ai-reply' }), false);
   assert.equal(isLineMessageFromUser({ role: 'user', kind: 'text' }), true);
+});
+
+test('chat list time comes from the real timestamp, never a missing field', () => {
+  // Missing/invalid timestamps read as just-created, never as a wrong date.
+  assert.equal(formatChatListTime(undefined), '刚刚');
+  assert.equal(formatChatListTime(''), '刚刚');
+  assert.equal(formatChatListTime('not-a-date'), '刚刚');
+  assert.equal(formatChatListTime(new Date()), '刚刚');
+  // Today -> HH:MM (a fixed morning time can never be yesterday).
+  const now = new Date();
+  const thisMorning = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 30);
+  assert.equal(formatChatListTime(thisMorning.toISOString()), '10:30');
+  // Yesterday -> '昨天'.
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 10, 30);
+  assert.equal(formatChatListTime(yesterday.toISOString()), '昨天');
+  // Older year -> full date.
+  assert.equal(formatChatListTime('2020-03-05T10:30:00'), '2020-03-05');
+  // 60 days ago -> MM-DD this year, or full date across a year boundary.
+  const old = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 60, 10, 30);
+  const mm = String(old.getMonth() + 1).padStart(2, '0');
+  const dd = String(old.getDate()).padStart(2, '0');
+  const expected = old.getFullYear() === now.getFullYear() ? `${mm}-${dd}` : `${old.getFullYear()}-${mm}-${dd}`;
+  assert.equal(formatChatListTime(old.toISOString()), expected);
 });
 
 test('role-less messages fall back to legacy sender only (never nickname, kind, or senderType)', () => {

@@ -118,9 +118,41 @@ export function saveLineConversationMessages(id: string, messages: LineRuntimeMe
  * Legacy sender values are translated to role by normalizeLineMessage at save
  * time; render must never read them.
  */
+/**
+ * Compact chat-list time for a message timestamp (LINE-style):
+ * just now -> '刚刚', today -> HH:MM, yesterday -> '昨天',
+ * same year -> MM-DD, older -> YYYY-MM-DD. Missing/invalid -> '刚刚'
+ * (a message with no timestamp was just created).
+ */
+export function formatChatListTime(value: unknown): string {
+  if (!value) return '刚刚';
+  const d = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(d.getTime())) return '刚刚';
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  if (diffMs >= 0 && diffMs < 60_000) return '刚刚';
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  if (d.toDateString() === now.toDateString()) return `${hh}:${mm}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return '昨天';
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  if (d.getFullYear() === now.getFullYear()) return `${month}-${day}`;
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
 export function isLineMessageFromUser(candidate: any, _activeCharacterName = '', _userName = ''): boolean {
   if (!candidate) return false;
-  return String(candidate.role || '').trim().toLowerCase() === 'user';
+  const role = String(candidate.role || '').trim().toLowerCase();
+  if (role === 'user' || role === 'assistant' || role === 'system') return role === 'user';
+  // Role absent: fall back to the legacy sender field ONLY. New code never
+  // writes sender, so this can only apply to legacy data and can never
+  // contradict a role written by current code. senderName/senderType/kind
+  // NEVER decide side.
+  const legacy = String(candidate.sender || '').trim().toLowerCase();
+  return legacy === 'me' || legacy === 'user';
 }
 
 /** Legacy sender → role, used ONLY by storage migration / normalize (never by render). */
@@ -1321,4 +1353,5 @@ export function runLineStorageMigrations(): { role: { conversations: number; mes
     identity: migrateLineIdentityPrefixes(),
   };
 }
+
 
