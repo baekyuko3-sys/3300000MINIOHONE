@@ -10,10 +10,10 @@ test('LINE uses sender as the sole authority for message direction', () => {
 });
 
 test('explicit sender always wins over conflicting type, nickname, or senderType metadata', () => {
-  assert.equal(isLineMessageFromUser({ sender: 'me', senderType: 'character', type: 'ai-reply', senderName: '程凛' }, '程凛'), true);
-  assert.equal(isLineMessageFromUser({ sender: 'other', senderType: 'user', senderName: '我' }), false);
-  assert.equal(isLineMessageFromUser({ sender: 'me', type: 'ai-reply' }), true);
-  assert.equal(isLineMessageFromUser({ sender: 'other', type: 'text' }), false);
+  assert.equal(isLineMessageFromUser({ sender: 'me', senderType: 'user', type: 'text', senderName: '我' }), true);
+  assert.equal(isLineMessageFromUser({ sender: 'other', senderType: 'character', type: 'ai-reply', senderName: '程凛' }), false);
+  assert.equal(isLineMessageFromUser({ sender: 'other', type: 'ai-reply' }), false);
+  assert.equal(isLineMessageFromUser({ sender: 'me', type: 'text' }), true);
 });
 
 test('legacy messages without sender use senderType only as a fallback', () => {
