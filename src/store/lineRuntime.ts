@@ -1,6 +1,5 @@
 import type { OfflineEvent } from '../types';
 import { reportPersistenceIssue } from './usePersistentState';
-import { removeMemoryByMessage } from './characterMemory';
 
 export type LineMessageKind =
   | 'text' | 'image' | 'video' | 'file' | 'voice' | 'sticker'
@@ -119,21 +118,9 @@ export function saveLineConversationMessages(id: string, messages: LineRuntimeMe
  * Legacy sender values are translated to role by normalizeLineMessage at save
  * time; render must never read them.
  */
-/**
- * Side rule, in priority order (role model, uwu/aiphone-style robustness):
- * 1. A present role is authoritative: only role === 'user' is the user side.
- * 2. A message with NO role falls back to the legacy sender field ONLY
- *    (sender 'me'/'user' → user side). New code never writes sender, so this
- *    fallback can only apply to legacy data — it can never contradict a
- *    role written by current code.
- * 3. senderName / senderType / kind / characterId NEVER decide side.
- */
 export function isLineMessageFromUser(candidate: any, _activeCharacterName = '', _userName = ''): boolean {
   if (!candidate) return false;
-  const role = String(candidate.role || '').trim().toLowerCase();
-  if (role === 'user' || role === 'assistant' || role === 'system') return role === 'user';
-  const legacy = String(candidate.sender || '').trim().toLowerCase();
-  return legacy === 'me' || legacy === 'user';
+  return String(candidate.role || '').trim().toLowerCase() === 'user';
 }
 
 /** Legacy sender → role, used ONLY by storage migration / normalize (never by render). */
@@ -327,28 +314,32 @@ export function recallLineMessage(id: string, messageId: number | string) {
   });
 }
 
+/** A deleted message retains only presentation identity; no content or card data. */
+export function buildDeletedTombstone<T extends Record<string, any>>(message: T): T {
+  const keep = ['id', 'role', 'sender', 'senderName', 'senderType', 'senderId', 'characterId', 'createdAt', 'timestamp', 'time'];
+  const tomb: Record<string, any> = {};
+  for (const key of keep) if (message && message[key] !== undefined) tomb[key] = message[key];
+  tomb.text = '';
+  tomb.kind = 'text';
+  tomb.status = 'deleted';
+  tomb.deletedAt = new Date().toISOString();
+  tomb.metadata = {};
+  return tomb as T;
+}
+
+/** Deleted and recalled content must never be included in AI context. */
+export function isLineMessageAiVisible(message: Record<string, any> | null | undefined): boolean {
+  if (!message) return false;
+  return !(message.status === 'deleted' || message.deletedAt || message.status === 'recalled' || message.isRecalled || message.isRecalledByOther);
+}
+
 export function deleteLineMessage(id: string, messageId: number | string) {
-  // 先拿到原文：删掉的聊天内容不应再留在角色记忆里。
-  const target = getLineConversationMessages(id).find(message => String(message.id) === String(messageId));
-  const deletedText = String((target as { text?: unknown } | undefined)?.text || '').trim();
-  const next = updateLineMessage(id, messageId, {
-    text: '',
-    status: 'deleted',
-    deletedAt: new Date().toISOString(),
-  });
-  if (deletedText) {
-    try {
-      // 会话 id 可能是 `npc:{npcId}:persona:{personaId}` 格式，记忆 key 用 characterId[/persona]。
-      const npcMatch = /^npc:(.+):persona:(.+)$/.exec(id);
-      if (npcMatch) {
-        removeMemoryByMessage(npcMatch[1], deletedText, npcMatch[2] === 'legacy' ? null : npcMatch[2]);
-      } else {
-        removeMemoryByMessage(id, deletedText);
-      }
-    } catch {
-      // 记忆清理是尽力而为，不影响删除本身。
-    }
-  }
+  const next = getLineConversationMessages(id).map(message =>
+    String(message.id) === String(messageId)
+      ? normalizeLineMessage(buildDeletedTombstone(message as any) as LineRuntimeMessage)
+      : message
+  );
+  saveLineConversationMessages(id, next);
   return next;
 }
 
@@ -1075,17 +1066,12 @@ function readJsonArray(key: string): any[] {
   }
 }
 
-/** Idempotent, safe to run on every mount/open (no guard key): give every
- *  stored message a role from its legacy sender, drop sender/type/top-level
- *  category, resolve kind. A one-time guard would strand messages written in
- *  legacy format AFTER the first run (stale bundle, late import) — they would
- *  render left forever. Re-running is a no-op for converted messages because
- *  normalize preserves a present role and sender is already dropped. */
+/** Safe to run on every mount/open: imported legacy messages still get a normalized role. */
 export function migrateLineMessagesToRole(): { conversations: number; messages: number } {
   const empty = { conversations: 0, messages: 0 };
   if (typeof window === 'undefined') return empty;
   try {
-    let conversations = 0;
+      let conversations = 0;
     let messages = 0;
     for (const key of listConversationKeys()) {
       try {
@@ -1328,10 +1314,11 @@ export function migrateLineIdentityPrefixes(): LineIdentityMigrationReport {
   }
 }
 
-/** Run storage migrations (role part is idempotent and unguarded; identity part stays one-time guarded). Safe to call on mount. */
+/** Run storage migrations; role migration is idempotent, identity migration is one-time. */
 export function runLineStorageMigrations(): { role: { conversations: number; messages: number }; identity: LineIdentityMigrationReport } {
   return {
     role: migrateLineMessagesToRole(),
     identity: migrateLineIdentityPrefixes(),
   };
 }
+
