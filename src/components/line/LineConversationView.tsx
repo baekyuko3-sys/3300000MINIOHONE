@@ -790,43 +790,35 @@ export function LineConversationView({
   );
   // Old/local data can be malformed. A bad conversation record must never prevent
   // the chat screen itself from opening.
-  // 数据修复：ai-reply 是角色生成的回复，绝不可能是用户发送。
-  // 先修复当前会话的 React state（不能只改 localStorage，否则当前页面仍显示旧方向），
-  // 再用版本标记一次性修复其他历史会话。
+  // 数据修复：AI 回复但 sender 存错成 'me' 的消息，一次性纠正为 'other'
   useEffect(() => {
-    const normalizeAiReplySender = (items: any[]) => {
-      let changed = false;
-      const next = items.map(item => {
-        if (!item || typeof item !== 'object') return item;
-        if (item.type === 'ai-reply' && item.sender !== 'other') {
-          changed = true;
-          return { ...item, sender: 'other', senderType: item.senderType === 'npc' ? 'npc' : 'character' };
-        }
-        return item;
-      });
-      return changed ? next : items;
-    };
-
-    setMessages((prev: any[]) => normalizeAiReplySender(Array.isArray(prev) ? prev : []));
-
     try {
-      const fixedKey = 'line:fix-ai-reply-sender-v2';
+      const fixedKey = 'line:fix-ai-reply-sender-v1';
       if (window.localStorage.getItem(fixedKey)) return;
+      let fixedCount = 0;
       for (let i = 0; i < window.localStorage.length; i++) {
         const key = window.localStorage.key(i);
         if (!key || !key.startsWith('line:conversation:')) continue;
         try {
           const raw = window.localStorage.getItem(key);
           if (!raw) continue;
-          const parsed = JSON.parse(raw);
-          if (!Array.isArray(parsed)) continue;
-          const repaired = normalizeAiReplySender(parsed);
-          if (repaired !== parsed) window.localStorage.setItem(key, JSON.stringify(repaired));
-        } catch { /* 跳过损坏的历史会话 */ }
+          const arr = JSON.parse(raw);
+          if (!Array.isArray(arr)) continue;
+          let changed = false;
+          for (const m of arr) {
+            if (m && m.type === 'ai-reply' && m.sender === 'me') {
+              m.sender = 'other';
+              changed = true;
+              fixedCount++;
+            }
+          }
+          if (changed) window.localStorage.setItem(key, JSON.stringify(arr));
+        } catch { /* 跳过坏数据 */ }
       }
       window.localStorage.setItem(fixedKey, String(Date.now()));
-    } catch { /* 忽略存储不可用 */ }
-  }, [conversationStorageId, setMessages]);
+      if (fixedCount > 0) console.log(`[LINE] 已修复 ${fixedCount} 条 sender 存错的 AI 回复`);
+    } catch { /* 忽略 */ }
+  }, []);
   // useMemo 稳定引用：否则每次渲染都生成新数组，依赖 messages 的 effect 会无限循环。
   const messages = useMemo(() => Array.isArray(storedMessages)
     ? storedMessages
@@ -1454,17 +1446,14 @@ export function LineConversationView({
 .custom-chat-view {
   --bubble-border-radius: 16px;
 }
-/* 默认外观：仅作为初始值；用户可在此编辑颜色、形状、字体、尺寸等 */
 .custom-chat-view .bubble-me {
   background: #f7eef0 !important;
   color: #303034 !important;
-  border-radius: var(--bubble-border-radius, 16px) !important;
   box-shadow: 0 1px 3px rgba(212, 170, 181, 0.12);
 }
 .custom-chat-view .bubble-other {
   background: #f5f5f6 !important;
   color: #303034 !important;
-  border-radius: var(--bubble-border-radius, 16px) !important;
 }
 .custom-chat-view .thinking-card {
   border-left: 2px solid #d4aab5;
@@ -6762,9 +6751,8 @@ export function LineConversationView({
                 </div>
               )}
               <div
-                className={`line-message-row w-full flex flex-row flex-nowrap items-end gap-2 transition-transform duration-75 ease-out ${isMe ? 'line-message-row--me justify-end' : 'line-message-row--other justify-start'}`}
-                data-message-side={isMe ? 'me' : 'other'}
-                style={{ transform: swipingMessageId === msg.id ? `translateX(${swipeOffset}px)` : 'translateX(0)' }}
+                className={`w-full flex items-end gap-2 transition-transform duration-75 ease-out ${isMe ? 'justify-end' : 'justify-start'}`}
+                style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', transform: swipingMessageId === msg.id ? `translateX(${swipeOffset}px)` : 'translateX(0)' }}
               >
               {/* Multi-select checkbox */}
               {isMultiSelectMode && (
@@ -6810,7 +6798,7 @@ export function LineConversationView({
                       handleMessageAvatarDoubleClick(msg.senderName || characterProfile.nickname);
                     }
                   }}
-                  className={`line-message-avatar line-message-avatar--other w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 self-start mt-0.5 cursor-pointer hover:opacity-80 active:scale-95 transition-all ${
+                  className={`w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 self-start mt-0.5 cursor-pointer hover:opacity-80 active:scale-95 transition-all ${
                     nudgeAvatar ? 'scale-110 ring-2 ring-[#d4aab5]' : ''
                   }`}
                   title={isGroup ? `单击查看${msg.senderName || characterProfile.nickname}心声，双击@该成员` : '单击打开状态卡，双击拍一拍'}
@@ -6835,7 +6823,7 @@ export function LineConversationView({
 
               {/* Bubble content container */}
               <div
-                className={`line-message-bubble min-w-0 flex flex-col ${isGroup && !isMe ? 'flex-1 items-start' : 'max-w-[78%] relative touch-pan-y select-none ' + (isMe ? 'items-end' : 'items-start')}`}
+                className={`${isGroup && !isMe ? 'flex-1 min-w-0 flex flex-col items-start' : 'max-w-[78%] relative touch-pan-y select-none ' + (isMe ? 'items-end' : 'items-start')}`}
               >
                 {/* COT 小标签已按用户要求移除 */}
 
@@ -7889,14 +7877,15 @@ export function LineConversationView({
 
                   {/* 单条消息操作通过左右滑动触发：左滑编辑，右滑引用。这里不再常驻按钮，保持气泡紧凑。 */}
                 </div>
+              </div>
 
-                {/* Optional user avatar */}
+              {/* Optional user avatar — direct child of the inner flex row (was nested inside the bubble container, which stacked it below the bubble). Own messages now render [bubble][avatar] on one line. */}
               {isMe && showMyAvatar && (
                 sameAsPrevious ? (
                   <div className="w-[31px] shrink-0" aria-hidden="true" />
                 ) : (
                 <div
-                  className="line-message-avatar line-message-avatar--me w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 self-end mb-0.5 border border-white"
+                  className="w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 mt-0.5 border border-white"
                   title={activePersona.name ? `我的人设：${activePersona.name}` : '我的头像'}
                 >
                   {activePersona.avatar ? (
@@ -7907,8 +7896,6 @@ export function LineConversationView({
                 </div>
                 )
               )}
-
-              </div>
 
               {/* Timestamp belongs below the message bubble, matching LINE's compact layout.
                   同一人连续发言时只在最后一条显示时间（C 版折叠），避免同一时间重复刷屏；空占位不显示时间。 */}
