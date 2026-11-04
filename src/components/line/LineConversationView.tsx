@@ -6751,7 +6751,7 @@ export function LineConversationView({
                 </div>
               )}
               <div
-                className={`w-full flex items-end gap-2 transition-transform duration-75 ease-out ${isMe ? 'justify-end' : 'justify-start'}`}
+                className={`w-full flex flex-nowrap items-end gap-2 transition-transform duration-75 ease-out ${isMe ? 'justify-end' : 'justify-start'}`}
                 style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', transform: swipingMessageId === msg.id ? `translateX(${swipeOffset}px)` : 'translateX(0)' }}
               >
               {/* Multi-select checkbox */}
@@ -6823,7 +6823,7 @@ export function LineConversationView({
 
               {/* Bubble content container */}
               <div
-                className={`min-w-0 flex flex-col ${isGroup && !isMe ? 'flex-1 items-start' : 'max-w-[78%] relative touch-pan-y select-none ' + (isMe ? 'items-end' : 'items-start')}`}
+                className={`min-w-0 flex flex-col ${isGroup && !isMe ? 'flex-1 items-start' : 'w-fit max-w-[78%] flex-none relative touch-pan-y select-none ' + (isMe ? 'items-end' : 'items-start')}`}
               >
                 {/* COT 小标签已按用户要求移除 */}
 
