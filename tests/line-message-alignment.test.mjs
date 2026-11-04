@@ -31,6 +31,17 @@ test('clear chat offers two buttons: messages only, or messages plus memory', as
   assert.ok(source.includes('已清空聊天记录（记忆已保留）'));
 });
 
+test('chat list hides the version badge when no version is set', async () => {
+  // A character with no version name must not be labelled '默认版本': the
+  // list only shows a version badge when a real version exists.
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/components/line/LineAppView.tsx', import.meta.url), 'utf8');
+  assert.ok(!source.includes("variantLabel: existing?.variantLabel || '默认版本'"));
+  assert.ok(!source.includes("variantLabel: session.variantLabel || '默认版本'"));
+  assert.ok(source.includes("item.variantLabel !== '默认版本'"));
+  assert.ok(source.includes("(character?.variantLabel || character?.characterVersion || '')"));
+});
+
 test('chat list time comes from the real timestamp, never a missing field', () => {
   // Missing/invalid timestamps read as just-created, never as a wrong date.
   assert.equal(formatChatListTime(undefined), '刚刚');

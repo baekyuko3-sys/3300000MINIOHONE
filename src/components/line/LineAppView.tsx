@@ -935,7 +935,12 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
           id,
           name,
           characterId: existing?.characterId || runtimeMeta?.characterId || (!group ? character?.id : undefined),
-          variantLabel: existing?.variantLabel || '默认版本',
+          // No version set = no label: never stamp '默认版本' onto a chat item.
+          // A real existing label is kept; otherwise the character's real
+          // version is used, or nothing (empty hides the badge in the list).
+          variantLabel: (existing?.variantLabel && existing.variantLabel !== '默认版本')
+            ? existing.variantLabel
+            : (character?.variantLabel || character?.characterVersion || ''),
           relationship: existing?.relationship || 'new-friend',
           relationshipContext: existing?.relationshipContext || '',
           openingMode: existing?.openingMode || 'none',
@@ -1040,7 +1045,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
             id: detail?.conversationId || `c_${Date.now().toString(36)}`,
             name: session.characterName,
             characterId: session.characterId,
-            variantLabel: session.variantLabel || '默认版本',
+            variantLabel: (session.variantLabel && session.variantLabel !== '默认版本') ? session.variantLabel : '',
             chatLabel: session.mode === 'stranger' ? '音乐陌生人' : '一起听歌',
             time: '刚刚',
             preview,
@@ -1858,7 +1863,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   <div className="flex justify-between items-center mb-1">
                     <div className="flex items-center gap-1.5 truncate">
                       <span className="text-[14px] font-semibold text-[#28292b]">{item.name}</span>
-                      {item.variantLabel && !item.isGroup && <span className="text-[8px] text-[#a69da0] shrink-0">· {item.variantLabel}</span>}
+                      {item.variantLabel && item.variantLabel !== '默认版本' && !item.isGroup && <span className="text-[8px] text-[#a69da0] shrink-0">· {item.variantLabel}</span>}
                       {item.isMuted && (
                         <BellOff className="w-3 h-3 text-[#b2b2b4] shrink-0" />
                       )}
