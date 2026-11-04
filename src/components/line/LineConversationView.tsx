@@ -6821,25 +6821,9 @@ export function LineConversationView({
                 </>
               )}
 
-              {/* 自己的头像：放在消息气泡右侧；只调整排列，不触碰气泡样式 */}
-              {isMe && !isEmptyAiPlaceholder && (
-                <div
-                  className="order-2 w-[31px] h-[31px] rounded-full bg-[#f2f2f3] flex items-center justify-center overflow-hidden shrink-0 self-end mb-0.5"
-                  aria-label={activePersona?.name || '我的头像'}
-                >
-                  {activePersona?.avatar ? (
-                    <LineAvatarImage src={activePersona.avatar} name={activePersona?.name || '我'} />
-                  ) : (
-                    <span className="w-full h-full flex items-center justify-center text-[11px] font-semibold text-[#777]">
-                      {String(activePersona?.name || '我').trim().slice(0, 1) || '我'}
-                    </span>
-                  )}
-                </div>
-              )}
-
               {/* Bubble content container */}
               <div
-                className={`min-w-0 flex flex-col ${isMe ? 'order-1 ' : ''}${isGroup && !isMe ? 'flex-1 items-start' : 'max-w-[78%] relative touch-pan-y select-none ' + (isMe ? 'items-end' : 'items-start')}`}
+                className={`min-w-0 flex flex-col ${isGroup && !isMe ? 'flex-1 items-start' : 'max-w-[78%] relative touch-pan-y select-none ' + (isMe ? 'items-end' : 'items-start')}`}
               >
                 {/* COT 小标签已按用户要求移除 */}
 
