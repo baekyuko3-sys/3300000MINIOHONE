@@ -37,7 +37,7 @@ test('LINE bubble wrapper preserves its original width and alignment classes', a
   assert.ok(source.includes('line-message-row--other justify-start'));
   assert.ok(!source.includes("isMe ? 'ml-auto ' : ''"));
   assert.ok(!source.includes("style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end'"));
-  assert.ok(source.includes('w-fit max-w-full rounded-[16px] px-3 py-1.5 text-[13px] leading-[1.5] whitespace-pre-wrap break-words select-text'));
+  assert.ok(source.includes('w-fit max-w-full rounded-[16px] px-3 py-1.5 text-[13px] leading-[1.5] whitespace-pre-wrap [overflow-wrap:anywhere] select-text'));
 });
 
 test('LINE outgoing message uses its single existing optional avatar after the bubble', async () => {
@@ -100,3 +100,4 @@ test('identity prefixes use colon and NPC conversation keys stay bare-normalized
   assert.equal(npcConversationId('npc-xyz', 'p1'), 'npc:xyz:persona:p1');
   assert.equal(npcConversationId('xyz'), 'npc:xyz:persona:legacy');
 });
+
