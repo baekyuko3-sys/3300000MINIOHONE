@@ -96,6 +96,49 @@ test('group invite list only shows the current persona\'s friends', async () => 
   assert.ok(picker.includes('inviteBoundIds.includes(f.characterId)'));
 });
 
+test('phone diagnosis ranks storage usage so the biggest chats are visible', async () => {
+  // Storage-full invites need a breakdown, not just a total: the diagnosis
+  // must list the largest keys first, with chat names for conversations.
+  const prevWindow = globalThis.window;
+  const store = new Map([
+    ['line:chat-items', JSON.stringify([{ id: 'c1', name: '阿甲' }, { id: 'c2', name: '阿乙' }])],
+    ['line:conversation:c1', JSON.stringify([{ role: 'user', text: 'x'.repeat(3000) }])],
+    ['line:conversation:c2', JSON.stringify([{ role: 'user', text: 'hi' }])],
+    ['line:groups', JSON.stringify({ g: 'y'.repeat(1500) })],
+    ['phone:characters', JSON.stringify([{ id: 'ch1' }])],
+  ]);
+  const mockStorage = {
+    get length() { return store.size; },
+    key: (i) => [...store.keys()][i] ?? null,
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => { store.set(k, String(v)); },
+    removeItem: (k) => { store.delete(k); },
+    clear: () => { store.clear(); },
+  };
+  globalThis.window = { localStorage: mockStorage };
+  try {
+    const { diagnosePhone, formatStorageBytes } = await import('../src/store/phoneDiagnostics.ts');
+    const d = diagnosePhone();
+    assert.ok(d.largestKeys.length > 0 && d.largestKeys.length <= 10);
+    assert.equal(d.largestKeys[0].label, '聊天：阿甲');
+    for (let i = 1; i < d.largestKeys.length; i++) {
+      assert.ok(d.largestKeys[i - 1].bytes >= d.largestKeys[i].bytes);
+    }
+    const groups = d.largestKeys.find((e) => e.key === 'line:groups');
+    assert.equal(groups?.label, '群资料');
+    assert.equal(formatStorageBytes(500), '500 B');
+    assert.equal(formatStorageBytes(2048), '2.0 KB');
+    assert.equal(formatStorageBytes(3 * 1024 * 1024), '3.00 MB');
+  } finally {
+    if (prevWindow === undefined) delete globalThis.window;
+    else globalThis.window = prevWindow;
+  }
+  const { readFile } = await import('node:fs/promises');
+  const settings = await readFile(new URL('../src/components/screens/SettingsScreenView.tsx', import.meta.url), 'utf8');
+  assert.ok(settings.includes('最占地方'));
+  assert.ok(settings.includes('largestKeys'));
+});
+
 test('group invite picker shows already-in-group friends and persistent failure reasons', async () => {
   // Members must not be hidden silently: the picker shows them greyed out
   // with an explicit already-in-group mark. And a failed invite must leave

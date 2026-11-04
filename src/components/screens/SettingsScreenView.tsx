@@ -26,7 +26,7 @@ import {
 } from '../../store/backgroundRuntime';
 import { getGitHubSyncConfig, getGitHubToken, pullSnapshotFromGitHub, saveGitHubSyncConfig, saveGitHubToken, syncSnapshotToGitHub, testGitHubSync } from '../../store/githubSync';
 import { repairBlankChats } from '../../store/lineRuntime';
-import { diagnosePhone, type PhoneDiagnosis } from '../../store/phoneDiagnostics';
+import { diagnosePhone, formatStorageBytes, type PhoneDiagnosis } from '../../store/phoneDiagnostics';
 
 function collectLocalData(includeSecrets = true) {
   const data: Record<string, unknown> = {};
@@ -1108,6 +1108,20 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
                 <div className="text-[9px] leading-relaxed text-[#6f6860]">
                   聊天 {diagnosis.chatCount} 个 · 会话 {diagnosis.conversationCount} 个 · 消息 {diagnosis.messageCount} 条 · 本地数据 {(diagnosis.storageBytes / 1024).toFixed(0)} KB（{diagnosis.storageKeys} 个键）
                 </div>
+                {diagnosis.largestKeys.length > 0 && (
+                  <>
+                    <div className="text-[10px] font-semibold text-[#6f6860]">最占地方（约数，前 {diagnosis.largestKeys.length} 项）：</div>
+                    <div className="max-h-44 overflow-y-auto space-y-1">
+                      {diagnosis.largestKeys.map((entry) => (
+                        <div key={entry.key} className="flex items-center justify-between gap-2 rounded-lg bg-white/70 border border-black/5 px-2 py-1.5">
+                          <span className="text-[9px] text-[#6f6860] truncate">{entry.label}</span>
+                          <span className="text-[9px] font-semibold text-[#8f5f65] shrink-0">{formatStorageBytes(entry.bytes)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="text-[8px] leading-relaxed text-[#8b8782]">删掉不用的大聊天就能腾出空间（删之前先备份）。</div>
+                  </>
+                )}
                 {diagnosis.issues.length === 0 ? (
                   <div className="text-[10px] font-semibold text-[#5f7a5a]">✅ 没发现问题，手机很健康。</div>
                 ) : (
