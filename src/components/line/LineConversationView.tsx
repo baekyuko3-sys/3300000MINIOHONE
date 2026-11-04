@@ -6823,7 +6823,7 @@ export function LineConversationView({
 
               {/* Bubble content container */}
               <div
-                className={`min-w-0 flex flex-col ${isGroup && !isMe ? 'flex-1 items-start' : 'w-fit max-w-[78%] flex-none relative touch-pan-y select-none ' + (isMe ? 'items-end' : 'items-start')}`}
+                className={`min-w-0 flex flex-col ${isGroup && !isMe ? 'flex-1 items-start' : 'max-w-[78%] relative touch-pan-y select-none ' + (isMe ? 'items-end' : 'items-start')}`}
               >
                 {/* COT 小标签已按用户要求移除 */}
 
