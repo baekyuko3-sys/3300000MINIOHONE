@@ -49,6 +49,13 @@ const list = getGroupAiSummaries(conversationId).map(s => (s.id === id? {...s,..
 saveGroupAiSummaries(conversationId, list);
 }
 
+export function clearGroupAiSummaries(conversationId: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(keyFor(conversationId));
+    window.dispatchEvent(new CustomEvent('sane333:group-ai-summaries-updated', { detail: { conversationId } }));
+  } catch { /* ignore */ }
+}
 export function deleteGroupAiSummary(conversationId: string, id: string): void {
 saveGroupAiSummaries(conversationId, getGroupAiSummaries(conversationId).filter(s => s.id!== id));
 }
@@ -62,3 +69,4 @@ return list
 .map(s => `${s.text}`)
 .join('\n');
 }
+
