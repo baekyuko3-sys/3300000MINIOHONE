@@ -84,7 +84,7 @@ import {
   Edit3, Brain, Play, Check, Trash2, Copy, Sparkle, Terminal,
   Phone, Search, CornerUpLeft, Share2, Download, AlertCircle, VolumeX,
   CheckSquare, Square, Pin, PinOff, Bell, BellOff, Bookmark, BookmarkCheck,
-  FileDown, FileUp, MessageCircle, Heart, Music2, Headphones, MoreHorizontal, ArrowLeft, ArrowRight
+  FileDown, FileUp, MessageCircle, Heart, Music2, Headphones, MoreHorizontal
 } from 'lucide-react';
 
 const SONG_INVITE_COLOR_SETS: Array<[string, string, string]> = [
@@ -798,8 +798,8 @@ export function LineConversationView({
   // the chat screen itself from opening.
   // 数据修复（role 模型）：方向只认 role，ai-reply 一律归 assistant。
   // 先修复当前会话的 React state（不能只改 localStorage，否则当前页面仍显示旧方向），
-  // 再跑一次性存储迁移（line:fix-role-v1 / line:fix-id-prefix-v1）修复其他历史会话。
-  // senderName 永不参与方向判断；认不出的消息靠多选“移到右边”手动定死。
+  // 再跑存储迁移（role 每次都跑；id 前缀一次性）修复其他历史会话。
+  // senderName 永不参与方向判断；方向只由 role（缺失时认旧 sender）决定。
   useEffect(() => {
     const normalizeRole = (items: any[]) => {
       let changed = false;
@@ -934,10 +934,13 @@ export function LineConversationView({
     const runtimeMessages: LineRuntimeMessage[] = messages.map((message) => {
       const musicSession = message.musicSession || message.metadata?.musicSession;
       const msgKind = String(message.kind || message.metadata?.cardKind || 'text');
-      const msgRole = resolveMessageRole(message) || 'assistant';
+      // Never invent a role: a message with no role and no legacy sender keeps
+      // no role (the render fallback still reads its legacy sender). Defaulting
+      // to 'assistant' here permanently pinned role-less user messages left.
+      const msgRole = resolveMessageRole(message);
       return {
         id: message.id,
-        role: msgRole,
+        ...(msgRole ? { role: msgRole } : {}),
         // 群聊发言人身份：persist 映射是落盘前的最后一道，usePersistentState 的 300ms
         // 防抖写可能因切屏被取消，此时存储里只有这里写下的版本；丢了 senderName，
         // 重载后群消息就只剩「群成员」，群记忆/AI 上下文也会丢发言人。
@@ -950,7 +953,9 @@ export function LineConversationView({
         createdAt: message.createdAt || message.timestamp,
         status: msgRole === 'assistant'
           ? 'read'
-          : (message.status || 'sent'),
+          : msgRole === 'user'
+            ? (message.status || 'sent')
+            : message.status,
         replyToId: message.replyToId,
         reactions: Array.isArray(message.reactions)
           ? Object.fromEntries(message.reactions.map((emoji: string) => [emoji, 1]))
@@ -1411,7 +1416,7 @@ export function LineConversationView({
     };
 
   // 注意：旧署名纠正规则已随 role 模型删除——senderName 永不决定方向；
-  // 旧署名消息由存储迁移按 sender 译成 role，认不出的靠多选“移到右边”手动定死。
+  // 旧署名消息由存储迁移按 sender 译成 role。
 
 
   // A request belongs to the conversation + persona that started it. If either
@@ -4105,17 +4110,6 @@ export function LineConversationView({
     selectedMsgIds.forEach(id => import('../../store/lineRuntime').then(({ deleteLineMessage }) => deleteLineMessage(conversationStorageId, id)));
     setMessages((prev) => prev.map((m) => selectedMsgIds.includes(m.id) ? { ...m, text: '', status: 'deleted', deletedAt: new Date().toISOString() } : m));
     showToast(`已删除 ${selectedMsgIds.length} 条消息`);
-    setIsMultiSelectMode(false);
-    setSelectedMsgIds([]);
-  };
-
-  const handleBatchMoveRight = () => {
-    if (selectedMsgIds.length === 0) return;
-    const myName = currentUserNameFallback() || activePersona?.name || '我';
-    setMessages((prev) => prev.map((m) => selectedMsgIds.includes(m.id)
-      ? { ...m, role: 'user', senderType: 'user', senderName: myName, ...(m.kind === 'ai-reply' ? { kind: 'text' } : {}) }
-      : m));
-    showToast(`已将 ${selectedMsgIds.length} 条消息移到右边`);
     setIsMultiSelectMode(false);
     setSelectedMsgIds([]);
   };
@@ -8061,15 +8055,6 @@ export function LineConversationView({
               </button>
 
               <button
-                onClick={handleBatchMoveRight}
-                disabled={selectedMsgIds.length === 0}
-                className="flex flex-col items-center gap-0.5 text-[10px] text-[#555] disabled:opacity-30 cursor-pointer"
-              >
-                <ArrowRight className="w-4 h-4 text-[#ae7e89]" />
-                <span>移到右边 ({selectedMsgIds.length})</span>
-              </button>
-
-              <button
                 onClick={handleBatchDelete}
                 disabled={selectedMsgIds.length === 0}
                 className="flex flex-col items-center gap-0.5 text-[10px] text-rose-500 disabled:opacity-30 cursor-pointer"
@@ -11530,32 +11515,6 @@ export function LineConversationView({
             </div>
 
             <button
-              onClick={() => {
-                // role 模型一键修复：只修一种自动可判定的错位——AI 回复（kind ai-reply）
-                // 绝不可能是用户发的，role 错写成 user 的移回 assistant。
-                // senderName / senderType 永不参与方向判断；左边卡住的你的消息
-                // 没有自动信号，靠多选“移到右边”手动定死。
-                let fixedToLeft = 0;
-                setMessages((prev: any[]) => prev.map((m: any) => {
-                  if (!m) return m;
-                  if (m.role === 'user' && m.kind === 'ai-reply') {
-                    fixedToLeft++;
-                    return { ...m, role: 'assistant' };
-                  }
-                  return m;
-                }));
-                setTimeout(() => showToast(
-                  fixedToLeft > 0
-                    ? `已修复 ${fixedToLeft} 条错位消息`
-                    : '没有发现错位消息（左边卡住的请用多选移到右边）'
-                ), 100);
-              }}
-              className="w-full py-3 bg-white text-[#ae7e89] rounded-[14px] border border-[#f0f0f1] font-medium cursor-pointer hover:bg-[#faf1f3] transition-colors"
-            >
-              修复消息错位
-            </button>
-
-            <button
               onClick={() => setShowClearConfirm(true)}
               className="w-full py-3 bg-white text-rose-500 rounded-[14px] border border-[#f0f0f1] font-medium cursor-pointer hover:bg-rose-50/30 transition-colors"
             >
@@ -12598,47 +12557,13 @@ export function LineConversationView({
               </div>
 
               {/* 撤回 (我发的可撤回，角色发的也可令其撤回) */}
-              {contextMenuMsg.role === 'user' ? (
-                <>
+              {contextMenuMsg.role === 'user' && (
                 <div
                   onClick={() => handleRecallMessage(contextMenuMsg.id)}
                   className="py-3 flex items-center gap-3 cursor-pointer hover:bg-neutral-50 px-2 text-[#ae7e89]"
                 >
                   <RefreshCw className="w-4 h-4" />
                   <span>撤回我的消息</span>
-                </div>
-                <div
-                  onClick={() => {
-                    const targetId = contextMenuMsg.id;
-                    setMessages((prev: any[]) => prev.map((m: any) => 
-                      String(m.id) === String(targetId) ? { ...m, role: 'assistant' } : m
-                    ));
-                    setContextMenuMsg(null);
-                    showToast('已移到左边');
-                  }}
-                  className="py-3 flex items-center gap-3 cursor-pointer hover:bg-neutral-50 px-2 text-[#ae7e89]"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span className="text-[#333]">移到左边（修正错位）</span>
-                </div>
-                </>
-              ) : (
-                <div
-                  onClick={() => {
-                    const targetId = contextMenuMsg.id;
-                    const myName = currentUserNameFallback() || activePersona?.name || '我';
-                    setMessages((prev: any[]) => prev.map((m: any) =>
-                      String(m.id) === String(targetId)
-                        ? { ...m, role: 'user', senderType: 'user', senderName: myName, ...(m.kind === 'ai-reply' ? { kind: 'text' } : {}) }
-                        : m
-                    ));
-                    setContextMenuMsg(null);
-                    showToast('已移到右边');
-                  }}
-                  className="py-3 flex items-center gap-3 cursor-pointer hover:bg-neutral-50 px-2 text-[#ae7e89]"
-                >
-                  <ArrowRight className="w-4 h-4" />
-                  <span className="text-[#333]">移到右边（修正错位）</span>
                 </div>
               )}
               {contextMenuMsg.role !== 'user' && (

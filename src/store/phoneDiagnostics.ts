@@ -234,7 +234,7 @@ export function diagnosePhone(): PhoneDiagnosis {
     issues.push({
       kind: 'misaligned-message',
       title: `疑似错位消息：${misaligned} 条`,
-      detail: 'AI 回复（ai-reply）却存成 role=user，会跑到右边。可用“修复错位消息”一键翻回左边。',
+      detail: 'AI 回复（ai-reply）却存成 role=user，会跑到右边。',
     });
   }
   if (emptyMsgs > 0) {

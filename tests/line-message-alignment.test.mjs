@@ -17,6 +17,18 @@ test('explicit role always wins over conflicting kind, nickname, or senderType m
   assert.equal(isLineMessageFromUser({ role: 'user', kind: 'text' }), true);
 });
 
+test('role-less messages fall back to legacy sender only (never nickname, kind, or senderType)', () => {
+  // Legacy sender is the old side field: it may decide side ONLY when role is
+  // absent. New code never writes sender, so this cannot contradict a role.
+  assert.equal(isLineMessageFromUser({ sender: 'me' }), true);
+  assert.equal(isLineMessageFromUser({ sender: 'user' }), true);
+  assert.equal(isLineMessageFromUser({ sender: 'other' }), false);
+  assert.equal(isLineMessageFromUser({ sender: 'system' }), false);
+  // A present role always wins over a conflicting legacy sender.
+  assert.equal(isLineMessageFromUser({ role: 'assistant', sender: 'me' }), false);
+  assert.equal(isLineMessageFromUser({ role: 'user', sender: 'other' }), true);
+});
+
 test('role-less messages never infer side from senderType, nickname, or kind', () => {
   assert.equal(isLineMessageFromUser({ senderType: 'user' }), false);
   assert.equal(isLineMessageFromUser({ metadata: { senderType: 'user' } }), false);

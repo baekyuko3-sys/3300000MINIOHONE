@@ -26,7 +26,7 @@ import {
 } from '../../store/backgroundRuntime';
 import { getGitHubSyncConfig, getGitHubToken, pullSnapshotFromGitHub, saveGitHubSyncConfig, saveGitHubToken, syncSnapshotToGitHub, testGitHubSync } from '../../store/githubSync';
 import { repairBlankChats } from '../../store/lineRuntime';
-import { diagnosePhone, fixMisalignedSenders, type PhoneDiagnosis } from '../../store/phoneDiagnostics';
+import { diagnosePhone, type PhoneDiagnosis } from '../../store/phoneDiagnostics';
 
 function collectLocalData(includeSecrets = true) {
   const data: Record<string, unknown> = {};
@@ -473,11 +473,6 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
     } catch (e) {
       notify('体检失败：' + (e instanceof Error ? e.message : '未知错误'));
     }
-  };
-  const fixMisaligned = () => {
-    const n = fixMisalignedSenders();
-    notify(n > 0 ? `已把 ${n} 条错位消息翻回左边` : '没有发现错位消息');
-    setDiagnosis(diagnosePhone());
   };
 
   const clearAll = () => {
@@ -1128,7 +1123,7 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
                     </div>
                     <div className="grid grid-cols-2 gap-1.5">
                       {diagnosis.counts.blankChats > 0 && <button onClick={repairBlank} className="py-2 rounded-lg bg-[#292724] text-white text-[9px]">修复空白聊天（{diagnosis.counts.blankChats}）</button>}
-                      {diagnosis.counts.misalignedMessages > 0 && <button onClick={fixMisaligned} className="py-2 rounded-lg bg-white border border-black/5 text-[9px]">修复错位消息（{diagnosis.counts.misalignedMessages}）</button>}
+
                     </div>
                     <div className="text-[8px] leading-relaxed text-[#8b8782]">体检只检查、不删数据；点修复按钮才会改动。重复聊天、幽灵好友、损坏数据、孤儿会话请截图发给 Muse 处理。</div>
                   </>
