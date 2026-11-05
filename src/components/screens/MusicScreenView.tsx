@@ -477,7 +477,7 @@ export function MusicScreenView({ onNavigate }: MusicScreenViewProps) {
     recordTogetherSession(session);
     setStrangerSession(session);
     saveStrangerSession(session);
-    publishMusicInviteToLine(session);
+    // Stranger-room activity stays in Music; never create a LINE chat for it.
     setStrangerLoading(true);
     setStrangerReaction('');
     const reaction = await askStrangerReaction(session, currentTrack);
