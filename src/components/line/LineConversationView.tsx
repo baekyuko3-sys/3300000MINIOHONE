@@ -4157,6 +4157,49 @@ export function LineConversationView({
     };
     setMessages((prev) => [...prev, newMsg]);
     appendLineMessage(conversationStorageId, newMsg);
+    // NPC 是否领取由角色 AI 根据人设和当前剧情独立判断；AI 失败时保持未领取。
+    void (async () => {
+      const candidates = isGroup
+        ? groupAiMembers.map(({ member, character }) => ({ id: String(member.id), name: String(member.nickname || member.name || character.name), personality: character.personality || '', background: character.scenario || '', context: character.systemPrompt || character.description || '' }))
+        : importedCharacter ? [{ id: String(importedCharacter.id), name: importedCharacter.name || characterProfile.nickname, personality: importedCharacter.personality || '', background: importedCharacter.scenario || '', context: importedCharacter.systemPrompt || importedCharacter.description || '' }] : [];
+      if (!candidates.length || count <= 1) return;
+      const recent = messagesRef.current.slice(-12).map((m: any) => `${m.role === 'user' ? '我' : (m.senderName || m.characterName || '角色')}：${String(m.text || '').slice(0, 180)}`).join('\n');
+      try {
+        const raw = await generateCreativeText({
+          settings: { ...resolveChannelAiSettings('chat'), maxOutputTokens: 240 },
+          systemPrompt: '你正在扮演聊天中的角色。根据每个人的性格、关系、背景和当前剧情，独立判断是否会领取刚发出的红包。可以全部跳过，不要为了凑数而领取。只输出 JSON 数组，例如 [{"id":"角色ID","decision":"claim"}]，decision 只能是 claim 或 skip。不要输出未列出的角色。',
+          userPrompt: JSON.stringify({ blessing, amount, candidates, recentConversation: recent.slice(0, 2600) }),
+          temperature: 0.7,
+        });
+        const parsed = JSON.parse(String(raw || '').match(/\[[\s\S]*\]/)?.[0] || '[]');
+        if (!Array.isArray(parsed)) return;
+        const latest = messagesRef.current.find((m: any) => String(m.id) === String(packetId));
+        if (!latest) return;
+        const latestMeta = latest.metadata && typeof latest.metadata === 'object' ? latest.metadata : {};
+        const currentClaims = Array.isArray(latest.redPacketClaims) ? latest.redPacketClaims : Array.isArray(latestMeta.claims) ? latestMeta.claims : [];
+        const occupied = new Set<number>(currentClaims.map((claim: any, index: number) => Number.isInteger(claim?.slotIndex) ? Number(claim.slotIndex) : index));
+        const npcClaims: any[] = [];
+        for (const decision of parsed) {
+          if (decision?.decision !== 'claim') continue;
+          const candidate = candidates.find(item => item.id === String(decision.id || ''));
+          if (!candidate || currentClaims.some((claim: any) => claim.userId === `npc:${candidate.id}`)) continue;
+          const slotIndex = (latestMeta.sharesCents || []).findIndex((_: number, index: number) => !occupied.has(index));
+          if (slotIndex < 0) break;
+          const cents = Number(latestMeta.sharesCents[slotIndex] || 0);
+          if (cents <= 0) continue;
+          occupied.add(slotIndex);
+          npcClaims.push({ userId: `npc:${candidate.id}`, name: candidate.name, slotIndex, amount: (cents / 100).toFixed(2), time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) });
+        }
+        if (!npcClaims.length) return;
+        const allClaims = [...currentClaims, ...npcClaims];
+        const status = allClaims.length >= Number(latest.redPacketCount || latestMeta.count || count) ? 'claimed' : 'partial';
+        const updated = { ...latest, redPacketClaims: allClaims, redPacketStatus: status, metadata: { ...latestMeta, claims: allClaims, status } };
+        setMessages(prev => prev.map((m: any) => String(m.id) === String(packetId) ? updated : m));
+        updateLineMessage(conversationStorageId, packetId, { redPacketClaims: allClaims, redPacketStatus: status, metadata: updated.metadata } as any);
+      } catch (error) {
+        console.warn('[LINE red packet] NPC decision skipped:', error);
+      }
+    })();
     setMoneySheetType(null);
     setRedPacketAmount('');
     setRedPacketBlessing('恭喜发财，万事如意');
