@@ -72,7 +72,8 @@ test('deleting an NPC removes its persona chats and references without disturbin
     'npc-chat-b': { id: 'npc-chat-b', name: 'NPC One', isGroup: false },
   }));
   storage.setItem('line:runtime:notifications', JSON.stringify([
-    { id: 'n1', type: 'message', conversationId: 'npc-chat-a', title: 'NPC', body: 'hello', createdAt: '2026-11-05', read: false },
+    { id: 'n1', type: 'message', conversationId: 'npc-chat-a', characterId: 'npc-1', title: 'NPC', body: 'hello', createdAt: '2026-11-05', read: false },
+    { id: 'n3', type: 'message', characterId: 'npc-1', title: 'NPC', body: 'orphaned identity notification', createdAt: '2026-11-05', read: false },
     { id: 'n2', type: 'message', conversationId: 'other-chat', title: 'Other', body: 'hello', createdAt: '2026-11-05', read: false },
   ]));
 
