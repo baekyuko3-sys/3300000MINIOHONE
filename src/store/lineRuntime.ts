@@ -1230,7 +1230,12 @@ export function migrateLineIdentityPrefixes(): LineIdentityMigrationReport {
     let charsChanged = false;
     const nextCharacters = characters.map((record: any) => {
       if (!record || typeof record !== 'object' || typeof record.id !== 'string' || !record.id) return record;
-      if (record.id.startsWith('char:')) return record;
+      if (record.id.startsWith('char:')) {
+        // Rebuild the old→new map on retry if a previous migration attempt
+        // saved the character store but stopped before renaming chat keys.
+        charMap.set(record.id.slice('char:'.length), record.id);
+        return record;
+      }
       const nextId = withCharPrefix(record.id);
       if (!nextId || nextId === record.id) return record;
       charMap.set(record.id, nextId);
@@ -1246,7 +1251,11 @@ export function migrateLineIdentityPrefixes(): LineIdentityMigrationReport {
     const nextNpcs = npcs.map((record: any) => {
       if (!record || typeof record !== 'object') return record;
       let next = record;
-      if (typeof record.id === 'string' && record.id && !record.id.startsWith('npc:')) {
+      if (typeof record.id === 'string' && record.id.startsWith('npc:')) {
+        // Same retry-safety rule as character IDs: reconstruct the mapping
+        // from an already-prefixed NPC record after a partial previous run.
+        npcMap.set(record.id.slice('npc:'.length), record.id);
+      } else if (typeof record.id === 'string' && record.id) {
         const nextId = withNpcPrefix(record.id);
         if (nextId && nextId !== record.id) {
           npcMap.set(record.id, nextId);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { exportLineBackup, importLineBackup } from '../src/store/lineRuntime.ts';
+import { exportLineBackup, importLineBackup, migrateLineIdentityPrefixes } from '../src/store/lineRuntime.ts';
 
 class MemoryStorage {
   values = new Map();
@@ -86,4 +86,25 @@ test('LINE backup import writes the fully validated snapshot on success', () => 
   assert.equal(JSON.parse(storage.getItem('line:conversation:chat-1'))[0].text, 'hello');
   assert.equal(JSON.parse(storage.getItem('line:runtime:conversations'))['chat-1'].name, 'Chat');
   assert.deepEqual(JSON.parse(storage.getItem('line:runtime:notifications')), []);
+});
+
+
+test('identity migration resumes after a partial run already prefixed character and NPC records', () => {
+  const storage = new MemoryStorage();
+  storage.setItem('phone:characters', JSON.stringify([{ id: 'char:c1', name: 'Character' }]));
+  storage.setItem('phone:npcs', JSON.stringify([{ id: 'npc:n1', name: 'NPC', boundCharacterId: 'char:c1' }]));
+  storage.setItem('line:conversation:c1', JSON.stringify([{ id: 'm1', role: 'user', text: 'preserve' }]));
+  storage.setItem('line:chat-items', JSON.stringify([{ id: 'c1', characterId: 'c1', name: 'Character' }]));
+  storage.setItem('line:runtime:conversations', JSON.stringify({
+    c1: { id: 'c1', characterId: 'c1', name: 'Character', isGroup: false },
+  }));
+  installWindow(storage);
+
+  const report = migrateLineIdentityPrefixes();
+  assert.equal(report.conversationKeysRenamed, 1);
+  assert.equal(storage.getItem('line:conversation:c1'), null);
+  assert.equal(JSON.parse(storage.getItem('line:conversation:char:c1'))[0].text, 'preserve');
+  assert.equal(JSON.parse(storage.getItem('line:chat-items'))[0].id, 'char:c1');
+  assert.ok(JSON.parse(storage.getItem('line:runtime:conversations'))['char:c1']);
+  assert.equal(storage.getItem('line:fix-id-prefix-v1'), '1');
 });
