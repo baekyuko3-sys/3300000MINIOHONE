@@ -79,8 +79,8 @@ function readNpcRecordsForMutation(): SaneNpc[] {
   return parsed as SaneNpc[];
 }
 
-export function upsertNpc(npc: SaneNpc): void {
-  if (typeof window === 'undefined') return;
+export function upsertNpc(npc: SaneNpc): boolean {
+  if (typeof window === 'undefined') return false;
   try {
     const all = readNpcRecordsForMutation();
     const next = all.some(item => item.id === npc.id)
@@ -89,20 +89,24 @@ export function upsertNpc(npc: SaneNpc): void {
     const serialized = JSON.stringify(next);
     window.localStorage.setItem(KEY, serialized);
     if (window.localStorage.getItem(KEY) !== serialized) throw new Error('NPC_STORAGE_WRITE_VERIFY_FAILED');
+    return true;
   } catch (error) {
     reportPersistenceIssue('write:' + KEY, 'NPC 保存失败；已保留原始 NPC 数据', error);
+    return false;
   }
 }
 
-export function deleteNpc(id: string): void {
-  if (typeof window === 'undefined') return;
+export function deleteNpc(id: string): boolean {
+  if (typeof window === 'undefined') return false;
   try {
     const next = readNpcRecordsForMutation().filter(item => item.id !== id);
     const serialized = JSON.stringify(next);
     window.localStorage.setItem(KEY, serialized);
     if (window.localStorage.getItem(KEY) !== serialized) throw new Error('NPC_STORAGE_WRITE_VERIFY_FAILED');
+    return true;
   } catch (error) {
     reportPersistenceIssue('delete:' + KEY, 'NPC 删除失败；已保留原始 NPC 数据', error);
+    return false;
   }
 }
 

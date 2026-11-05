@@ -361,7 +361,10 @@ export function NpcScreenView({ onNavigate }: { onNavigate: (screen: ScreenType)
   const editSelected = (patch: Partial<SaneNpc>) => {
     if (!selected) return;
     const updated = { ...selected, ...patch, updatedAt: new Date().toISOString() };
-    upsertNpc(updated);
+    if (!upsertNpc(updated)) {
+      notify('NPC 保存失败：本地数据未确认写入，请检查存储空间');
+      return;
+    }
     setNpcs(prev => prev.map(item => item.id === updated.id ? updated : item));
   };
 
@@ -875,7 +878,10 @@ export function NpcScreenView({ onNavigate }: { onNavigate: (screen: ScreenType)
                     <button
                       onClick={() => {
                         if (!window.confirm(`确定删除 NPC「${selected.name}」吗？将同时从群聊和好友列表中移除。`)) return;
-                        deleteNpc(selected.id);
+                        if (!deleteNpc(selected.id)) {
+                          notify('NPC 删除失败：原始档案已保留，请检查本地存储空间');
+                          return;
+                        }
                         removeNpcReferences(selected.id);
                         setNpcs(prev => prev.filter(item => item.id !== selected.id));
                         setSelectedId(null);
