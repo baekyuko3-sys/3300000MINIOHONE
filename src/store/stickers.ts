@@ -166,20 +166,45 @@ export function batchImportStickers(packId: string, text: string): { imported: n
   return { imported, skipped };
 }
 
-/** 按名称查找表情（AI 发表情包用） */
+/** 按名称精确查找表情。AI 标签只允许命中表情库中的真实名称，禁止模糊猜测或生成外部图片。 */
 export function findStickerByName(name: string): Sticker | null {
-  const q = String(name || '').trim();
+  const q = String(name || '').trim().toLocaleLowerCase();
   if (!q) return null;
   for (const pack of readPacks()) {
-    const hit = pack.stickers.find(s => s.name === q);
-    if (hit) return hit;
-  }
-  // 模糊匹配：包含关系
-  for (const pack of readPacks()) {
-    const hit = pack.stickers.find(s => s.name.includes(q) || q.includes(s.name));
+    const hit = pack.stickers.find(sticker => sticker.name.trim().toLocaleLowerCase() === q);
     if (hit) return hit;
   }
   return null;
+}
+
+/**
+ * 根据正在输入的聊天文本联想已有表情。
+ * 只读取本地表情包库，不会创建、下载或推测任何新表情资源。
+ */
+export function getStickerSuggestions(query: string, limit = 5): Sticker[] {
+  const q = String(query || '').trim().toLocaleLowerCase();
+  if (q.length < 2) return [];
+  const all = readPacks().flatMap(pack => pack.stickers);
+  const scored = all.map((sticker, index) => {
+    const name = String(sticker.name || '').trim().toLocaleLowerCase();
+    if (!name) return null;
+    const exact = name === q;
+    const queryContainsName = q.includes(name);
+    const nameContainsQuery = name.includes(q);
+    if (!exact && !queryContainsName && !nameContainsQuery) return null;
+    return { sticker, index, score: exact ? 0 : queryContainsName ? 1 : 2 };
+  }).filter((item): item is { sticker: Sticker; index: number; score: number } => item !== null);
+  scored.sort((a, b) => a.score - b.score || a.index - b.index);
+  const seen = new Set<string>();
+  return scored
+    .filter(({ sticker }) => {
+      const key = sticker.id || sticker.name;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, Math.max(1, Math.min(10, limit)))
+    .map(({ sticker }) => sticker);
 }
 
 /** 所有表情总数 */

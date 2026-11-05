@@ -13,7 +13,7 @@ import { VroomImage } from '../VroomImage';
 import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory, updateCharacterMemoryItem, deleteCharacterMemoryItem, clearCharacterMemory, clearAllCharacterMemoryVariants } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
 import StickerManagerPanel from './StickerManagerPanel';
-import { findStickerByName, getStickerPacks } from '../../store/stickers';
+import { findStickerByName, getStickerPacks, getStickerSuggestions, type Sticker } from '../../store/stickers';
 import { getCharacterProfile } from '../../data/characterProfiles';
 import { getInitialChatMessages } from '../../data/characterChatSeeds';
 import { upsertOfflineEvent, updateOfflineEvent } from '../../store/offlineEvents';
@@ -1705,6 +1705,7 @@ export function LineConversationView({
   // 群聊 @成员：只在输入框当前 @词时显示候选条。
   const [mentionPickerOpen, setMentionPickerOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
+  const stickerSuggestions = useMemo(() => getStickerSuggestions(inputText, 5), [inputText]);
 
   const currentMentionQuery = (value: string) => {
     const match = value.match(/(?:^|\s)@([^\s@]*)$/);
@@ -1748,6 +1749,24 @@ export function LineConversationView({
     setMentionPickerOpen(false);
     setMentionQuery('');
     window.setTimeout(() => document.querySelector<HTMLTextAreaElement>('[data-line-composer="true"]')?.focus(), 0);
+  };
+
+  const sendStickerFromComposer = (sticker: Sticker) => {
+    const now = new Date();
+    setMessages(prev => [...prev, {
+      id: Date.now(),
+      role: 'user',
+      kind: 'sticker',
+      text: `[表情包] ${sticker.name}`,
+      stickerName: sticker.name,
+      stickerUrl: sticker.imageUrl,
+      mediaRef: sticker.imageUrl,
+      time: '刚刚',
+      createdAt: now.toISOString(),
+      status: 'sent',
+    }]);
+    setInputText('');
+    setMentionPickerOpen(false);
   };
 
   const [storedWorldbooks] = usePersistentState<WorldBook[]>('phone:worldbooks', []);
@@ -8204,6 +8223,30 @@ export function LineConversationView({
                         </button>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+              {!mentionPickerOpen && stickerSuggestions.length > 0 && (
+                <div className="absolute bottom-full left-2 right-2 mb-1.5 bg-white border border-[#ededee] rounded-[14px] shadow-[0_8px_30px_rgba(0,0,0,0.08)] overflow-hidden z-30">
+                  <div className="px-3 py-2 border-b border-[#f1f1f2] text-[9px] text-[#aaa]">
+                    {tx('表情联想', 'スタンプ候補')} · {tx('来自现有表情包', '登録済みスタンプ')}
+                  </div>
+                  <div className="max-h-[180px] overflow-y-auto">
+                    {stickerSuggestions.map(sticker => (
+                      <button
+                        key={sticker.id}
+                        type="button"
+                        onPointerDown={(event) => event.preventDefault()}
+                        onClick={() => sendStickerFromComposer(sticker)}
+                        className="w-full px-3 py-2 flex items-center gap-2.5 text-left hover:bg-[#faf7f8] active:bg-[#f5eef1] transition-colors"
+                      >
+                        <span className="w-10 h-10 rounded-[9px] bg-[#fafafa] border border-[#f0f0f1] overflow-hidden shrink-0 flex items-center justify-center">
+                          <img src={sticker.imageUrl} alt={sticker.name} className="w-full h-full object-contain" loading="lazy" />
+                        </span>
+                        <span className="min-w-0 flex-1 text-[11px] font-medium text-[#444] truncate">{sticker.name}</span>
+                        <span className="text-[9px] text-[#c98f9d]">{tx('发送', '送信')}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
