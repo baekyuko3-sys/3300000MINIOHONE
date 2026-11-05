@@ -256,12 +256,14 @@ export function walletRegisterRedPacketClaim(packetId: string, claimId: string, 
 }
 
 /** Claiming an incoming packet credits balance and records the claim in one commit. */
-export function walletClaimRedPacket(packetId: string, claimId: string, amount: number, from: string, slotIndex?: number, sharesCents?: number[]): boolean {
+export function walletClaimRedPacket(packetId: string, claimId: string, amount: number, from: string, slotIndex?: number, sharesCents?: number[], totalAmount?: number): boolean {
   if (!packetId || !claimId || !Number.isFinite(amount) || amount <= 0 || !Number.isInteger(slotIndex) || (slotIndex as number) < 0) return false;
   if (!Array.isArray(sharesCents) || !sharesCents.length || sharesCents.some(value => !Number.isInteger(value) || value <= 0)) return false;
+  if (!Number.isFinite(totalAmount) || (totalAmount as number) <= 0) return false;
   const cents = Math.round(amount * 100);
+  const totalCents = Math.round((totalAmount as number) * 100);
   const slot = slotIndex as number;
-  if (cents <= 0 || slot >= sharesCents.length || sharesCents[slot] !== cents) return false;
+  if (cents <= 0 || slot >= sharesCents.length || sharesCents[slot] !== cents || sharesCents.reduce((sum, value) => sum + value, 0) !== totalCents) return false;
   const result = commitWalletLedger(current => {
     const packet = findPacket(current, packetId);
     if (packet?.sent || packet?.refunded || packet?.claimed.includes(claimId)) return null;
