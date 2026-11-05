@@ -167,7 +167,7 @@ function findTransfer(current: WalletLedger, id: string): TransferSettlement | u
   return current.transfers.find(entry => entry.id === id);
 }
 
-export async function walletSendTransfer(amount: number, counterparty: string, desc = '', operationId?: string): Promise<boolean> {
+export async function walletSendTransfer(amount: number, counterparty: string, desc = '', operationId?: string, familyHolderName?: string): Promise<boolean> {
   if (!Number.isFinite(amount) || amount <= 0 || !operationId?.trim()) return false;
   const cents = Math.round(amount * 100);
   if (cents <= 0) return false;
@@ -184,6 +184,7 @@ export async function walletSendTransfer(amount: number, counterparty: string, d
         balanceCents: current.balanceCents - cents,
         transactions: [transaction, ...current.transactions].slice(0, 200),
         transfers: [settlement, ...current.transfers.filter(entry => entry.id !== operationId)].slice(0, 500),
+        familyCards: applyFamilyCardSpend(current.familyCards, familyHolderName, cents),
       },
       result: true,
     };
@@ -220,7 +221,7 @@ function findPacket(current: WalletLedger, id: string): PacketOperation | undefi
   return current.packets.find(entry => entry.id === id);
 }
 
-export async function walletSendRedPacket(totalAmount: number, desc: string, operationId?: string, sharesCents?: number[]): Promise<boolean> {
+export async function walletSendRedPacket(totalAmount: number, desc: string, operationId?: string, sharesCents?: number[], familyHolderName?: string): Promise<boolean> {
   if (!Number.isFinite(totalAmount) || totalAmount <= 0 || !operationId?.trim()) return false;
   const cents = Math.round(totalAmount * 100);
   if (cents <= 0) return false;
@@ -240,6 +241,7 @@ export async function walletSendRedPacket(totalAmount: number, desc: string, ope
         balanceCents: current.balanceCents - cents,
         transactions: [transaction, ...current.transactions].slice(0, 200),
         packets: [packet, ...current.packets.filter(entry => entry.id !== operationId)].slice(0, 500),
+        familyCards: applyFamilyCardSpend(current.familyCards, familyHolderName, cents),
       },
       result: true,
     };
@@ -389,6 +391,17 @@ export interface FamilyCard {
   createdAt: string;
   /** Local calendar month for spentThisMonth; absent on legacy cards. */
   monthKey?: string;
+}
+
+function applyFamilyCardSpend(cards: FamilyCard[] | undefined, holderName: string | undefined, amountCents: number): FamilyCard[] {
+  const normalized = normalizeFamilyCardsForMonth(cards || [], currentFamilyCardMonth());
+  if (!holderName) return normalized;
+  const index = normalized.findIndex(card => card.holderName === holderName);
+  if (index < 0) return normalized;
+  const next = [...normalized];
+  const card = next[index];
+  next[index] = { ...card, spentThisMonth: Math.round((card.spentThisMonth * 100 + amountCents)) / 100 };
+  return next;
 }
 
 export function currentFamilyCardMonth(date = new Date()): string {
