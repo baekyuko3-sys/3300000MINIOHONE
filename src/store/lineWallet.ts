@@ -17,7 +17,7 @@ export interface WalletTransaction {
   createdAt: string;
 }
 
-type TransferSettlement = { id: string; status: 'sent' | 'accepted' | 'refunded'; amount: number; counterparty: string; updatedAt: string };
+type TransferSettlement = { id: string; status: 'sent' | 'accepted' | 'refunded'; amount: number; counterparty: string; familyHolderName?: string; updatedAt: string };
 type PacketOperation = {
   id: string;
   claimed: string[];
@@ -26,6 +26,7 @@ type PacketOperation = {
   slots?: Record<string, number>;
   sharesCents?: number[];
   totalCents?: number;
+  familyHolderName?: string;
 };
 type WalletLedger = {
   version: 1;
@@ -185,7 +186,7 @@ export async function walletSendTransfer(amount: number, counterparty: string, d
     if (existing) return { next: current, result: existing.status !== 'refunded' && existing.amount === cents / 100 };
     if (current.balanceCents < cents) return null;
     const now = new Date().toISOString();
-    const settlement: TransferSettlement = { id: operationId, status: 'sent', amount: cents / 100, counterparty, updatedAt: now };
+    const settlement: TransferSettlement = { id: operationId, status: 'sent', amount: cents / 100, counterparty, familyHolderName: familyHolderName || undefined, updatedAt: now };
     const transaction = makeTransaction({ type: 'transfer', amount: -cents / 100, desc: desc || '转账支出', counterparty: counterparty || undefined });
     return {
       next: {
@@ -217,6 +218,7 @@ export async function walletSettleTransfer(operationId: string, decision: 'accep
       next: {
         ...current,
         balanceCents: current.balanceCents + Math.round(item.amount * 100),
+        familyCards: applyFamilyCardAdjustment(current.familyCards, item.familyHolderName, -Math.round(item.amount * 100)),
         transactions: [transaction, ...current.transactions].slice(0, 200),
         transfers: [updated, ...current.transfers.filter(entry => entry.id !== operationId)].slice(0, 500),
       },
@@ -242,7 +244,7 @@ export async function walletSendRedPacket(totalAmount: number, desc: string, ope
       return { next: current, result: existing.sent === true && !existing.refunded && existing.totalCents === cents && sameShares };
     }
     if (current.balanceCents < cents) return null;
-    const packet: PacketOperation = { id: operationId, claimed: [], refunded: false, sent: true, sharesCents: [...sharesCents], totalCents: cents, slots: {} };
+    const packet: PacketOperation = { id: operationId, claimed: [], refunded: false, sent: true, sharesCents: [...sharesCents], totalCents: cents, slots: {}, familyHolderName: familyHolderName || undefined };
     const transaction = makeTransaction({ type: 'redpacket_send', amount: -cents / 100, desc: desc || '发出红包' });
     return {
       next: {
@@ -367,6 +369,7 @@ export async function walletRefundRedPacket(packetId: string, _amount: number, d
       next: {
         ...current,
         balanceCents: current.balanceCents + refundCents,
+        familyCards: applyFamilyCardAdjustment(current.familyCards, packet.familyHolderName, -refundCents),
         transactions,
         packets: [updated, ...current.packets.filter(entry => entry.id !== packetId)].slice(0, 500),
       },
@@ -410,6 +413,17 @@ function applyFamilyCardSpend(cards: FamilyCard[] | undefined, holderName: strin
   const next = [...normalized];
   const card = next[index];
   next[index] = { ...card, spentThisMonth: Math.round((card.spentThisMonth * 100 + amountCents)) / 100 };
+  return next;
+}
+
+function applyFamilyCardAdjustment(cards: FamilyCard[] | undefined, holderName: string | undefined, amountCents: number): FamilyCard[] {
+  const normalized = normalizeFamilyCardsForMonth(cards || [], currentFamilyCardMonth());
+  if (!holderName || !amountCents) return normalized;
+  const index = normalized.findIndex(card => card.holderName === holderName);
+  if (index < 0) return normalized;
+  const next = [...normalized];
+  const card = next[index];
+  next[index] = { ...card, spentThisMonth: Math.max(0, Math.round((card.spentThisMonth * 100 + amountCents)) / 100) };
   return next;
 }
 
