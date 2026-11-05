@@ -31,7 +31,7 @@ beforeEach(() => {
   installStorage();
 });
 
-test('transfer debit, transaction and pending settlement commit together', () => {
+test('transfer debit, transaction and pending settlement commit together', async () => {
   await setWalletBalance(100);
   assert.equal(await walletSendTransfer(25.50, '角色', '晚餐', 'transfer-1'), true);
   assert.equal(getWalletBalance(), 74.50);
