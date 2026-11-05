@@ -847,7 +847,7 @@ export function LineConversationView({
       const claims = Array.isArray(message.redPacketClaims) ? message.redPacketClaims : Array.isArray(meta.claims) ? meta.claims : [];
       const occupied = new Set<number>(claims.map((claim: any, index: number) => Number.isInteger(claim?.slotIndex) ? Number(claim.slotIndex) : index));
       const remainingCents = shares.reduce((sum: number, cents: number, index: number) => sum + (occupied.has(index) ? 0 : cents), 0);
-      if (remainingCents > 0 && !walletRefundRedPacket(String(message.id), remainingCents / 100, '未领取红包退回', shares)) continue;
+      if (remainingCents > 0 && !walletRefundRedPacket(String(message.id), remainingCents / 100, '未领取红包退回', shares, [...occupied])) continue;
       const status = remainingCents > 0 ? 'expired' : 'claimed';
       const updatedMeta = { ...meta, status, refundedAt: new Date().toISOString(), refundAmount: remainingCents / 100 };
       const updated = { ...message, redPacketStatus: status, metadata: updatedMeta };
@@ -4231,6 +4231,7 @@ export function LineConversationView({
         const latest = messagesRef.current.find((m: any) => String(m.id) === String(packetId));
         if (!latest) return;
         const latestMeta = latest.metadata && typeof latest.metadata === 'object' ? latest.metadata : {};
+        if (latestMeta.expiresAt && Date.now() >= Date.parse(String(latestMeta.expiresAt))) return;
         const currentClaims = Array.isArray(latest.redPacketClaims) ? latest.redPacketClaims : Array.isArray(latestMeta.claims) ? latestMeta.claims : [];
         const occupied = new Set<number>(currentClaims.map((claim: any, index: number) => Number.isInteger(claim?.slotIndex) ? Number(claim.slotIndex) : index));
         const npcClaims: any[] = [];

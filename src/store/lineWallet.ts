@@ -132,13 +132,13 @@ export function walletClaimRedPacket(packetId: string, claimId: string, amount: 
   savePacketOperation({ ...op, claimed: [...op.claimed, claimId] });
   return true;
 }
-export function walletRefundRedPacket(packetId: string, amount: number, desc = '未领取红包退回', sharesCents?: number[]): boolean {
+export function walletRefundRedPacket(packetId: string, amount: number, desc = '未领取红包退回', sharesCents?: number[], claimedSlots: number[] = []): boolean {
   if (!packetId || !Number.isFinite(amount) || amount <= 0) return false;
   const ops = getPacketOperations();
   const op = ops.find(x => x.id === packetId) || { id: packetId, claimed: [], refunded: false };
   if (op.refunded) return true;
   const cents = sharesCents
-    ? sharesCents.reduce((sum, share, index) => sum + (Object.values(op.slots || {}).includes(index) ? 0 : Math.max(0, Math.round(Number(share) || 0))), 0)
+    ? sharesCents.reduce((sum, share, index) => sum + (Object.values(op.slots || {}).includes(index) || claimedSlots.includes(index) ? 0 : Math.max(0, Math.round(Number(share) || 0))), 0)
     : Math.round(amount * 100);
   if (cents <= 0) { savePacketOperation({ ...op, refunded: true }); return true; }
   // 同步先标记结算，阻止同一事件重复退款；钱包操作在同一 JS 调用栈内完成。
