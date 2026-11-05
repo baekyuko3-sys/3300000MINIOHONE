@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { exportLineBackup, importLineBackup, migrateLineIdentityPrefixes } from '../src/store/lineRuntime.ts';
+import { exportLineBackup, importLineBackup, migrateLineIdentityPrefixes, migrateLineMessagesToRole } from '../src/store/lineRuntime.ts';
 
 class MemoryStorage {
   values = new Map();
