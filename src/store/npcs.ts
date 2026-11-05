@@ -139,6 +139,23 @@ export function removeNpcReferences(npcId: string): void {
     console.error('[NPC deletion] Friend cleanup failed; original friend data retained', error);
   }
 
+  // Notifications may be keyed by NPC identity rather than a conversation ID.
+  try {
+    const raw = window.localStorage.getItem('line:runtime:notifications');
+    if (raw !== null) {
+      const notifications = JSON.parse(raw);
+      if (!Array.isArray(notifications)) throw new Error('LINE_NOTIFICATIONS_INVALID');
+      const next = notifications.filter((item: any) => item?.characterId !== npcId);
+      if (next.length !== notifications.length) {
+        window.localStorage.setItem('line:runtime:notifications', JSON.stringify(next));
+        broadcastKey('line:runtime:notifications');
+        window.dispatchEvent(new CustomEvent('sane333:line-notifications-changed'));
+      }
+    }
+  } catch (error) {
+    console.error('[NPC deletion] Notification cleanup failed; original data retained', error);
+  }
+
   // Remove every persona-specific NPC chat, its transcript/settings, and notifications.
   try {
     const raw = window.localStorage.getItem('line:chat-items');
