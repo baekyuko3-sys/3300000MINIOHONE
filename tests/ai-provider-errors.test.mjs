@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { listOpenAiCompatibleModels } from '../src/ai/aiEngine.ts';
+import { listOpenAiCompatibleModels, generateCreativeText } from '../src/ai/aiEngine.ts';
 import { pushAiDebugLog, writeAiDebugTrace } from '../src/store/aiDebug.ts';
 
 const baseSettings = {
@@ -86,4 +86,36 @@ test('AI diagnostics redact API keys and bearer tokens before local persistence'
   assert.doesNotMatch(log, /AIza[A-Z]{20,}|secret-token-123456789/);
   assert.doesNotMatch(trace, /AIza[A-Z]{20,}|secret-token-123456789/);
   assert.match(trace, /REDACTED/);
+});
+
+
+test('creative text requests are bounded to the serverless proxy contract', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.window = { setTimeout, clearTimeout };
+  let captured;
+  globalThis.fetch = async (input, init = {}) => {
+    assert.equal(String(input), '/api/ai-models');
+    captured = JSON.parse(String(init.body));
+    return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), { status: 200 });
+  };
+  try {
+    const history = Array.from({ length: 50 }, (_, index) => ({
+      role: index % 2 ? 'assistant' : 'user',
+      content: String(index) + ':' + 'x'.repeat(20000),
+    }));
+    const result = await generateCreativeText({
+      settings: { ...baseSettings, provider: 'openai-compatible', apiBaseUrl: 'https://api.openai.com/v1' },
+      systemPrompt: 's'.repeat(100000),
+      userPrompt: 'u'.repeat(100000),
+      history,
+    });
+    assert.equal(result, 'ok');
+    assert.equal(captured.history.length, 30);
+    assert.ok(captured.history.every(message => message.content.length <= 8000));
+    assert.equal(captured.systemPrompt.length, 80000);
+    assert.equal(captured.userPrompt.length, 80000);
+    assert.ok(new TextEncoder().encode(JSON.stringify(captured)).byteLength < 512 * 1024);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
