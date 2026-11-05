@@ -1,14 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getNpcs, upsertNpc } from '../src/store/npcs.ts';
+import { getNpcs, upsertNpc, upsertNpcs } from '../src/store/npcs.ts';
 import { getLineGroups, upsertLineGroup } from '../src/store/lineGroups.ts';
 
 class MemoryStorage {
   values = new Map();
+  failKey = '';
+  failOnce = false;
   get length() { return this.values.size; }
   key(index) { return [...this.values.keys()][index] ?? null; }
   getItem(key) { return this.values.has(key) ? this.values.get(key) : null; }
-  setItem(key, value) { this.values.set(key, String(value)); }
+  setItem(key, value) {
+    if (this.failOnce && key === this.failKey) { this.failOnce = false; throw new Error('quota exceeded'); }
+    this.values.set(key, String(value));
+  }
   removeItem(key) { this.values.delete(key); }
 }
 
@@ -52,4 +57,16 @@ test('group mutations refuse to overwrite a valid-JSON but invalid-schema source
   const result = upsertLineGroup({ id: 'g2', name: 'Group', ownerId: 'user', members: [], announcement: '', createdAt: '', updatedAt: '' });
   assert.equal(result.ok, false);
   assert.equal(storage.getItem('line:groups'), original);
+});
+
+
+test('NPC batch save is atomic when localStorage rejects the write', () => {
+  const storage = new MemoryStorage();
+  const original = JSON.stringify([{ id: 'npc-old', name: 'Old NPC' }]);
+  storage.setItem('phone:npcs', original);
+  storage.failKey = 'phone:npcs';
+  storage.failOnce = true;
+  installWindow(storage);
+  assert.equal(upsertNpcs([{ id: 'npc-new', name: 'New NPC' }]), false);
+  assert.equal(storage.getItem('phone:npcs'), original);
 });
