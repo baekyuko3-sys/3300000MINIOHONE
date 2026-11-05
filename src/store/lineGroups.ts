@@ -145,3 +145,46 @@ export function createLineGroup(input: {
   upsertLineGroup(group);
   return group;
 }
+
+
+/** Remove a deleted character from every group while preserving NPC members bound to it. */
+export function removeCharacterFromLineGroups(characterId: string): number {
+  if (typeof window === 'undefined' || !characterId) return 0;
+  const raw = window.localStorage.getItem(STORAGE_KEY);
+  if (raw === null) return 0;
+  const groups = JSON.parse(raw);
+  if (!Array.isArray(groups)) throw new Error('LINE_GROUPS_STORAGE_INVALID');
+  let changedCount = 0;
+  const next = groups.flatMap((group: any) => {
+    if (!group || typeof group !== 'object') return [group];
+    const members = Array.isArray(group.members) ? group.members : [];
+    const filtered = members.filter((member: any) =>
+      !(member && (String(member.characterId || '') === characterId ||
+        (member.kind === 'character' && String(member.id || '') === characterId)))
+    );
+    const removed = filtered.length !== members.length;
+    const ownerRemoved = String(group.ownerId || '') === characterId ||
+      members.some((member: any) => member?.kind === 'character' && String(member?.id || '') === characterId && member.role === 'owner');
+    const nextOwner = ownerRemoved ? (filtered[0]?.id || '') : group.ownerId;
+    const relationships = Array.isArray(group.relationships)
+      ? group.relationships.filter((edge: any) => edge && String(edge.from) !== characterId && String(edge.to) !== characterId)
+      : group.relationships;
+    const relationshipsChanged = Array.isArray(group.relationships) && relationships.length !== group.relationships.length;
+    if (!removed && !relationshipsChanged && !ownerRemoved) return [group];
+    changedCount += 1;
+    // A group with no remaining members cannot be used and is removed as a whole.
+    if (!filtered.length) return [];
+    return [{
+      ...group,
+      members: filtered,
+      ownerId: nextOwner || group.ownerId,
+      relationships,
+      updatedAt: new Date().toISOString(),
+    }];
+  });
+  if (changedCount) {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    window.dispatchEvent(new CustomEvent('sane333:storage-changed', { detail: { key: STORAGE_KEY } }));
+  }
+  return changedCount;
+}

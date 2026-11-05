@@ -123,6 +123,36 @@ export function removeNpcReferences(npcId: string): void {
   }
 }
 
+/** Clear NPC bindings when a character card is deleted; the NPC itself remains intact. */
+export function unbindNpcCharacterReferences(characterId: string): number {
+  if (typeof window === 'undefined' || !characterId) return 0;
+  const raw = window.localStorage.getItem(KEY);
+  if (raw === null) return 0;
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error('NPC_STORAGE_INVALID');
+  let changed = 0;
+  const next = parsed.map((npc: any) => {
+    if (!npc || typeof npc !== 'object') return npc;
+    const patch: Record<string, unknown> = {};
+    if (String(npc.boundCharacterId || '') === characterId) {
+      patch.boundCharacterId = '';
+      patch.boundCharacterName = '';
+    }
+    if (String(npc.sourceCharacterId || '') === characterId) {
+      patch.sourceCharacterId = null;
+      patch.sourceCharacterName = null;
+    }
+    if (!Object.keys(patch).length) return npc;
+    changed += 1;
+    return { ...npc, ...patch, updatedAt: new Date().toISOString() };
+  });
+  if (changed) {
+    window.localStorage.setItem(KEY, JSON.stringify(next));
+    window.dispatchEvent(new CustomEvent('sane333:storage-changed', { detail: { key: KEY } }));
+  }
+  return changed;
+}
+
 export function updateNpc(id: string, patch: Partial<SaneNpc>): void {
   const npc = getNpcs().find(item => item.id === id);
   if (!npc) return;

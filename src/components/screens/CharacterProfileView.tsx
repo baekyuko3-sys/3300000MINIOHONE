@@ -18,9 +18,12 @@ import {
   getCharacterMemory,
   saveCharacterMemory,
   clearCharacterMemory,
+  clearAllCharacterMemoryVariants,
 } from '../../store/characterMemory';
 import { removeLineConversationData } from '../../store/lineRuntime';
 import { removeCharacterOfflineEvents } from '../../store/offlineEvents';
+import { removeCharacterFromLineGroups } from '../../store/lineGroups';
+import { unbindNpcCharacterReferences } from '../../store/npcs';
 
 interface CharacterProfileViewProps {
   themeMode?: any;
@@ -348,6 +351,14 @@ export function CharacterProfileView({ onNavigate }: CharacterProfileViewProps) 
 
     // Character-owned runtime data.
     clearCharacterMemory(characterId);
+    clearAllCharacterMemoryVariants(characterId);
+    try {
+      removeCharacterFromLineGroups(characterId);
+      unbindNpcCharacterReferences(characterId);
+    } catch (error) {
+      console.error('[Character deletion] Related group/NPC cleanup failed', error);
+      showNotice('角色已移除，但部分群聊或 NPC 关联清理失败；请检查本地存储空间');
+    }
     removeCharacterRuntime(characterId);
     removeCharacterOfflineEvents(characterId);
     removeLineConversationData(characterId, { removeChatItem: deleteChatHistory });
