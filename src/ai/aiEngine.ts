@@ -97,6 +97,7 @@ export interface AiReplyInput {
   presencePenalty?: number;
   seed?: number | null;
   onDelta?: (delta: string) => void;
+  signal?: AbortSignal;
   debugConversationId?: string;
 }
 
@@ -878,6 +879,7 @@ async function callGemini(input: AiReplyInput): Promise<string> {
       'Content-Type': 'application/json',
       'x-goog-api-key': settings.apiKey.trim(),
     },
+    signal: input.signal,
     body: JSON.stringify(body),
   }, 90000);
 
@@ -944,16 +946,22 @@ function isLocalAiBaseUrl(baseUrl: string): boolean {
 
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 30000): Promise<Response> {
   const controller = new AbortController();
+  const externalSignal = init.signal;
+  const abortFromCaller = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) abortFromCaller();
+  else externalSignal?.addEventListener('abort', abortFromCaller, { once: true });
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(input, { ...init, signal: controller.signal });
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
+    if (externalSignal?.aborted) throw new Error('AI_ABORTED: 当前回复请求已取消');
+    if (controller.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
       throw new Error('AI_TIMEOUT: API 接口超过 ' + Math.round(timeoutMs / 1000) + ' 秒没有响应，请检查 API 地址、API Key、网络连接或服务商状态。');
     }
     throw error;
   } finally {
     window.clearTimeout(timer);
+    externalSignal?.removeEventListener('abort', abortFromCaller);
   }
 }
 
@@ -1030,6 +1038,7 @@ async function callOpenAiCompatible(input: AiReplyInput): Promise<string> {
       'Content-Type': 'application/json',
       Authorization: 'Bearer ' + input.settings.apiKey.trim(),
     },
+    signal: input.signal,
     body: JSON.stringify(body),
   }, 90000);
 
@@ -1628,6 +1637,7 @@ export interface CreativeTextInput {
   temperature?: number;
   onDelta?: (delta: string) => void;
   timeoutMs?: number;
+  signal?: AbortSignal;
   macroNames?: MacroNames;
 }
 
@@ -1658,6 +1668,7 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
     const response = await fetchWithTimeout('/api/ai-models', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: input.signal,
       body: JSON.stringify({
         action: 'chat',
         provider: input.settings.provider,
@@ -1698,6 +1709,7 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
       const response = await fetchWithTimeout(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': input.settings.apiKey.trim() },
+        signal: input.signal,
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: [
