@@ -1,3 +1,4 @@
+import { reportPersistenceIssue } from './usePersistentState';
 /**
  * 通话记录 store
  * 每次通话结束自动保存，含字幕 transcript，可回放查看
@@ -22,21 +23,38 @@ export interface CallRecord {
 
 const KEY = 'line:call-history';
 
+let callHistoryWriteBlocked = false;
+
 function readAll(): CallRecord[] {
+  if (typeof window === 'undefined') return [];
   try {
-    const raw = localStorage.getItem(KEY);
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr : [];
-  } catch {
+    const raw = window.localStorage.getItem(KEY);
+    if (raw === null) { callHistoryWriteBlocked = false; return []; }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('CALL_HISTORY_SCHEMA_INVALID');
+    callHistoryWriteBlocked = false;
+    return parsed;
+  } catch (error) {
+    callHistoryWriteBlocked = true;
+    reportPersistenceIssue('read:' + KEY, '通话记录损坏或格式不符；已锁定写入以保留原始通话记录', error);
     return [];
   }
 }
 
-function writeAll(records: CallRecord[]) {
+function writeAll(records: CallRecord[]): boolean {
+  if (typeof window === 'undefined' || callHistoryWriteBlocked) return false;
   try {
-    // 只保留最近 100 条
-    localStorage.setItem(KEY, JSON.stringify(records.slice(0, 100)));
-  } catch {}
+    const raw = window.localStorage.getItem(KEY);
+    if (raw !== null && !Array.isArray(JSON.parse(raw))) throw new Error('CALL_HISTORY_SCHEMA_INVALID');
+    const serialized = JSON.stringify(records.slice(0, 100));
+    window.localStorage.setItem(KEY, serialized);
+    if (window.localStorage.getItem(KEY) !== serialized) throw new Error('CALL_HISTORY_WRITE_VERIFY_FAILED');
+    return true;
+  } catch (error) {
+    callHistoryWriteBlocked = true;
+    reportPersistenceIssue('write:' + KEY, '通话记录保存失败；原始记录已保留', error);
+    return false;
+  }
 }
 
 export function saveCallRecord(input: Omit<CallRecord, 'id' | 'timestamp'> & { timestamp?: string }): CallRecord {
@@ -66,7 +84,9 @@ export function deleteCallRecord(id: string) {
 }
 
 export function clearCallHistory() {
-  writeAll([]);
+  // Explicit user-requested clearing is allowed even when the stored history is corrupt.
+  callHistoryWriteBlocked = false;
+  if (typeof window !== 'undefined') window.localStorage.removeItem(KEY);
   window.dispatchEvent(new Event('sane333:call-history-changed'));
 }
 
