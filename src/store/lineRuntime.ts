@@ -787,10 +787,11 @@ export function removeLineConversationData(id: string, options: { removeChatItem
     item && typeof item.id === 'string' &&
     (item.id === id || (!item.npcId && String(item.characterId || '') === id))
   );
-  const conversationIds = Array.from(new Set([
+  const relatedConversationIds = Array.from(new Set([
     id,
-    ...(removeChatItem ? relatedChats.map((item: any) => String(item.id)) : []),
+    ...relatedChats.map((item: any) => String(item.id)),
   ]));
+  const conversationIds = removeChatItem ? relatedConversationIds : [id];
 
   const removeSettings = (conversationId: string) => {
     for (const key of [
@@ -833,7 +834,7 @@ export function removeLineConversationData(id: string, options: { removeChatItem
   const notifications = getLineNotifications();
   writeJson(
     NOTIFICATION_KEY,
-    notifications.filter(item => item.characterId !== id && !conversationIds.includes(String(item.conversationId || ''))),
+    notifications.filter(item => item.characterId !== id && !relatedConversationIds.includes(String(item.conversationId || ''))),
   );
 
   if (chats) {
