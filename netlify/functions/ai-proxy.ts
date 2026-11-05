@@ -158,18 +158,6 @@ function validateRequestBody(body: Body, provider: string) {
     }
   }
 }
-async function upstreamJson(response: Response) {
-  const text = await response.text();
-  let data: unknown = {};
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {
-    data = { error: text || response.statusText || 'Upstream returned invalid JSON' };
-  }
-  return json(data, response.status, {
-    'Content-Type': response.headers.get('content-type') || 'application/json',
-  });
-}
 
 export default async function handler(request: Request) {
   if (request.method === 'OPTIONS') {
