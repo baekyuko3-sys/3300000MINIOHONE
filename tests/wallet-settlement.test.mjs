@@ -146,3 +146,26 @@ test('parallel wallet operations serialize and family card spend commits with tr
   assert.equal(getFamilyCards()[0].spentThisMonth, 7);
   assert.equal(getWalletTransactions().filter(tx => tx.type === 'transfer').length, 1);
 });
+
+test('rejected transfer reverses family card spend in the same settlement', async () => {
+  await setWalletBalance(20);
+  const card = await addFamilyCard('收款角色', 3);
+  assert.ok(card);
+  assert.equal(await walletSendTransfer(5, '收款角色', '', 'family-transfer', '收款角色'), true);
+  assert.equal(getFamilyCards()[0].spentThisMonth, 5);
+  assert.equal(await walletSettleTransfer('family-transfer', 'rejected'), true);
+  assert.equal(getWalletBalance(), 20);
+  assert.equal(getFamilyCards()[0].spentThisMonth, 0);
+});
+
+test('red packet refund reverses only the refunded portion of family card spend', async () => {
+  await setWalletBalance(20);
+  const card = await addFamilyCard('红包角色', 10);
+  assert.ok(card);
+  assert.equal(await walletSendRedPacket(6, '红包', 'family-packet', [100, 200, 300], '红包角色'), true);
+  assert.equal(getFamilyCards()[0].spentThisMonth, 6);
+  assert.equal(await walletRegisterRedPacketClaim('family-packet', 'npc:one', 0), true);
+  assert.equal(await walletRefundRedPacket('family-packet', 5, '退回', [100, 200, 300], [0]), true);
+  assert.equal(getWalletBalance(), 19);
+  assert.equal(getFamilyCards()[0].spentThisMonth, 1);
+});
