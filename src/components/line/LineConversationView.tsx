@@ -71,7 +71,7 @@ import {
 } from '../../store/lineMediaCards';
 import { appendLineMessage, editLineMessage, toggleLineReaction, setLineMessageFavorite, recordLineCall, markLineMessageFailed, clearLineConversation, recallLineMessage, updateLineMessage } from '../../store/lineRuntime';
 import { saveCallRecord, getCallHistory, deleteCallRecord, formatCallDuration, type CallRecord } from '../../store/callHistory';
-import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, searchLineMessages, isLineMessageFromUser, formatChatListTime, stripLeakedInternalBlocks, stripLeakedMarkupTags, normalizeLineMessage, resolveMessageRole, runLineStorageMigrations, npcConversationId, buildDeletedTombstone, isLineMessageAiVisible, type LineRuntimeMessage } from '../../store/lineRuntime';
+import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, saveLineConversationSnapshot, searchLineMessages, isLineMessageFromUser, formatChatListTime, stripLeakedInternalBlocks, stripLeakedMarkupTags, normalizeLineMessage, resolveMessageRole, runLineStorageMigrations, npcConversationId, buildDeletedTombstone, isLineMessageAiVisible, type LineRuntimeMessage } from '../../store/lineRuntime';
 import { isLineTurnRequestCurrent, releaseLineTypingRequest } from '../../store/lineTurnGuard';
 import { fetchLineWeather, formatLineWeather, type LineWeatherSnapshot } from '../../store/lineReality';
 import { getRecentMomentsForGroup, maybePostGroupMomentAfterRound } from '../../store/momentsAfterChat';
@@ -991,6 +991,10 @@ export function LineConversationView({
     // Mirror the whole visible conversation so older messages remain searchable,
     // recoverable after reload, and available to the AI context layer.
     saveLineConversationMessages(conversationStorageId, runtimeMessages);
+    // usePersistentState is debounced; switching chats unmounts this view and cancels
+    // its pending timer. Flush the full (non-normalized) transcript synchronously so
+    // the next mount cannot reopen an older non-empty snapshot.
+    saveLineConversationSnapshot(conversationStorageId, messages);
     // 只在最后一条消息 ID 真正变化时才标记已读：markLineConversationRead 会 dispatch
     // sane333:line-runtime-changed 事件，父组件监听后 setChatItems；若每次 messages
     // 引用变化都 dispatch，极易与父组件形成"子 effect → 事件 → 父 setState → 子重渲染"

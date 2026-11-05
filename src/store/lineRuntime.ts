@@ -105,6 +105,14 @@ export function getLineConversationMessages(id: string): LineRuntimeMessage[] {
   return readJson<LineRuntimeMessage[]>(conversationKey(id), []);
 }
 
+/** Synchronously persist the complete UI snapshot before a conversation unmounts.
+ * The runtime index is intentionally normalized/lossy; this key remains the full transcript source.
+ */
+export function saveLineConversationSnapshot(id: string, messages: unknown[]) {
+  if (!id) return;
+  writeJson(conversationKey(id), messages);
+}
+
 export function saveLineConversationMessages(id: string, messages: LineRuntimeMessage[]) {
   const normalized = messages.map(normalizeLineMessage);
   writeJson(conversationKey(id), normalized);
