@@ -58,6 +58,8 @@ export interface CharacterMemory {
 
 // Memory keys are prefix-stable: char:X and X share the same bare key, so
 // the char:/npc: id migration never orphans stored memories.
+const blockedMemoryKeys = new Set<string>();
+
 const keyFor = (characterId: string, personaId?: string | null) => {
   const bare = String(characterId || '').replace(/^(?:char|npc)[:-]/i, '');
   return personaId ? `phone:character-memory:${bare}:persona:${personaId}` : `phone:character-memory:${bare}`;
@@ -108,7 +110,7 @@ export function clearAllCharacterMemoryVariants(characterId: string) {
     const key = window.localStorage.key(i);
     if (key && (key === base || key.startsWith(personaPrefix))) toRemove.push(key);
   }
-  toRemove.forEach(key => window.localStorage.removeItem(key));
+  toRemove.forEach(key => { window.localStorage.removeItem(key); blockedMemoryKeys.delete(key); });
 }
 export function getCharacterMemory(characterId: string, characterName: string, personaId?: string | null): CharacterMemory {
   if (typeof window === 'undefined') return emptyMemory(characterId, characterName, personaId);
@@ -116,12 +118,15 @@ export function getCharacterMemory(characterId: string, characterName: string, p
   let raw: string | null = null;
   try {
     raw = window.localStorage.getItem(key);
-    if (!raw) return emptyMemory(characterId, characterName, personaId);
+    if (raw === null) { blockedMemoryKeys.delete(key); return emptyMemory(characterId, characterName, personaId); }
     const parsed = JSON.parse(raw) as Partial<CharacterMemory>;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      blockedMemoryKeys.add(key);
       preserveCorruptMemory(key, raw);
+      reportPersistenceIssue('character-memory-read:' + key, '角色长期记忆结构不正确；已锁定写入以保留原始内容', new Error('CHARACTER_MEMORY_SCHEMA_INVALID'));
       return emptyMemory(characterId, characterName, personaId);
     }
+    blockedMemoryKeys.delete(key);
     return {
       ...emptyMemory(characterId, characterName || parsed.characterName || '', personaId),
       ...parsed,
@@ -133,8 +138,9 @@ export function getCharacterMemory(characterId: string, characterName: string, p
       memoryStyle: parsed.memoryStyle ? { ...getDefaultMemoryStyle(), ...parsed.memoryStyle, sections: { ...getDefaultMemoryStyle().sections, ...(parsed.memoryStyle as CharacterMemoryStyleSettings).sections } } : getDefaultMemoryStyle(),
     };
   } catch (error) {
+    blockedMemoryKeys.add(key);
     if (raw !== null) preserveCorruptMemory(key, raw);
-    reportPersistenceIssue('character-memory-read:' + key, '角色长期记忆读取或解析失败；已尝试保存恢复副本', error);
+    reportPersistenceIssue('character-memory-read:' + key, '角色长期记忆读取或解析失败；已锁定写入并尝试保存恢复副本', error);
     return emptyMemory(characterId, characterName, personaId);
   }
 }
@@ -160,11 +166,26 @@ export function saveCharacterMemory(memory: CharacterMemory): CharacterMemory {
   if (typeof window !== 'undefined') {
     const key = keyFor(memory.characterId, memory.personaId);
     try {
-      window.localStorage.setItem(key, JSON.stringify(next));
+      if (blockedMemoryKeys.has(key)) {
+        reportPersistenceIssue('character-memory-write-blocked:' + key, '角色记忆处于损坏保护状态；已阻止新内容覆盖原始记录');
+        return getCharacterMemory(memory.characterId, memory.characterName, memory.personaId);
+      }
+      const raw = window.localStorage.getItem(key);
+      if (raw !== null) {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('CHARACTER_MEMORY_SCHEMA_INVALID');
+      }
+      const serialized = JSON.stringify(next);
+      window.localStorage.setItem(key, serialized);
+      if (window.localStorage.getItem(key) !== serialized) throw new Error('CHARACTER_MEMORY_WRITE_VERIFY_FAILED');
+      blockedMemoryKeys.delete(key);
     } catch (error) {
+      blockedMemoryKeys.add(key);
+      try {
+        const raw = window.localStorage.getItem(key);
+        if (raw !== null) preserveCorruptMemory(key, raw);
+      } catch { /* retain the original value if storage cannot be read */ }
       reportPersistenceIssue('character-memory-write:' + key, '角色长期记忆保存失败；已返回本地仍可读取的版本，当前更改可能尚未保存', error);
-      // Memory writes are often part of a chat reply. Do not crash the whole chat
-      // because storage is full; return the last persisted version instead.
       return getCharacterMemory(memory.characterId, memory.characterName, memory.personaId);
     }
   }
