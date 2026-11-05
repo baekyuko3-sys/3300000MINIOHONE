@@ -1029,11 +1029,15 @@ export function LineConversationView({
   const [transferAmount, setTransferAmount] = useState('');
   const [transferNote, setTransferNote] = useState('');
   const [redPacketAmount, setRedPacketAmount] = useState('');
+  const walletActionLockRef = useRef(false);
   const [redPacketBlessing, setRedPacketBlessing] = useState('恭喜发财，万事如意');
   const [redPacketCount, setRedPacketCount] = useState('3');
   const [redPacketMode, setRedPacketMode] = useState<'random' | 'equal'>('random');
   const [activeRedPacket, setActiveRedPacket] = useState<any | null>(null);
   const [showRedPacketModal, setShowRedPacketModal] = useState(false);
+  useEffect(() => {
+    if (!moneySheetType) walletActionLockRef.current = false;
+  }, [moneySheetType]);
   // 新红包到期后自动退回未领取份额；旧红包没有 sharesCents 时不猜测退款。
   useEffect(() => {
     let changed = false;
@@ -4120,14 +4124,17 @@ export function LineConversationView({
   };
 
   const handleSendTransfer = () => {
+    if (walletActionLockRef.current) return;
+    walletActionLockRef.current = true;
     const amount = formatMoneyAmount(transferAmount);
-    if (!amount) { showToast('请填写转账金额'); return; }
+    if (!amount) { walletActionLockRef.current = false; showToast('请填写转账金额'); return; }
     const note = transferNote.trim();
     const transferValue = Number(amount);
     const counterparty = isGroup ? (activeGroup?.name || '群聊') : (importedCharacter?.name || characterProfile.nickname || '角色');
     // 先完成钱包扣款与流水写入；余额不足时不创建聊天消息，避免出现“已发送但未扣款”。
     const transferId = `transfer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     if (!walletSendTransfer(transferValue, counterparty, note || 'LINE 转账', transferId)) {
+      walletActionLockRef.current = false;
       showToast('钱包余额不足或转账金额无效');
       return;
     }
@@ -4146,6 +4153,7 @@ export function LineConversationView({
     if (!persistedTransferMessages.some((item: any) => String(item.id) === String(transferId))) {
       // 钱包已扣款但聊天记录落盘失败时，立即走同一结算 ID 退款。
       walletSettleTransfer(transferId, 'rejected');
+      walletActionLockRef.current = false;
       showToast('转账消息保存失败，金额已退回');
       return;
     }
@@ -4187,13 +4195,15 @@ export function LineConversationView({
   };
 
   const handleSendRedPacket = () => {
+    if (walletActionLockRef.current) return;
+    walletActionLockRef.current = true;
     const amount = formatMoneyAmount(redPacketAmount);
-    if (!amount) { showToast('请填写红包金额'); return; }
+    if (!amount) { walletActionLockRef.current = false; showToast('请填写红包金额'); return; }
     const blessing = redPacketBlessing.trim() || '恭喜发财';
     const eligibleNpcCount = isGroup ? groupMembers.filter((member: any) => member && member.kind !== 'user' && member.id !== activeGroup?.ownerId).length : 0;
     const memberLimit = isGroup ? Math.max(1, eligibleNpcCount + 1) : 1;
     const count = isGroup ? Math.max(1, Math.min(memberLimit, 99, Number.parseInt(redPacketCount, 10) || 1)) : 1;
-    if (isGroup && Number(amount) < 0.01 * count) { showToast('红包总金额至少要能分给每个人 0.01 元'); return; }
+    if (isGroup && Number(amount) < 0.01 * count) { walletActionLockRef.current = false; showToast('红包总金额至少要能分给每个人 0.01 元'); return; }
     // 先生成稳定红包 ID；红包份额校验完成后，再一次性扣款并登记操作。
     const packetId = `redpacket-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const totalCents = Math.round(Number(amount) * 100);
@@ -4207,7 +4217,7 @@ export function LineConversationView({
       shares.push(share); centsLeft -= share;
     }
     if (!(isGroup && redPacketMode === 'equal')) shares.sort(() => Math.random() - 0.5);
-    if (!walletSendRedPacket(Number(amount), blessing, packetId, shares)) { showToast('钱包余额不足或红包份额无效'); return; }
+    if (!walletSendRedPacket(Number(amount), blessing, packetId, shares)) { walletActionLockRef.current = false; showToast('钱包余额不足或红包份额无效'); return; }
     const newMsg = {
       id: packetId, role: 'user' as const, kind: 'red-packet' as const,
       text: `[红包] ¥${amount} · ${blessing}`, time: '刚刚',
@@ -4219,6 +4229,7 @@ export function LineConversationView({
     if (!persistedPacketMessages.some((item: any) => String(item.id) === String(packetId))) {
       // 消息未能落盘时退回整笔红包，不能留下只有扣款、没有可领取卡片的状态。
       walletRefundRedPacket(packetId, Number(amount), '红包消息保存失败，已退回', shares, []);
+      walletActionLockRef.current = false;
       showToast('红包消息保存失败，金额已退回');
       return;
     }
