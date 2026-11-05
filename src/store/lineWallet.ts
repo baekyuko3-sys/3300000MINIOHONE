@@ -236,6 +236,20 @@ function findPacket(current: WalletLedger, id: string): PacketOperation | undefi
   return current.packets.find(entry => entry.id === id);
 }
 
+/** Read reserved packet slots so LINE can repair a stale chat card after a storage failure. */
+export function getWalletPacketClaims(packetId: string): Array<{ claimId: string; slotIndex: number; amountCents: number }> {
+  const packet = findPacket(readWalletLedger(), packetId);
+  if (!packet || !packet.slots || !Array.isArray(packet.sharesCents)) return [];
+  return Object.entries(packet.slots)
+    .filter(([claimId, slotIndex]) => Boolean(claimId) && Number.isInteger(slotIndex) && slotIndex >= 0 && slotIndex < packet.sharesCents!.length)
+    .map(([claimId, slotIndex]) => ({
+      claimId,
+      slotIndex,
+      amountCents: Number(packet.sharesCents![slotIndex] || 0),
+    }))
+    .filter(item => item.amountCents > 0);
+}
+
 export async function walletSendRedPacket(totalAmount: number, desc: string, operationId?: string, sharesCents?: number[], familyHolderName?: string): Promise<boolean> {
   if (!Number.isFinite(totalAmount) || totalAmount <= 0 || !operationId?.trim()) return false;
   const cents = Math.round(totalAmount * 100);

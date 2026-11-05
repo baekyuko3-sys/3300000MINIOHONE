@@ -339,11 +339,24 @@ export function appendLineMessage(id: string, message: LineRuntimeMessage): Line
 }
 
 export function updateLineMessage(id: string, messageId: number | string, patch: Partial<LineRuntimeMessage>) {
-  const next = getLineConversationMessages(id).map(message =>
+  const key = conversationKey(id);
+  const current = getLineConversationMessages(id);
+  const next = current.map(message =>
     String(message.id) === String(messageId) ? normalizeLineMessage({ ...message, ...patch }) : message
   );
-  saveLineConversationMessages(id, next);
-  return next;
+  if (typeof window === 'undefined') return current;
+  try {
+    const serialized = JSON.stringify(next);
+    window.localStorage.setItem(key, serialized);
+    if (window.localStorage.getItem(key) !== serialized) {
+      reportPersistenceIssue('line-update:' + id, 'LINE 消息状态更新未能验证落盘；保留原始消息状态以便恢复');
+      return current;
+    }
+    return next;
+  } catch (error) {
+    reportPersistenceIssue('line-update:' + id, 'LINE 消息状态更新失败；原始消息状态已保留', error);
+    return current;
+  }
 }
 
 export function recallLineMessage(id: string, messageId: number | string) {

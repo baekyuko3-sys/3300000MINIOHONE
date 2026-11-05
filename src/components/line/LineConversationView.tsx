@@ -8,7 +8,7 @@ import { generateSpeech, transcribeAudio } from '../../ai/mediaEngine';
 import { readAppSettings } from '../../store/appSettings';
 import type { ChannelAiSettings } from '../../store/appSettings';
 import { getMedia, putMedia } from '../../store/mediaVault';
-import { walletSendRedPacket, walletSendTransfer, walletClaimRedPacket, walletRegisterRedPacketClaim, walletRefundRedPacket, walletSettleTransfer, getFamilyCards } from '../../store/lineWallet';
+import { walletSendRedPacket, walletSendTransfer, walletClaimRedPacket, walletRegisterRedPacketClaim, walletRefundRedPacket, walletSettleTransfer, getFamilyCards, getWalletPacketClaims } from '../../store/lineWallet';
 import { VroomImage } from '../VroomImage';
 import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory, updateCharacterMemoryItem, deleteCharacterMemoryItem, clearCharacterMemory, clearAllCharacterMemoryVariants } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
@@ -1038,6 +1038,58 @@ export function LineConversationView({
   useEffect(() => {
     if (!moneySheetType) walletActionLockRef.current = false;
   }, [moneySheetType]);
+  // Reconcile packet claim slots from the authoritative wallet ledger.
+  // If a chat-card write failed after a successful claim/reservation, rebuild the
+  // missing claim row on next render instead of letting the UI disagree forever.
+  useEffect(() => {
+    let cancelled = false;
+    const reconcile = () => {
+      for (const message of messages) {
+        if (cancelled || message.kind !== 'red-packet') continue;
+        const meta = message.metadata && typeof message.metadata === 'object' ? message.metadata : {};
+        const ledgerClaims = getWalletPacketClaims(String(message.id));
+        if (!ledgerClaims.length) continue;
+        const currentClaims = Array.isArray(message.redPacketClaims)
+          ? message.redPacketClaims
+          : Array.isArray(meta.claims) ? meta.claims : [];
+        const known = new Set(currentClaims.map((claim: any) => String(claim?.userId || '')));
+        const recovered = ledgerClaims.filter(item => !known.has(item.claimId));
+        if (!recovered.length) continue;
+        const nextClaims = [
+          ...currentClaims,
+          ...recovered.map(item => {
+            const npcId = item.claimId.startsWith('npc:') ? item.claimId.slice(4) : '';
+            const member = npcId ? groupMembers.find((candidate: any) => String(candidate.id) === npcId) : null;
+            return {
+              userId: item.claimId,
+              name: item.claimId === 'me' ? '我' : (member?.nickname || member?.name || npcId || item.claimId),
+              slotIndex: item.slotIndex,
+              amount: (item.amountCents / 100).toFixed(2),
+              time: '已恢复',
+            };
+          }),
+        ];
+        const count = Math.max(1, Number(message.redPacketCount || meta.count || 1));
+        const status = nextClaims.length >= count ? 'claimed' : 'partial';
+        const updatedMeta = { ...meta, claims: nextClaims, status };
+        const updated = { ...message, redPacketClaims: nextClaims, redPacketStatus: status, metadata: updatedMeta };
+        const persisted = updateLineMessage(conversationStorageId, message.id, {
+          redPacketClaims: nextClaims,
+          redPacketStatus: status,
+          metadata: updatedMeta,
+        } as any);
+        if (persisted.some((item: any) => String(item.id) === String(message.id) &&
+          Array.isArray((item as any).redPacketClaims) &&
+          (item as any).redPacketClaims.length >= nextClaims.length)) {
+          setMessages(prev => prev.map((item: any) => String(item.id) === String(message.id) ? updated : item));
+          if (String(activeRedPacket?.id) === String(message.id)) setActiveRedPacket(updated);
+        }
+      }
+    };
+    reconcile();
+    return () => { cancelled = true; };
+  }, [conversationStorageId, messages, groupMembers, activeRedPacket?.id]);
+
   // 新红包到期后自动退回未领取份额；旧红包没有 sharesCents 时不猜测退款。
   useEffect(() => {
     let cancelled = false;
