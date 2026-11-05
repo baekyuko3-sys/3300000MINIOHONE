@@ -1,3 +1,4 @@
+import { parseSseResponse, readError } from './streaming';
 import type { ImportedCharacter } from '../data/characterImport';
 import type { ProjectManifest, WorldBook } from '../types';
 import type { CharacterMemory, MemorySection } from '../store/characterMemory';
@@ -748,95 +749,6 @@ function requireApiKey(settings: AiSettings) {
   }
 }
 
-async function readError(response: Response): Promise<string> {
-  const statusLabel = response.statusText ? ' ' + response.statusText : '';
-  try {
-    const data = await response.json();
-    const error = data?.error ?? data;
-    const code = error?.code ?? error?.error_code ?? error?.statusCode;
-    const type = error?.type;
-    const message = error?.message ?? data?.message;
-    const parts = [
-      code !== undefined ? 'code=' + String(code) : '',
-      type ? 'type=' + String(type) : '',
-      message ? String(message) : '',
-    ].filter(Boolean);
-    return '[' + response.status + statusLabel + ']' + (parts.length ? ' ' + parts.join(' · ') : ' ' + JSON.stringify(data));
-  } catch {
-    try {
-      const text = (await response.text()).trim();
-      return '[' + response.status + statusLabel + ']' + (text ? ' ' + text : '');
-    } catch {
-      return '[' + response.status + statusLabel + '] AI 请求失败';
-    }
-  }
-}
-
-async function parseSseResponse(
-  response: Response,
-  extractText: (data: any) => string,
-  onDelta?: (delta: string) => void,
-  idleTimeoutMs = 45000,
-  onReasoning?: (delta: string) => void,
-  extractReasoning?: (data: any) => string,
-): Promise<string> {
-  if (!response.body) {
-    const data = await response.json();
-    const text = extractText(data).trim();
-    const reasoning = extractReasoning?.(data) || '';
-    if (reasoning) onReasoning?.(reasoning);
-    if (text) onDelta?.(text);
-    return text;
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let fullText = '';
-
-  const processLine = (line: string) => {
-    const trimmed = line.trim();
-    if (!trimmed || !trimmed.startsWith('data:')) return;
-    const payload = trimmed.slice(5).trim();
-    if (!payload || payload === '[DONE]') return;
-
-    try {
-      const data = JSON.parse(payload);
-      const delta = extractText(data);
-      const reasoning = extractReasoning?.(data) || '';
-      if (reasoning) onReasoning?.(reasoning);
-      if (delta) {
-        fullText += delta;
-        onDelta?.(delta);
-      }
-    } catch {
-      // Ignore non-JSON SSE comments/keep-alives.
-    }
-  };
-
-  let lastChunkAt = Date.now();
-  while (true) {
-    const readPromise = reader.read();
-    const timeoutPromise = new Promise<{ value: undefined; done: true }>((_, reject) => {
-      const timer = window.setTimeout(() => reject(new Error('AI_STREAM_TIMEOUT: 流式接口连续 ' + Math.round(idleTimeoutMs / 1000) + ' 秒没有收到新数据')), idleTimeoutMs);
-      readPromise.finally(() => window.clearTimeout(timer));
-    });
-    const { value, done } = await Promise.race([readPromise, timeoutPromise]);
-    if (done) break;
-    lastChunkAt = Date.now();
-    void lastChunkAt;
-    buffer += decoder.decode(value, { stream: true });
-
-    const lines = buffer.split(/\r?\n/);
-    buffer = lines.pop() || '';
-    lines.forEach(processLine);
-  }
-
-  buffer += decoder.decode();
-  if (buffer) processLine(buffer);
-
-  return fullText.trim();
-}
 
 function extractGeminiText(data: any): string {
   return (data?.candidates || [])
