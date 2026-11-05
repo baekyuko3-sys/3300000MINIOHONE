@@ -6902,7 +6902,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                     onClick={async () => {
                       const el = document.getElementById('wallet-topup-input') as HTMLInputElement;
                       const v = parseFloat(el?.value || '0');
-                      if (v > 0) { await walletTopupCustom(v); el.value = ''; showToast(`已充值 ¥${v.toFixed(2)}`); }
+                      if (v > 0) { const ok = await walletTopupCustom(v); if (!ok) { showToast('充值失败，请重试'); return; } el.value = ''; showToast(`已充值 ¥${v.toFixed(2)}`); }
                     }}
                     className="px-6 py-3 rounded-[14px] bg-[#1a1a1a] text-white text-[14px]"
                   >充值</button>
@@ -6911,7 +6911,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   {[50, 100, 200, 500].map(amt => (
                     <button
                       key={amt}
-                      onClick={async () => { await walletTopupCustom(amt); showToast(`已充值 ¥${amt}`); }}
+                      onClick={async () => { const ok = await walletTopupCustom(amt); showToast(ok ? `已充值 ¥${amt}` : '充值失败，请重试'); }}
                       className="flex-1 py-2.5 rounded-[12px] border border-[#e8e4de] text-[13px] text-[#666]"
                     >¥{amt}</button>
                   ))}
