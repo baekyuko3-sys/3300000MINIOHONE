@@ -2386,51 +2386,67 @@ export function MusicHtmlView({ active = true, onNavigate }: MusicHtmlViewProps)
           setBubble(reaction);
         } else if (type === 'dm-send') {
           const text = String(data.text || '').trim();
-          const sessionNow = sessionRef.current;
-          const currentNow = currentRef.current;
-          if (!text || !sessionNow || !currentNow || sessionNow.status === 'ended') return;
-          if (sessionNow.dmPending) {
-            showToast('TA 正在回复，请稍等一下');
-            return;
-          }
-          const sentAt = new Date().toISOString();
-          const withMine: MusicStrangerSession = {
-            ...sessionNow,
-            dmPending: true,
-            dmPendingAt: sentAt,
-            reactionLog: [
-              ...sessionNow.reactionLog,
-              { trackId: currentNow.id, text: `我说：${text}`, createdAt: sentAt },
-            ],
-            updatedAt: sentAt,
+          const requestedSessionId = String(sessionRef.current?.id || '');
+          if (!text || !requestedSessionId) return;
+          const sendDm = async () => {
+            // Re-read after acquiring the cross-tab lock. Two music tabs may
+            // otherwise both observe dmPending=false and send duplicate turns.
+            const sessionNow = readStrangerSession();
+            const currentNow = currentRef.current;
+            if (!sessionNow || sessionNow.id !== requestedSessionId || !currentNow || sessionNow.status === 'ended') return;
+            const pendingAt = Date.parse(String(sessionNow.dmPendingAt || sessionNow.updatedAt || ''));
+            const pendingIsFresh = Boolean(sessionNow.dmPending && Number.isFinite(pendingAt) && Date.now() - pendingAt < 120_000);
+            if (pendingIsFresh) {
+              showToast('TA 正在回复，请稍等一下');
+              return;
+            }
+            const sentAt = new Date().toISOString();
+            const withMine: MusicStrangerSession = {
+              ...sessionNow,
+              dmPending: true,
+              dmPendingAt: sentAt,
+              reactionLog: [
+                ...sessionNow.reactionLog,
+                { trackId: currentNow.id, text: `我说：${text}`, createdAt: sentAt },
+              ],
+              updatedAt: sentAt,
+            };
+            sessionRef.current = withMine;
+            setSession(withMine);
+            saveStrangerSession(withMine);
+            const reply = await askDmReply(withMine, currentNow, text);
+            const latest = readStrangerSession();
+            if (!latest || latest.id !== withMine.id || latest.status === 'ended') return;
+            if (!reply) {
+              const settled = { ...latest, dmPending: false, dmPendingAt: undefined, updatedAt: new Date().toISOString() };
+              sessionRef.current = settled;
+              setSession(settled);
+              saveStrangerSession(settled);
+              showToast('TA 这会儿没回上，你的消息已保留，可以稍后再发');
+              return;
+            }
+            const withReply: MusicStrangerSession = {
+              ...latest,
+              dmPending: false,
+              dmPendingAt: undefined,
+              reactionLog: [
+                ...latest.reactionLog,
+                { trackId: currentNow.id, text: reply, createdAt: new Date().toISOString() },
+              ],
+              updatedAt: new Date().toISOString(),
+            };
+            sessionRef.current = withReply;
+            setSession(withReply);
+            saveStrangerSession(withReply);
           };
-          sessionRef.current = withMine;
-          setSession(withMine);
-          saveStrangerSession(withMine);
-          const reply = await askDmReply(withMine, currentNow, text);
-          const latest = sessionRef.current;
-          if (!latest || latest.id !== withMine.id) return;
-          if (!reply) {
-            const settled = { ...latest, dmPending: false, dmPendingAt: undefined, updatedAt: new Date().toISOString() };
-            sessionRef.current = settled;
-            setSession(settled);
-            saveStrangerSession(settled);
-            showToast('TA 这会儿没回上，你的消息已保留，可以稍后再发');
-            return;
+          const lockManager = typeof navigator !== 'undefined'
+            ? (navigator as Navigator & { locks?: { request: <T>(name: string, options: { mode: 'exclusive' }, callback: () => Promise<T>) => Promise<T> } }).locks
+            : undefined;
+          if (lockManager?.request) {
+            await lockManager.request('33phone-music-dm:' + requestedSessionId, { mode: 'exclusive' }, sendDm);
+          } else {
+            await sendDm();
           }
-          const withReply: MusicStrangerSession = {
-            ...latest,
-            dmPending: false,
-            dmPendingAt: undefined,
-            reactionLog: [
-              ...latest.reactionLog,
-              { trackId: currentNow.id, text: reply, createdAt: new Date().toISOString() },
-            ],
-            updatedAt: new Date().toISOString(),
-          };
-          sessionRef.current = withReply;
-          setSession(withReply);
-          saveStrangerSession(withReply);
         } else if (type === 'together-settings') {
           const sessionNow = sessionRef.current;
           if (!sessionNow || sessionNow.status === 'ended') return;

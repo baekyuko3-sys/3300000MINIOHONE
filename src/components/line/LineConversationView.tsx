@@ -4319,12 +4319,18 @@ export function LineConversationView({
       locationType: 'virtual',
       metadata: { name, address, source: 'virtual', mapLabel: address || name },
     };
-    setMessages((prev) => [...prev, newMsg]);
-    appendLineMessage(conversationStorageId, newMsg);
+    // Persist first. Do not show a sent location bubble if local storage
+    // rejected the write (quota/private-mode failure).
+    const persisted = appendLineMessage(conversationStorageId, newMsg);
+    if (!persisted.some((item: any) => String(item.id) === String(newMsg.id))) {
+      showToast('定位未能保存，请检查设备存储空间后重试');
+      return;
+    }
+    setMessages(persisted);
     setMoneySheetType(null);
     setLocationName('');
     setLocationAddress('');
-    showToast('定位已发送');
+    showToast('虚拟位置已发送');
   };
 
   // 角色个人主页动态发评论
