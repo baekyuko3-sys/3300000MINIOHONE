@@ -1039,7 +1039,8 @@ export function LineConversationView({
     let changed = false;
     const now = Date.now();
     for (const message of messages) {
-      if (message.kind !== 'red-packet') continue;
+      // 仅退回本机发出的红包；收到的红包不能在本机凭空生成退款余额。
+      if (message.kind !== 'red-packet' || message.role !== 'user') continue;
       const meta = message.metadata && typeof message.metadata === 'object' ? message.metadata : {};
       const expiresAt = Date.parse(String(meta.expiresAt || ''));
       const shares = Array.isArray(meta.sharesCents) ? meta.sharesCents.map((value: any) => Math.max(0, Math.round(Number(value) || 0))) : null;
