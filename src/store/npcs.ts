@@ -1,4 +1,5 @@
 import { readPersistentState } from './usePersistentState';
+import { removeLineConversationData } from './lineRuntime';
 
 export interface SaneNpc {
   id: string;
@@ -83,47 +84,80 @@ export function deleteNpc(id: string): void {
 /** 删除 NPC 后清理各处引用，避免群聊/好友列表里留下幽灵成员 */
 export function removeNpcReferences(npcId: string): void {
   if (typeof window === 'undefined' || !npcId) return;
-  // 同页其他组件（如 LINE 好友列表用 useSyncedPersistentState）靠这个事件同步，
-  // 否则直接写存储后 React 状态收不到变更，已删 NPC 会残留显示。
   const broadcastKey = (key: string) => {
     try { window.dispatchEvent(new CustomEvent('sane333:storage-changed', { detail: { key } })); } catch { /* ignore */ }
   };
+
+  // Group cleanup is isolated: corrupt group data must not block friend/chat cleanup.
   try {
-    // 群聊：移除带该 npcId 的成员 + npcMembers 记录
-    const groupsRaw = window.localStorage.getItem('line:groups');
-    if (groupsRaw) {
-      const groups = JSON.parse(groupsRaw) as Array<any>;
-      const next = groups.map(group => {
-        let changed = false;
-        const members = Array.isArray(group.members)
-          ? group.members.filter((m: any) => { const keep = m?.npcId !== npcId; if (!keep) changed = true; return keep; })
-          : group.members;
-        let npcMembers = group.npcMembers;
-        if (npcMembers && typeof npcMembers === 'object') {
-          const entries = Object.entries(npcMembers).filter(([, v]: any) => v?.npcId !== npcId);
-          if (entries.length !== Object.keys(npcMembers).length) { npcMembers = Object.fromEntries(entries); changed = true; }
-        }
-        return changed ? { ...group, members, npcMembers, updatedAt: new Date().toISOString() } : group;
+    const raw = window.localStorage.getItem('line:groups');
+    if (raw !== null) {
+      const groups = JSON.parse(raw);
+      if (!Array.isArray(groups)) throw new Error('LINE_GROUPS_STORAGE_INVALID');
+      const next = groups.flatMap((group: any) => {
+        if (!group || typeof group !== 'object') return [group];
+        const members = Array.isArray(group.members) ? group.members : [];
+        const filtered = members.filter((member: any) => member?.npcId !== npcId && !(member?.kind === 'npc' && member?.id === npcId));
+        const changed = filtered.length !== members.length;
+        const relationships = Array.isArray(group.relationships)
+          ? group.relationships.filter((edge: any) => edge && String(edge.from) !== npcId && String(edge.to) !== npcId)
+          : group.relationships;
+        const edgesChanged = Array.isArray(group.relationships) && relationships.length !== group.relationships.length;
+        const ownerRemoved = String(group.ownerId || '') === npcId;
+        if (!changed && !edgesChanged && !ownerRemoved) return [group];
+        if (!filtered.length) return [];
+        return [{
+          ...group,
+          members: filtered,
+          ownerId: ownerRemoved ? String(filtered[0]?.id || filtered[0]?.npcId || '') : group.ownerId,
+          relationships,
+          updatedAt: new Date().toISOString(),
+        }];
       });
-      window.localStorage.setItem('line:groups', JSON.stringify(next));
-      broadcastKey('line:groups');
+      if (JSON.stringify(next) !== JSON.stringify(groups)) {
+        window.localStorage.setItem('line:groups', JSON.stringify(next));
+        broadcastKey('line:groups');
+      }
     }
-    // 好友列表：移除带该 npcId 的好友
-    const friendsRaw = window.localStorage.getItem('line:friends-list');
-    if (friendsRaw) {
-      const friends = JSON.parse(friendsRaw) as Array<any>;
-      const next = friends.filter(f => f?.npcId !== npcId);
+  } catch (error) {
+    console.error('[NPC deletion] Group cleanup failed; original group data retained', error);
+  }
+
+  // Friends cleanup has its own transaction boundary.
+  try {
+    const raw = window.localStorage.getItem('line:friends-list');
+    if (raw !== null) {
+      const friends = JSON.parse(raw);
+      if (!Array.isArray(friends)) throw new Error('LINE_FRIENDS_STORAGE_INVALID');
+      const next = friends.filter((friend: any) => friend?.npcId !== npcId);
       if (next.length !== friends.length) {
         window.localStorage.setItem('line:friends-list', JSON.stringify(next));
         broadcastKey('line:friends-list');
       }
     }
-  } catch {
-    // 清理失败不影响删除流程
+  } catch (error) {
+    console.error('[NPC deletion] Friend cleanup failed; original friend data retained', error);
+  }
+
+  // Remove every persona-specific NPC chat, its transcript/settings, and notifications.
+  try {
+    const raw = window.localStorage.getItem('line:chat-items');
+    if (raw !== null) {
+      const chats = JSON.parse(raw);
+      if (!Array.isArray(chats)) throw new Error('LINE_CHAT_ITEMS_INVALID');
+      const targets = chats.filter((chat: any) => chat?.npcId === npcId && typeof chat.id === 'string');
+      for (const chat of targets) removeLineConversationData(chat.id);
+      const next = chats.filter((chat: any) => chat?.npcId !== npcId);
+      if (next.length !== chats.length) {
+        window.localStorage.setItem('line:chat-items', JSON.stringify(next));
+        broadcastKey('line:chat-items');
+      }
+    }
+  } catch (error) {
+    console.error('[NPC deletion] Conversation cleanup failed; original data retained where possible', error);
   }
 }
 
-/** Clear NPC bindings when a character card is deleted; the NPC itself remains intact. */
 export function unbindNpcCharacterReferences(characterId: string): number {
   if (typeof window === 'undefined' || !characterId) return 0;
   const raw = window.localStorage.getItem(KEY);
