@@ -609,7 +609,7 @@ test('moments generation shows a persistent on-screen indicator, not a blank fee
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../src/components/line/LineAppView.tsx', import.meta.url), 'utf8');
   assert.ok(source.includes('momentsGeneratingText'));
-  assert.ok(source.includes("{isRefreshingMoments && ("));
+  assert.ok(source.includes("{isRefreshingMoments ? ("));
   assert.ok(source.includes('{momentsGeneratingText}'));
   assert.ok(source.includes("setMomentsGeneratingText('正在让角色生成朋友圈…')"));
   assert.ok(source.includes("setMomentsGeneratingText('正在让 ' + pickedNpc.name + ' 发朋友圈…')"));
@@ -618,5 +618,23 @@ test('moments generation shows a persistent on-screen indicator, not a blank fee
   // The indicator must sit above the dimming posts list, not inside it,
   // or it would dim to 35% with the list.
   assert.ok(source.indexOf('{momentsGeneratingText}') < source.indexOf("isRefreshingMoments ? 'opacity-35'"));
+});
+
+test('a blank moments result shows a persistent failure card with the reason', async () => {
+  // A 1.8s toast cannot carry the reason: after a failed generation the
+  // feed is blank and the user never learns why. Every failure path must
+  // record a persistent error (with the real reason), success must clear
+  // it, and the card must offer a retry that re-runs the same flow.
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/components/line/LineAppView.tsx', import.meta.url), 'utf8');
+  assert.ok(source.includes('momentsGenerateError'));
+  assert.ok(source.includes('生成失败'));
+  assert.ok(source.includes("if (msg.startsWith('生成成功')) setMomentsGenerateError(null);"));
+  assert.ok(source.includes("setMomentsGenerateError({ text: '生成失败：AI 返回空内容', from: 'all' })"));
+  assert.ok(source.includes("setMomentsGenerateError({ text: '保存失败：本地存储空间不足"));
+  assert.ok(source.includes("setMomentsGenerateError({ text: '当前人设的朋友圈里没有可见的发帖人"));
+  assert.ok(source.includes('{momentsGenerateError.text}'));
+  assert.ok(source.includes("if (from === 'npc') void generateNpcMomentsPost();"));
+  assert.ok(source.includes('>重试</button>'));
 });
 

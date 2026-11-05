@@ -353,16 +353,19 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
 
   const generateMomentsPost = async () => {
     if (isRefreshingMoments) return;
+    setMomentsGenerateError(null);
     let allowed: typeof importedCharacters = [];
     let allowedNpcs: ReturnType<typeof listPostableNpcs> = [];
     try {
       allowed = importedCharacters.filter(character => momentsSettings.enabledCharacterIds.length === 0 || momentsSettings.enabledCharacterIds.includes(character.id));
       allowedNpcs = listPostableNpcs(momentsSettings);
     } catch (e) {
+      setMomentsGenerateError({ text: e instanceof Error ? e.message : '一键生成失败，请重试', from: 'all' });
       showToast(e instanceof Error ? e.message : '一键生成失败，请重试');
       return;
     }
     if (!allowed.length && !allowedNpcs.length) {
+      setMomentsGenerateError({ text: '请先在 VROOM 设置里允许至少一个角色或 NPC 发动态', from: 'all' });
       showToast('请先在 VROOM 设置里允许至少一个角色或 NPC 发动态');
       return;
     }
@@ -375,6 +378,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       return isVisibleMomentAuthor('npc:' + npc.id, isFriend, npc.boundCharacterId || undefined);
     });
     if (!visibleAllowed.length && !visibleNpcs.length) {
+      setMomentsGenerateError({ text: '当前人设的朋友圈里没有可见的发帖人：去 VROOM 设置里允许已加好友的角色/NPC，或切换人设', from: 'all' });
       showToast('当前人设的朋友圈里没有可见的发帖人：去 VROOM 设置里允许已加好友的角色/NPC，或切换人设');
       return;
     }
@@ -389,7 +393,10 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         const msg = await generateNpcMomentNow(pickedNpc.id);
         try { setMomentsPosts(JSON.parse(window.localStorage.getItem(MOMENTS_POSTS_KEY) || '[]')); } catch { /* ignore */ }
         showToast(msg);
+        if (msg.startsWith('生成成功')) setMomentsGenerateError(null);
+        else setMomentsGenerateError({ text: msg, from: 'all' });
       } catch (e) {
+        setMomentsGenerateError({ text: e instanceof Error ? e.message : 'NPC 朋友圈生成失败', from: 'all' });
         showToast(e instanceof Error ? e.message : 'NPC 朋友圈生成失败');
       } finally {
         setIsRefreshingMoments(false);
@@ -439,16 +446,20 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         // 之前这里报了假成功，帖子下次重读就没了。写不成直说，不显示。
         const nextPosts = [newAiPost, ...(Array.isArray(momentsPostsRef.current) ? momentsPostsRef.current : [])];
         if (!writePosts(nextPosts)) {
+          setMomentsGenerateError({ text: '保存失败：本地存储空间不足，帖子没有存下来。先去手机体检里“清理日志和历史快照”腾出空间再试', from: 'all' });
           showToast('保存失败：本地存储空间不足，帖子没有存下来。先去手机体检里“清理日志和历史快照”腾出空间再试');
         } else {
+          setMomentsGenerateError(null);
           setMomentsPosts(nextPosts);
           showToast('生成成功：' + source.name + ' 发布了一条朋友圈');
           applyBatchCommentsAfterPost(newAiPost);
         }
       } else {
+        setMomentsGenerateError({ text: '生成失败：AI 返回空内容', from: 'all' });
         showToast('生成失败：AI 返回空内容');
       }
     } catch (e) {
+      setMomentsGenerateError({ text: e instanceof Error ? e.message : '朋友圈 AI 请求失败', from: 'all' });
       showToast(e instanceof Error ? e.message : '朋友圈 AI 请求失败');
     } finally {
       setIsRefreshingMoments(false);
@@ -457,11 +468,13 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
 
   const generateNpcMomentsPost = async () => {
     if (isRefreshingMoments) return;
+    setMomentsGenerateError(null);
     const visibleNpcs = listPostableNpcs(momentsSettings).filter(npc => {
       const isFriend = friendsList.some(f => !f.deleted && f.npcId === npc.id && (!f.personaId || f.personaId === effectivePersonaId));
       return isVisibleMomentAuthor('npc:' + npc.id, isFriend, npc.boundCharacterId || undefined);
     });
     if (!visibleNpcs.length) {
+    setMomentsGenerateError({ text: '当前人设的朋友圈里没有可见的 NPC：去 VROOM 设置里允许已加好友的 NPC，或切换人设', from: 'npc' });
       showToast('当前人设的朋友圈里没有可见的 NPC：去 VROOM 设置里允许已加好友的 NPC，或切换人设');
       return;
     }
@@ -474,7 +487,10 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       const msg = await generateNpcMomentNow(pickedNpc.id);
       try { setMomentsPosts(JSON.parse(window.localStorage.getItem(MOMENTS_POSTS_KEY) || '[]')); } catch { /* ignore */ }
       showToast(msg);
+      if (msg.startsWith('生成成功')) setMomentsGenerateError(null);
+      else setMomentsGenerateError({ text: msg, from: 'npc' });
     } catch (e) {
+      setMomentsGenerateError({ text: e instanceof Error ? e.message : 'NPC 朋友圈生成失败', from: 'npc' });
       showToast(e instanceof Error ? e.message : 'NPC 朋友圈生成失败');
     } finally {
       setIsRefreshingMoments(false);
@@ -785,6 +801,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   // Moments refresh state
   const [isRefreshingMoments, setIsRefreshingMoments] = useState(false);
   const [momentsGeneratingText, setMomentsGeneratingText] = useState('正在生成朋友圈…');
+  const [momentsGenerateError, setMomentsGenerateError] = useState<{ text: string; from: 'all' | 'npc' } | null>(null);
   const [isRefreshingComments, setIsRefreshingComments] = useState(false);
   const [generatingCommentsPostId, setGeneratingCommentsPostId] = useState<string | null>(null);
   const [commentActionTarget, setCommentActionTarget] = useState<{ postId: string; comment: MomentComment } | null>(null);
@@ -2256,7 +2273,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
             </div>
           </div>
 
-          {isRefreshingMoments && (
+          {isRefreshingMoments ? (
             <div className="mx-1 mb-2 flex items-center justify-center gap-2 rounded-2xl bg-[#faf3f5] border border-[#f0dee3] px-3 py-3">
               <span className="inline-flex gap-[3px]">
                 {[0, 1, 2].map((dot) => (
@@ -2265,7 +2282,24 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               </span>
               <span className="text-xs text-[#8d7078]">{momentsGeneratingText}</span>
             </div>
-          )}
+          ) : momentsGenerateError ? (
+            <div className="mx-1 mb-2 rounded-2xl bg-[#fdf2f2] border border-[#f3d2d2] px-3 py-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-[#b42318] font-semibold">生成失败</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const from = momentsGenerateError?.from || 'all';
+                    setMomentsGenerateError(null);
+                    if (from === 'npc') void generateNpcMomentsPost();
+                    else void generateMomentsPost();
+                  }}
+                  className="px-3 py-1.5 rounded-full bg-[#b42318] text-white text-[11px] font-semibold"
+                >重试</button>
+              </div>
+              <div className="mt-1 text-[11px] text-[#8d7078] leading-relaxed">{momentsGenerateError.text}</div>
+            </div>
+          ) : null}
 
           {/* Posts List */}
           <div
