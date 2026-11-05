@@ -79,3 +79,19 @@ test('non-streaming JSON parser reports invalid provider payloads clearly', asyn
   const response = new Response('not-json');
   await assert.rejects(readJsonResponseWithTimeout(response), /AI_INVALID_JSON_RESPONSE/);
 });
+
+
+test('bounded JSON response reader rejects oversized provider bodies', async () => {
+  const response = new Response(JSON.stringify({ data: 'x'.repeat(100) }));
+  await assert.rejects(readJsonResponseWithTimeout(response, 1000, 32), /AI_RESPONSE_BODY_TOO_LARGE/);
+});
+
+test('bounded media response reader cancels a stalled response body', async () => {
+  let cancelled = false;
+  const response = new Response(new ReadableStream({
+    pull() { return new Promise(() => {}); },
+    cancel() { cancelled = true; },
+  }));
+  await assert.rejects(readBlobResponseWithTimeout(response, 10, 1024), /AI_RESPONSE_BODY_TIMEOUT/);
+  assert.equal(cancelled, true);
+});
