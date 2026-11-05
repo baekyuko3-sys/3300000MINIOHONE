@@ -3109,14 +3109,16 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               <button
                 type="button"
                 onClick={() => {
+                  const nid = momentsPostMenu.npcId;
                   const cid = momentsPostMenu.characterId;
                   const name = momentsPostMenu.name;
                   const label = name || 'TA';
                   setMomentsPosts(prev => prev.filter(p => {
-                    if (cid) return p.characterId !== cid;
-                    return p.characterId || p.name !== name;
+                    if (nid) return p.npcId !== nid;
+                    if (cid) return p.characterId !== cid || !!p.npcId;
+                    return p.characterId || p.npcId || p.name !== name;
                   }));
-                  if (postDetail && ((cid && postDetail.characterId === cid) || (!cid && postDetail.name === name))) {
+                  if (postDetail && ((nid && postDetail.npcId === nid) || (!nid && cid && postDetail.characterId === cid && !postDetail.npcId) || (!nid && !cid && postDetail.name === name))) {
                     setPostDetail(null);
                   }
                   setMomentsPostMenu(null);
@@ -3243,9 +3245,12 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       )}
 
       {momentsManageOpen && (() => {
+        // 删指定作者的动态必须按“发帖人自己”分：NPC 帖子按 npcId 单算，
+        // 不能按它带的绑定角色 id 算——否则删一个 NPC 会连角色本人和其他同绑 NPC 全删掉。
         const authorKeyOf = (post: Record<string, any>) =>
-          post.characterId ? `c:${post.characterId}` : `n:${post.name || '未知'}`;
+          post.npcId ? `npc:${post.npcId}` : post.characterId ? `c:${post.characterId}` : `n:${post.name || '未知'}`;
         const authorLabelOf = (post: Record<string, any>) => {
+          if (post.npcId) return post.name || 'NPC';
           if (post.characterId) {
             const char = importedCharacters.find(c => c.id === post.characterId);
             return char?.name || post.name || '角色';

@@ -336,6 +336,21 @@ test('moments read like a normal person posting, in character', async () => {
   assert.ok(lineAppSrc.includes('语气要符合这个角色的性格和身份'));
 });
 
+test('deleting one npc author deletes only that npc, never the bound family', async () => {
+  // 删指定作者的动态必须按发帖人自己分：NPC 帖子按 npcId 单算；
+  // 旧逻辑按帖子带的绑定角色 id 算，删一个 NPC 会连角色本人和其他同绑 NPC 全删掉，
+  //  feed 里要是只剩这一家，看起来就是“所有动态都没了”。
+  const { readFile } = await import('node:fs/promises');
+  const lineAppSrc = await readFile(new URL('../src/components/line/LineAppView.tsx', import.meta.url), 'utf8');
+  assert.ok(lineAppSrc.includes('post.npcId ? `npc:${post.npcId}`'));
+  assert.ok(lineAppSrc.includes("if (post.npcId) return post.name || 'NPC';"));
+  assert.ok(lineAppSrc.includes('if (nid) return p.npcId !== nid;'));
+  assert.ok(lineAppSrc.includes('if (cid) return p.characterId !== cid || !!p.npcId;'));
+  assert.ok(!lineAppSrc.includes('return p.characterId !== cid;'));
+  // 管理列表的按作者删除走同一套 key，不会再把 NPC 算进角色名下。
+  assert.ok(lineAppSrc.includes('authorKeyOf(p) === key'));
+});
+
 test('chat send button is always clickable (no disabled-when-empty)', async () => {
   // The paper-plane send button must never be disabled: it stays colored and
   // tappable even with empty input; the empty-input guard in onClick/handleSend
