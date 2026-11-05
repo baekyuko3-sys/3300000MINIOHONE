@@ -125,13 +125,19 @@ export function mergeConcurrentLineMessages<T extends { id?: number | string }>(
   const previousById = new Map(previousList.map(item => [keyOf(item), item]).filter(([key]) => Boolean(key)) as Array<[string, T]>);
   const localById = new Map(localList.map(item => [keyOf(item), item]).filter(([key]) => Boolean(key)) as Array<[string, T]>);
   const remoteIds = new Set(remoteList.map(keyOf).filter(Boolean));
-  const merged = remoteList.map(remote => {
+  const localDeletedIds = new Set(
+    [...previousById.keys()].filter(key => !localById.has(key)),
+  );
+  const merged = remoteList.flatMap(remote => {
     const key = keyOf(remote);
     const previous = previousById.get(key);
     const localItem = localById.get(key);
+    // A local deletion that has not reached storage yet must not be undone by
+    // another tab writing an unchanged stale copy of that same message.
+    if (key && localDeletedIds.has(key) && previous && equal(remote, previous)) return [];
     // If remote did not touch this item, keep this tab's unsaved edit.
-    if (key && previous && localItem && equal(remote, previous) && !equal(localItem, previous)) return localItem;
-    return remote;
+    if (key && previous && localItem && equal(remote, previous) && !equal(localItem, previous)) return [localItem];
+    return [remote];
   });
   const mergedIds = new Set(merged.map(keyOf).filter(Boolean));
   for (const item of localList) {

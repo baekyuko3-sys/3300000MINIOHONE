@@ -59,3 +59,13 @@ test('remote LINE deletions are not resurrected by a local stale snapshot', asyn
   const merged = mergeConcurrentLineMessages(local, previous, remote);
   assert.deepEqual(merged.map(item => item.id), ['keep', 'local-new']);
 });
+
+
+test('local unsaved deletions survive a concurrent stale append from another tab', async () => {
+  const { mergeConcurrentLineMessages } = await import('../src/store/lineRuntime.ts');
+  const previous = [{ id: 'keep', text: '保留' }, { id: 'delete', text: '删除' }];
+  const local = [{ id: 'keep', text: '保留' }];
+  const remote = [...previous, { id: 'remote-new', text: '远端新增' }];
+  const merged = mergeConcurrentLineMessages(local, previous, remote);
+  assert.deepEqual(merged.map(item => item.id), ['keep', 'remote-new']);
+});
