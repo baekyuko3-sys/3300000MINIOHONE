@@ -424,6 +424,18 @@ export function MusicHtmlView({ active = true, onNavigate }: MusicHtmlViewProps)
   const playModeRef = useRef<PlayMode>(playMode);
   const charactersRef = useRef(characters);
 
+  // A tab closed or refreshed while an AI DM was pending must not leave the
+  // stranger room permanently stuck on its typing indicator.
+  useEffect(() => {
+    const saved = readStrangerSession();
+    const pendingAt = Date.parse(String(saved?.dmPendingAt || saved?.updatedAt || ''));
+    if (!saved?.dmPending || !Number.isFinite(pendingAt) || Date.now() - pendingAt < 120_000) return;
+    const recovered = { ...saved, dmPending: false, dmPendingAt: undefined };
+    sessionRef.current = recovered;
+    setSession(recovered);
+    saveStrangerSession(recovered);
+  }, []);
+
   useEffect(() => { overlayRef.current = overlay; }, [overlay]);
   useEffect(() => { likedRef.current = liked; }, [liked]);
   useEffect(() => { recordsRef.current = records; }, [records]);

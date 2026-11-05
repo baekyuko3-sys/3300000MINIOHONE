@@ -123,13 +123,63 @@ async function upstreamJson(response: Response) {
   }
 }
 
+async function readBoundedJson(request: Request, maxBytes = 512 * 1024): Promise<Body> {
+  const declaredLength = Number(request.headers.get('content-length') || 0);
+  if (declaredLength > maxBytes) throw new Error('Request body exceeds the 512 KB limit');
+  if (!request.body) throw new Error('Request body is required');
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new Error('Request body exceeds the 512 KB limit');
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return JSON.parse(new TextDecoder().decode(bytes)) as Body;
+}
+
+function validateRequestBody(body: Body, provider: string) {
+  if (provider !== 'gemini' && provider !== 'openai-compatible') throw new Error('Unsupported AI provider');
+  const fields: Array<[string, unknown, number]> = [
+    ['API key', body.apiKey, 4096],
+    ['API base URL', body.baseUrl, 2048],
+    ['Model', body.model, 256],
+    ['System prompt', body.systemPrompt, 80_000],
+    ['User prompt', body.userPrompt, 80_000],
+  ];
+  for (const [label, value, limit] of fields) {
+    if (value != null && String(value).length > limit) throw new Error(label + ' exceeds the allowed length');
+  }
+  if (body.history != null) {
+    if (!Array.isArray(body.history) || body.history.length > 40) throw new Error('History must contain at most 40 messages');
+    for (const message of body.history) {
+      if (!message || (message.role !== 'user' && message.role !== 'assistant') || typeof message.content !== 'string' || message.content.length > 20_000) {
+        throw new Error('History contains an invalid or oversized message');
+      }
+    }
+  }
+}
+
 async function handleRequest(request: Request) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
   if (request.method !== 'POST') return json({ error: 'POST required' }, 405);
 
   try {
-    const body = await request.json() as Body;
+    const body = await readBoundedJson(request);
     const provider = String(body.provider || 'openai-compatible');
+    validateRequestBody(body, provider);
     const apiKey = String(body.apiKey || '').trim();
     const rawBaseUrl = cleanBaseUrl(String(body.baseUrl || ''));
 
