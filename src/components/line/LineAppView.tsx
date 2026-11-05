@@ -2075,10 +2075,11 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                           className="w-20 px-2 py-1.5 rounded-[10px] border border-[#e8e4de] text-[12px] text-center"
                         />
                         <button
-                          onClick={() => {
+                          onClick={async () => {
                             const el = document.getElementById(`fc-limit-${i}`) as HTMLInputElement;
                             const limit = parseFloat(el?.value || '200');
-                            addFamilyCard(p.name || '未命名', limit > 0 ? limit : 200, p.avatar);
+                            const saved = await addFamilyCard(p.name || '未命名', limit > 0 ? limit : 200, p.avatar);
+                            if (!saved) { showToast('亲情卡保存失败，请重试'); return; }
                             setShowFamilyCardPicker(false);
                             showToast(`已为 ${p.name} 开通亲情卡`);
                           }}
@@ -7022,10 +7023,11 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                       <input type="number" placeholder="限额" defaultValue={200} id={`fc-limit-${i}`}
                         className="w-20 px-2 py-1.5 rounded-[10px] border border-[#e8e4de] text-[12px] text-center" />
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           const el = document.getElementById(`fc-limit-${i}`) as HTMLInputElement;
                           const limit = parseFloat(el?.value || '200');
-                          addFamilyCard(p.name || '未命名', limit > 0 ? limit : 200, p.avatar);
+                          const saved = await addFamilyCard(p.name || '未命名', limit > 0 ? limit : 200, p.avatar);
+                          if (!saved) { showToast('亲情卡保存失败，请重试'); return; }
                           setShowFamilyCardPicker(false);
                           showToast(`已为 ${p.name} 开通亲情卡`);
                         }}
