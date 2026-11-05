@@ -76,11 +76,11 @@ test('NPC reservations are unique on sent packets; incoming claims credit once a
   assert.equal(walletSendRedPacket(3, '红包', 'sent-1', [100, 200]), true);
   assert.equal(walletRegisterRedPacketClaim('sent-1', 'npc:a', 0), true);
   assert.equal(walletRegisterRedPacketClaim('sent-1', 'npc:b', 0), false);
-  assert.equal(walletClaimRedPacket('sent-1', 'me', 2, '我', 1, [100, 200]), false);
+  assert.equal(walletClaimRedPacket('sent-1', 'me', 2, '我', 1, [100, 200], 3), false);
 
-  assert.equal(walletClaimRedPacket('incoming-1', 'me', 2.5, '朋友', 1, [100, 250]), true);
+  assert.equal(walletClaimRedPacket('incoming-1', 'me', 2.5, '朋友', 1, [100, 250], 3.5), true);
   assert.equal(walletClaimRedPacket('incoming-1', 'me', 2.5, '朋友', 1, [100, 250]), false);
-  assert.equal(walletClaimRedPacket('incoming-2', 'me', 9, '朋友', 0, [100, 250]), false);
+  assert.equal(walletClaimRedPacket('incoming-2', 'me', 1, '朋友', 0, [100, 250], 9), false);
   assert.equal(getWalletBalance(), 2.5);
   assert.equal(getWalletTransactions().length, 2);
 });
