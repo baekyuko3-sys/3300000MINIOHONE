@@ -818,15 +818,17 @@ export function removeLineConversationData(id: string, options: { removeChatItem
       catch (error) { reportPersistenceIssue('line-delete-setting:' + key, '聊天专属设置清理失败', error); }
     }
   };
-  conversationIds.forEach(removeSettings);
+  if (removeChatItem) conversationIds.forEach(removeSettings);
 
-  const meta = readJson<unknown>(META_KEY, {});
-  if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
-    const nextMeta = { ...(meta as Record<string, LineConversationMeta>) };
-    conversationIds.forEach(conversationId => { delete nextMeta[conversationId]; });
-    writeJson(META_KEY, nextMeta);
-  } else {
-    reportPersistenceIssue('line-delete-meta', '聊天元数据结构异常；已保留原始元数据');
+  if (removeChatItem) {
+    const meta = readJson<unknown>(META_KEY, {});
+    if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
+      const nextMeta = { ...(meta as Record<string, LineConversationMeta>) };
+      conversationIds.forEach(conversationId => { delete nextMeta[conversationId]; });
+      writeJson(META_KEY, nextMeta);
+    } else {
+      reportPersistenceIssue('line-delete-meta', '聊天元数据结构异常；已保留原始元数据');
+    }
   }
 
   // Notifications belong to either the character identity or a concrete
