@@ -104,19 +104,30 @@ const TRACE_KEY='phone:ai-debug-trace';
 const traceKey = (conversationId?: string) => conversationId ? `${TRACE_KEY}:${conversationId}` : TRACE_KEY;
 export function readAiDebugTrace(conversationId?: string): AiDebugTrace | null {
   if(typeof window==='undefined') return null;
+  const key = traceKey(conversationId);
   try {
-    const key = traceKey(conversationId);
     const raw = window.localStorage.getItem(key);
-    if (raw === null) { blockedDebugKeys.delete(key); return null; }
-    const v=JSON.parse(raw);
-    if(v&&typeof v==='object'&&!Array.isArray(v)) { blockedDebugKeys.delete(key); return redactSensitiveValue(v) as AiDebugTrace; }
-    throw new Error('AI_DEBUG_TRACE_SCHEMA_INVALID');
-    if(conversationId) {
-      const latest=JSON.parse(localStorage.getItem(TRACE_KEY)||'null');
-      if(latest && typeof latest==='object' && String(latest.context?.conversationId || '') === conversationId) return redactSensitiveValue(latest) as AiDebugTrace;
+    if (raw !== null) {
+      const value = JSON.parse(raw);
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('AI_DEBUG_TRACE_SCHEMA_INVALID');
+      blockedDebugKeys.delete(key);
+      return redactSensitiveValue(value) as AiDebugTrace;
+    }
+    blockedDebugKeys.delete(key);
+    if (conversationId) {
+      const latestRaw = window.localStorage.getItem(TRACE_KEY);
+      if (latestRaw !== null) {
+        const latest = JSON.parse(latestRaw);
+        if (!latest || typeof latest !== 'object' || Array.isArray(latest)) throw new Error('AI_DEBUG_TRACE_SCHEMA_INVALID');
+        if (String(latest.context?.conversationId || '') === conversationId) return redactSensitiveValue(latest) as AiDebugTrace;
+      }
     }
     return null;
-  } catch (error) { blockedDebugKeys.add(traceKey(conversationId)); reportPersistenceIssue('read:' + traceKey(conversationId), 'AI 调试追踪损坏；已锁定写入以保留原始记录', error); return null; }
+  } catch (error) {
+    blockedDebugKeys.add(key);
+    reportPersistenceIssue('read:' + key, 'AI 调试追踪损坏；已锁定写入以保留原始记录', error);
+    return null;
+  }
 }
 export function writeAiDebugTrace(trace: Omit<AiDebugTrace,'id'|'time'> & Partial<Pick<AiDebugTrace,'id'|'time'>>) {
   if(typeof window==='undefined') return;
