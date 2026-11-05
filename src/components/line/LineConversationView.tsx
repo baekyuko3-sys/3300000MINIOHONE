@@ -858,6 +858,13 @@ export function LineConversationView({
     }
     if (changed) window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
   }, [conversationStorageId, messages, activeRedPacket?.id]);
+  // 即使聊天页面一直开着，也定期扫描到期红包；卸载时自动清理。
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setMessages(current => [...current]);
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [conversationStorageId]);
 
   // LINE keeps the complete conversation in storage, but only renders the newest
   // page at first. Older messages load naturally as you scroll upward.
