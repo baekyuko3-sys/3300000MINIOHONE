@@ -269,7 +269,10 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
   const saveCurrentApiPreset = () => {
     const name = apiPresetName.trim() || window.prompt('给这个 API 预设起个名字')?.trim();
     if (!name) return;
-    upsertApiPreset(settingsToApiPreset(settings, name));
+    if (!upsertApiPreset(settingsToApiPreset(settings, name))) {
+      notify('API 预设保存失败：原始预设和密钥已保留');
+      return;
+    }
     setApiPresets(readApiPresets()); setApiPresetName(''); notify('API 预设已保存');
   };
   const applySavedApiPreset = (preset: ApiPreset) => {
@@ -278,7 +281,8 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
   };
   const removeSavedApiPreset = (id: string) => {
     if (!window.confirm('删除这个 API 预设？')) return;
-    deleteApiPreset(id); setApiPresets(readApiPresets()); notify('API 预设已删除');
+    if (!deleteApiPreset(id)) { notify('API 预设删除失败：原始预设已保留'); return; }
+    setApiPresets(readApiPresets()); notify('API 预设已删除');
   };
 
   const selectedCharacter = characters.find(character => character.id === selectedCharacterId) || null;

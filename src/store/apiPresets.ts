@@ -48,8 +48,13 @@ export function settingsToApiPreset(s: AppSettings, name: string, id?: string): 
 export function applyApiPreset(p: ApiPreset): Partial<AppSettings> {
   return { provider:p.provider, apiBaseUrl:p.apiBaseUrl, apiKey:p.apiKey, model:p.model, streaming:p.streaming, contextLength:p.contextLength, maxOutputTokens:p.maxOutputTokens, temperature:p.temperature, topP:p.topP, topK:p.topK, frequencyPenalty:p.frequencyPenalty, presencePenalty:p.presencePenalty, seed:p.seed };
 }
-export function upsertApiPreset(p: ApiPreset) {
-  const v=readApiPresets(); const i=v.findIndex(x=>x.id===p.id);
-  if(i>=0) v[i]={...p,updatedAt:new Date().toISOString()}; else v.unshift(p); saveApiPresets(v);
+export function upsertApiPreset(p: ApiPreset): boolean {
+  const v = readApiPresets();
+  const i = v.findIndex(x => x.id === p.id);
+  if (i >= 0) v[i] = { ...p, updatedAt: new Date().toISOString() };
+  else v.unshift(p);
+  return saveApiPresets(v);
 }
-export function deleteApiPreset(id:string){ saveApiPresets(readApiPresets().filter(x=>x.id!==id)); }
+export function deleteApiPreset(id: string): boolean {
+  return saveApiPresets(readApiPresets().filter(x => x.id !== id));
+}
