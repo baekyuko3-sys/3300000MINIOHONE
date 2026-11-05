@@ -95,33 +95,55 @@ export function walletSendRedPacket(totalAmount: number, desc: string, operation
 }
 
 // 红包领取和退款用消息 ID + 领取者 ID 做幂等保护。
-type PacketOperation = { id: string; claimed: string[]; refunded: boolean; sent?: boolean };
+type PacketOperation = { id: string; claimed: string[]; refunded: boolean; sent?: boolean; slots?: Record<string, number> };
 const PACKET_OPERATION_KEY = 'line:wallet-redpacket-operations';
 function getPacketOperations(): PacketOperation[] { return readPersistentState<PacketOperation[]>(PACKET_OPERATION_KEY, []); }
 function savePacketOperation(item: PacketOperation): void {
   const all = getPacketOperations();
   writeWalletState(PACKET_OPERATION_KEY, [item, ...all.filter(x => x.id !== item.id)].slice(0, 500));
 }
-export function walletClaimRedPacket(packetId: string, claimId: string, amount: number, from: string): boolean {
-  if (!packetId || !claimId || !Number.isFinite(amount) || amount <= 0) return false;
+function reservePacketSlot(packetId: string, claimId: string, slotIndex: number): PacketOperation | null {
+  if (!packetId || !claimId || !Number.isInteger(slotIndex) || slotIndex < 0) return null;
   const ops = getPacketOperations();
   const op = ops.find(x => x.id === packetId) || { id: packetId, claimed: [], refunded: false };
-  if (op.refunded || op.claimed.includes(claimId)) return false;
+  const slots = op.slots || {};
+  if (op.refunded || op.claimed.includes(claimId) || Object.entries(slots).some(([id, slot]) => id !== claimId && slot === slotIndex)) return null;
+  const next = { ...op, slots: { ...slots, [claimId]: slotIndex } };
+  savePacketOperation(next);
+  return next;
+}
+/** 原子化记录 NPC 领取份额；NPC 不会因此增加用户钱包余额。 */
+export function walletRegisterRedPacketClaim(packetId: string, claimId: string, slotIndex: number): boolean {
+  const op = reservePacketSlot(packetId, claimId, slotIndex);
+  if (!op) return false;
+  if (!op.claimed.includes(claimId)) savePacketOperation({ ...op, claimed: [...op.claimed, claimId] });
+  return true;
+}
+export function walletClaimRedPacket(packetId: string, claimId: string, amount: number, from: string, slotIndex?: number): boolean {
+  if (!packetId || !claimId || !Number.isFinite(amount) || amount <= 0) return false;
   const cents = Math.round(amount * 100);
   if (cents <= 0) return false;
+  const ops = getPacketOperations();
+  const existing = ops.find(x => x.id === packetId);
+  if (existing?.refunded || existing?.claimed.includes(claimId)) return false;
+  const op = slotIndex === undefined ? (existing || { id: packetId, claimed: [], refunded: false }) : reservePacketSlot(packetId, claimId, slotIndex);
+  if (!op) return false;
   addWalletTransaction({ type: 'redpacket_grab', amount: cents / 100, desc: `抢到${from}的红包`, counterparty: from });
   savePacketOperation({ ...op, claimed: [...op.claimed, claimId] });
   return true;
 }
-export function walletRefundRedPacket(packetId: string, amount: number, desc = '未领取红包退回'): boolean {
+export function walletRefundRedPacket(packetId: string, amount: number, desc = '未领取红包退回', sharesCents?: number[]): boolean {
   if (!packetId || !Number.isFinite(amount) || amount <= 0) return false;
   const ops = getPacketOperations();
   const op = ops.find(x => x.id === packetId) || { id: packetId, claimed: [], refunded: false };
-  if (op.refunded) return false;
-  const cents = Math.round(amount * 100);
-  if (cents <= 0) return false;
-  addWalletTransaction({ type: 'redpacket_send', amount: cents / 100, desc });
+  if (op.refunded) return true;
+  const cents = sharesCents
+    ? sharesCents.reduce((sum, share, index) => sum + (Object.values(op.slots || {}).includes(index) ? 0 : Math.max(0, Math.round(Number(share) || 0))), 0)
+    : Math.round(amount * 100);
+  if (cents <= 0) { savePacketOperation({ ...op, refunded: true }); return true; }
+  // 同步先标记结算，阻止同一事件重复退款；钱包操作在同一 JS 调用栈内完成。
   savePacketOperation({ ...op, refunded: true });
+  addWalletTransaction({ type: 'redpacket_send', amount: cents / 100, desc });
   return true;
 }
 export function walletGrabRedPacket(amount: number, from: string): void {

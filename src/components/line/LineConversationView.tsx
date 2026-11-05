@@ -847,7 +847,7 @@ export function LineConversationView({
       const claims = Array.isArray(message.redPacketClaims) ? message.redPacketClaims : Array.isArray(meta.claims) ? meta.claims : [];
       const occupied = new Set<number>(claims.map((claim: any, index: number) => Number.isInteger(claim?.slotIndex) ? Number(claim.slotIndex) : index));
       const remainingCents = shares.reduce((sum: number, cents: number, index: number) => sum + (occupied.has(index) ? 0 : cents), 0);
-      if (remainingCents > 0 && !walletRefundRedPacket(String(message.id), remainingCents / 100)) continue;
+      if (remainingCents > 0 && !walletRefundRedPacket(String(message.id), remainingCents / 100, '未领取红包退回', shares)) continue;
       const status = remainingCents > 0 ? 'expired' : 'claimed';
       const updatedMeta = { ...meta, status, refundedAt: new Date().toISOString(), refundAmount: remainingCents / 100 };
       const updated = { ...message, redPacketStatus: status, metadata: updatedMeta };
@@ -4235,8 +4235,10 @@ export function LineConversationView({
           if (slotIndex < 0) break;
           const cents = Number(latestMeta.sharesCents[slotIndex] || 0);
           if (cents <= 0) continue;
+          const claimId = `npc:${candidate.id}`;
+          if (!walletRegisterRedPacketClaim(String(packetId), claimId, slotIndex)) continue;
           occupied.add(slotIndex);
-          npcClaims.push({ userId: `npc:${candidate.id}`, name: candidate.name, slotIndex, amount: (cents / 100).toFixed(2), time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) });
+          npcClaims.push({ userId: claimId, name: candidate.name, slotIndex, amount: (cents / 100).toFixed(2), time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) });
         }
         if (!npcClaims.length) return;
         const allClaims = [...currentClaims, ...npcClaims];
@@ -8994,7 +8996,7 @@ export function LineConversationView({
           const nextClaims = [...claims, userClaim];
           const nextStatus = nextClaims.length >= count ? 'claimed' : 'partial';
           const updated = { ...packet, redPacketClaims: nextClaims, redPacketStatus: nextStatus, metadata: { ...meta, claims: nextClaims, status: nextStatus } };
-          if (!walletClaimRedPacket(String(packet.id), 'me', userCents / 100, String(packet.senderName || '群成员'))) {
+          if (!walletClaimRedPacket(String(packet.id), 'me', userCents / 100, String(packet.senderName || '群成员'), slotIndex)) {
             showToast('该红包已领取或已结算，不能重复领取'); return;
           }
           setMessages((prev) => prev.map((item: any) => String(item.id) === String(packet.id) ? updated : item));

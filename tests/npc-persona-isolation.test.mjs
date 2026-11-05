@@ -21,10 +21,10 @@ test('NPC runtime memory is isolated by user persona and never falls back to sha
     { id: 'persona-a', name: 'Persona A' },
     { id: 'persona-b', name: 'Persona B' },
   ]));
-  storage.setItem('phone:character-memory:npc-1:persona:persona-a', JSON.stringify({
+  storage.setItem('phone:character-memory:1:persona:persona-a', JSON.stringify({
     characterId: 'npc-1', characterName: 'NPC', summary: 'MEMORY_A_ONLY', items: [], updatedAt: new Date().toISOString(), personaId: 'persona-a',
   }));
-  storage.setItem('phone:character-memory:npc-1:persona:persona-b', JSON.stringify({
+  storage.setItem('phone:character-memory:1:persona:persona-b', JSON.stringify({
     characterId: 'npc-1', characterName: 'NPC', summary: 'MEMORY_B_ONLY', items: [], updatedAt: new Date().toISOString(), personaId: 'persona-b',
   }));
   const npc = {
