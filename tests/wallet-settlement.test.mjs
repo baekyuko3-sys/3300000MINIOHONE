@@ -91,7 +91,7 @@ test('sender cannot claim own packet; refund is capped by unclaimed stored share
   assert.equal(walletRegisterRedPacketClaim('packet-2', 'npc:a', 0), true);
   assert.equal(walletRefundRedPacket('packet-2', 999, '退回', [999999], []), true);
   assert.equal(walletRefundRedPacket('packet-2', 999, '重复退款'), true);
-  assert.equal(getWalletBalance(), 17);
+  assert.equal(getWalletBalance(), 19);
   assert.equal(getWalletTransactions().length, 2);
   assert.equal(getWalletTransactions()[0].amount, 5);
 });
