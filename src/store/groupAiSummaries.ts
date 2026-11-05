@@ -1,9 +1,10 @@
+import { reportPersistenceIssue } from './usePersistentState';
 /**
 * 群聊 AI 总结记录：统一后的群聊记忆。
 * 不再逐条存聊天记录，只存 AI 生成的总结（每 N 楼 / 手动 / 大事件）。
 * NPC 记忆 = 群总结 = 这同一套数据。
 */
-import { readPersistentState} from './usePersistentState';
+
 
 export interface GroupAiSummary {
 id: string;
@@ -21,16 +22,42 @@ kind: 'auto' | 'manual' | 'event';
 
 const keyFor = (conversationId: string) => `line:group-ai-summaries:${conversationId}`;
 
+const blockedSummaryKeys = new Set<string>();
+
 export function getGroupAiSummaries(conversationId: string): GroupAiSummary[] {
-return readPersistentState<GroupAiSummary[]>(keyFor(conversationId), []);
+  if (typeof window === 'undefined') return [];
+  const key = keyFor(conversationId);
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw === null) { blockedSummaryKeys.delete(key); return []; }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('GROUP_AI_SUMMARIES_SCHEMA_INVALID');
+    blockedSummaryKeys.delete(key);
+    return parsed as GroupAiSummary[];
+  } catch (error) {
+    blockedSummaryKeys.add(key);
+    reportPersistenceIssue('read:' + key, '群聊 AI 总结记录损坏或格式不符；已锁定写入以保留原始记忆', error);
+    return [];
+  }
 }
 
-export function saveGroupAiSummaries(conversationId: string, list: GroupAiSummary[]): void {
-if (typeof window === 'undefined') return;
-try {
-window.localStorage.setItem(keyFor(conversationId), JSON.stringify(list.slice(0, 100)));
-window.dispatchEvent(new CustomEvent('sane333:group-ai-summaries-updated', { detail: { conversationId}}));
-} catch { /* ignore */}
+export function saveGroupAiSummaries(conversationId: string, list: GroupAiSummary[]): boolean {
+  if (typeof window === 'undefined') return false;
+  const key = keyFor(conversationId);
+  if (blockedSummaryKeys.has(key)) return false;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw !== null && !Array.isArray(JSON.parse(raw))) throw new Error('GROUP_AI_SUMMARIES_SCHEMA_INVALID');
+    const serialized = JSON.stringify(list.slice(0, 100));
+    window.localStorage.setItem(key, serialized);
+    if (window.localStorage.getItem(key) !== serialized) throw new Error('GROUP_AI_SUMMARIES_WRITE_VERIFY_FAILED');
+    window.dispatchEvent(new CustomEvent('sane333:group-ai-summaries-updated', { detail: { conversationId } }));
+    return true;
+  } catch (error) {
+    blockedSummaryKeys.add(key);
+    reportPersistenceIssue('write:' + key, '群聊 AI 总结记录写入失败；原始记忆已保留', error);
+    return false;
+  }
 }
 
 export function addGroupAiSummary(conversationId: string, s: Omit<GroupAiSummary, 'id' | 'createdAt'>): GroupAiSummary {
