@@ -280,6 +280,43 @@ test('moments write is verified and generation reads only persona plus worldbook
   assert.ok(proactiveSrc.includes("sane333:navigate', { detail: { screen: 'moments' }"));
 });
 
+test('vroom npc avatars come only from the npc app, never the bound character', async () => {
+  // NPC 帖子头像只认 NPC app 里的头像：按 id 找不到按裸 id 找（迁移前的老帖子），
+  // 再找不到就显示首字，绝不退到绑定角色的脸；media: 头像要走 NpcAvatar 解析。
+  const { readFile } = await import('node:fs/promises');
+  const lineAppSrc = await readFile(new URL('../src/components/line/LineAppView.tsx', import.meta.url), 'utf8');
+  assert.ok(lineAppSrc.includes('findLineNpc'));
+  assert.ok(lineAppSrc.includes('bareIdentityId'));
+  assert.ok(lineAppSrc.includes('findLineNpc(friend.npcId)'));
+  assert.ok(lineAppSrc.includes('findLineNpc(item.npcId)'));
+  assert.ok(lineAppSrc.includes('findLineNpc(p.npcId)'));
+  // 旧的取头像逻辑（NPC 没头像就退到绑定角色）必须消失；注意：可见性
+  // 的 persona-bound 门（visibleMoments 里）仍用 boundCharacterId，那不是头像，别误伤。
+  assert.ok(!lineAppSrc.includes('allLineNpcs.find(item => item && item.id === friend.npcId)'));
+  assert.ok(!lineAppSrc.includes('allLineNpcs.find(n => n && n.id === item.npcId)'));
+  assert.ok(!lineAppSrc.includes('if (npc?.avatar) return npc.avatar;'));
+  assert.ok(lineAppSrc.includes('<NpcAvatar name={post.name} avatar={avatarSrc}'));
+  assert.ok(lineAppSrc.includes('<NpcAvatar name={postDetail.name} avatar={resolveMomentAvatar(postDetail)}'));
+  assert.ok(lineAppSrc.includes('<NpcAvatar name={author.label} avatar={author.avatar}'));
+  assert.ok(lineAppSrc.includes('<NpcAvatar name={npc.name} avatar={npc.avatar}'));
+  // The tolerant-match primitive itself: prefixed and bare ids must match.
+  const prevWindow = globalThis.window;
+  globalThis.window = {
+    localStorage: { get length() { return 0; }, key: () => null, getItem: () => null, setItem: () => {}, removeItem: () => {}, clear: () => {} },
+    setInterval: () => 0, clearInterval: () => {}, setTimeout: () => 0, clearTimeout: () => {},
+    addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => {},
+  };
+  try {
+    const { bareIdentityId } = await import('../src/store/lineRuntime.ts');
+    assert.equal(bareIdentityId('npc:abc123'), 'abc123');
+    assert.equal(bareIdentityId('abc123'), 'abc123');
+    assert.equal(bareIdentityId('char:xyz'), 'xyz');
+  } finally {
+    if (prevWindow === undefined) delete globalThis.window;
+    else globalThis.window = prevWindow;
+  }
+});
+
 test('chat send button is always clickable (no disabled-when-empty)', async () => {
   // The paper-plane send button must never be disabled: it stays colored and
   // tappable even with empty input; the empty-input guard in onClick/handleSend

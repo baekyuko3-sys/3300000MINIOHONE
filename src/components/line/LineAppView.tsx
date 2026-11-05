@@ -29,7 +29,7 @@ import { isCharacterOnline } from '../../store/characterStatus';
 import { VroomImage } from '../VroomImage';
 import { putMedia } from '../../store/mediaVault';
 import { markCharacterRead } from '../../store/worldRuntime';
-import { getLineConversationMeta, markLineConversationRead, markLineNotificationsReadForConversation, stripLeakedInternalBlocks, stripLeakedMarkupTags, touchLineConversation, runLineStorageMigrations, removeLineConversationData, formatChatListTime } from '../../store/lineRuntime';
+import { bareIdentityId, getLineConversationMeta, markLineConversationRead, markLineNotificationsReadForConversation, stripLeakedInternalBlocks, stripLeakedMarkupTags, touchLineConversation, runLineStorageMigrations, removeLineConversationData, formatChatListTime } from '../../store/lineRuntime';
 import { reportPersistenceIssue } from '../../store/usePersistentState';
 import { generateCreativeText, listOpenAiCompatibleModels, resolveChannelAiSettings, testAiConnection, type AiSettings } from '../../ai/aiEngine';
 import { useImagePresets, useMinimaxKey, useVoicePresets, type ImagePreset, type VoicePreset } from '../../ai/imageGen';
@@ -1292,12 +1292,18 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     f.note.toLowerCase().includes(friendSearch.toLowerCase())
   );
 
+  // NPC 头像只来自 NPC app：先按 id 找，找不到按去前缀后的裸 id 找
+  //（迁移前的老帖子/老记录还是裸 id）；找不到就不 fallback 到绑定角色，
+  // 没头像就显示首字头像，和 NPC app 里一致。
+  const findLineNpc = (id?: string | null) => {
+    if (!id) return undefined;
+    return allLineNpcs.find(n => n && n.id === id)
+      || allLineNpcs.find(n => n && bareIdentityId(n.id) === bareIdentityId(id));
+  };
+
   const resolveFriendAvatar = (friend: LineFriend) => {
     if (friend.npcId) {
-      const npc = allLineNpcs.find(item => item && item.id === friend.npcId);
-      if (npc?.avatar) return npc.avatar;
-      const bound = importedCharacters.find(c => c.id === (npc?.boundCharacterId || friend.characterId));
-      return bound?.avatar || '';
+      return findLineNpc(friend.npcId)?.avatar || '';
     }
     return importedCharacters.find(c => c.id === friend.characterId)?.avatar
       || importedCharacters.find(c => c.name === friend.name)?.avatar
@@ -1311,10 +1317,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       return '';
     }
     if (item.npcId) {
-      const npc = allLineNpcs.find(n => n && n.id === item.npcId);
-      if (npc?.avatar) return npc.avatar;
-      const bound = importedCharacters.find(c => c.id === (npc?.boundCharacterId || item.characterId));
-      return bound?.avatar || '';
+      return findLineNpc(item.npcId)?.avatar || '';
     }
     return importedCharacters.find(c => c.id === item.characterId)?.avatar
       || importedCharacters.find(c => c.name === item.name)?.avatar
@@ -1405,13 +1408,10 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   };
   const resolveMomentAvatar = (p: Record<string, any>) => {
     if (p?.npcId) {
-      const npc = allLineNpcs.find(n => n && n.id === p.npcId);
-      if (npc?.avatar) return npc.avatar;
-      const bound = importedCharacters.find(c => c.id === (npc?.boundCharacterId || p.characterId));
-      return bound?.avatar || '';
+      return findLineNpc(p.npcId)?.avatar || '';
     }
     if (p?.characterId) {
-      return importedCharacters.find(c => c.id === p.characterId)?.avatar || '';
+      return importedCharacters.find(c => c.id === p.characterId || bareIdentityId(c.id) === bareIdentityId(p.characterId))?.avatar || '';
     }
     return (
       p?.avatar
@@ -2243,7 +2243,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               >
                 <div className="flex items-center">
                   <div className="w-[49px] h-[49px] rounded-full bg-[#f1f1f2] border border-[#e8e8e9] flex items-center justify-center shrink-0 overflow-hidden">
-                    {avatarSrc ? <img src={avatarSrc} alt="" className="w-full h-full object-cover" /> : <span className="text-sm text-[#aaa]">{post.name?.[0] || '·'}</span>}
+                    <NpcAvatar name={post.name} avatar={avatarSrc} className="w-full h-full" textClassName="text-sm" />
                   </div>
                   <span className="ml-2.5 text-[13px] font-semibold">
                     {post.name}
@@ -3266,7 +3266,9 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 key,
                 label: authorLabelOf(post),
                 count: 1,
-                avatar: char?.avatar || post.avatar || (!post.characterId ? (activePersona?.avatar || currentUser.avatar) : undefined),
+                avatar: post.npcId
+                  ? (findLineNpc(post.npcId)?.avatar || undefined)
+                  : (char?.avatar || post.avatar || (!post.characterId ? (activePersona?.avatar || currentUser.avatar) : undefined)),
               });
             }
           }
@@ -3366,9 +3368,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   authorOptions.map(author => (
                     <div key={author.key} className="flex items-center gap-2 p-2 rounded-xl bg-white border border-[#f0f0f1]">
                       <div className="w-8 h-8 rounded-full overflow-hidden bg-[#f1f1f2] shrink-0 grid place-items-center">
-                        {author.avatar
-                          ? <img src={author.avatar} alt="" className="w-full h-full object-cover" />
-                          : <span className="text-[11px] text-[#aaa]">{author.label[0] || '·'}</span>}
+                        <NpcAvatar name={author.label} avatar={author.avatar} className="w-full h-full" textClassName="text-[11px]" />
                       </div>
                       <button
                         type="button"
@@ -4310,11 +4310,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
               <div className="p-5 pb-6">
                 <div className="flex items-center">
                   <div className="w-11 h-11 rounded-full bg-[#f1f1f2] grid place-items-center overflow-hidden">
-                    {resolveMomentAvatar(postDetail) ? (
-                      <img src={resolveMomentAvatar(postDetail)} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-[#aaa]">{postDetail.name?.[0] || '·'}</span>
-                    )}
+                    <NpcAvatar name={postDetail.name} avatar={resolveMomentAvatar(postDetail)} className="w-full h-full" textClassName="text-sm" />
                   </div>
                   <div className="ml-3 flex-1 min-w-0">
                     <div className="text-[13px] font-semibold">{postDetail.name}</div>
@@ -5022,14 +5018,14 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 <button onClick={() => setShowNpcRequests(false)} className="text-xl text-[#aaa]">×</button>
               </div>
               {pendingRequests.length ? pendingRequests.map(request => {
-                const npc = getNpcs().find(item => item.id === request.npcId);
+                const npc = findLineNpc(request.npcId);
                 if (!npc) return null;
                 const bound = importedCharacters.find(item => item.id === npc.boundCharacterId);
                 return (
                   <div key={request.id} className="rounded-2xl border border-[#ececef] p-3.5 space-y-3">
                     <div className="flex items-center gap-3">
                       <div className="w-11 h-11 rounded-full overflow-hidden bg-[#f3f4f6] shrink-0 grid place-items-center">
-                        {(npc.avatar || bound?.avatar) ? <img src={npc.avatar || bound?.avatar || ''} alt="" className="w-full h-full object-cover" /> : <span>{npc.name.slice(0, 1)}</span>}
+                        <NpcAvatar name={npc.name} avatar={npc.avatar} className="w-full h-full" textClassName="text-sm" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="text-[13px] font-semibold text-[#222]">{npc.name}</div>
