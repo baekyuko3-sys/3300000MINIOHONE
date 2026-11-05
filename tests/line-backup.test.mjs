@@ -223,3 +223,69 @@ test('LINE chat cleanup never overwrites corrupt runtime metadata or notificatio
   assert.equal(storage.getItem('line:runtime:notifications'), corruptNotifications);
   assert.equal(storage.getItem('line:conversation:chat-corrupt'), null);
 });
+
+
+test('deleting a character removes every persona chat transcript but preserves bound NPC chats', () => {
+  const storage = new MemoryStorage();
+  installWindow(storage);
+  storage.setItem('line:chat-items', JSON.stringify([
+    { id: 'c_persona_a', characterId: 'char:c1', personaId: 'persona-a', name: 'Character' },
+    { id: 'c_persona_b', characterId: 'char:c1', personaId: 'persona-b', name: 'Character' },
+    { id: 'npc_chat', characterId: 'char:c1', npcId: 'npc:n1', name: 'NPC' },
+  ]));
+  storage.setItem('line:conversation:c_persona_a', JSON.stringify([{ id: 'a1', role: 'user', text: 'persona A history' }]));
+  storage.setItem('line:conversation:c_persona_b', JSON.stringify([{ id: 'b1', role: 'assistant', text: 'persona B history' }]));
+  storage.setItem('line:conversation:npc_chat', JSON.stringify([{ id: 'n1', role: 'assistant', text: 'NPC history' }]));
+  storage.setItem('line:runtime:conversations', JSON.stringify({
+    c_persona_a: { id: 'c_persona_a', name: 'Character A', isGroup: false },
+    c_persona_b: { id: 'c_persona_b', name: 'Character B', isGroup: false },
+    npc_chat: { id: 'npc_chat', name: 'NPC', isGroup: false },
+  }));
+  storage.setItem('line:runtime:notifications', JSON.stringify([
+    { id: 'a', type: 'message', conversationId: 'c_persona_a', characterId: 'char:c1', title: 'A', body: '', createdAt: '', read: false },
+    { id: 'b', type: 'message', conversationId: 'c_persona_b', characterId: 'char:c1', title: 'B', body: '', createdAt: '', read: false },
+    { id: 'n', type: 'message', conversationId: 'npc_chat', characterId: 'npc:n1', title: 'NPC', body: '', createdAt: '', read: false },
+  ]));
+  storage.setItem('line:custom-css:c_persona_a', '.old{}');
+
+  removeLineConversationData('char:c1', { removeChatItem: true });
+
+  assert.equal(storage.getItem('line:conversation:c_persona_a'), null);
+  assert.equal(storage.getItem('line:conversation:c_persona_b'), null);
+  assert.equal(storage.getItem('line:custom-css:c_persona_a'), null);
+  assert.notEqual(storage.getItem('line:conversation:npc_chat'), null);
+  assert.deepEqual(JSON.parse(storage.getItem('line:chat-items')).map(chat => chat.id), ['npc_chat']);
+  const meta = JSON.parse(storage.getItem('line:runtime:conversations'));
+  assert.equal(meta.c_persona_a, undefined);
+  assert.ok(meta.npc_chat);
+  assert.deepEqual(JSON.parse(storage.getItem('line:runtime:notifications')).map(item => item.id), ['n']);
+});
+
+test('keeping a deleted character chat archives all persona entries and preserves their transcripts', () => {
+  const storage = new MemoryStorage();
+  installWindow(storage);
+  storage.setItem('line:chat-items', JSON.stringify([
+    { id: 'c_persona_a', characterId: 'char:c2', personaId: 'persona-a', name: 'Character', unread: 3 },
+    { id: 'c_persona_b', characterId: 'char:c2', personaId: 'persona-b', name: 'Character', unread: 2 },
+    { id: 'npc_chat', characterId: 'char:c2', npcId: 'npc:n2', name: 'NPC' },
+  ]));
+  storage.setItem('line:conversation:c_persona_a', JSON.stringify([{ id: 'a1', role: 'user', text: 'keep A' }]));
+  storage.setItem('line:conversation:c_persona_b', JSON.stringify([{ id: 'b1', role: 'assistant', text: 'keep B' }]));
+  storage.setItem('line:runtime:notifications', JSON.stringify([
+    { id: 'a', type: 'message', conversationId: 'c_persona_a', characterId: 'char:c2', title: 'A', body: '', createdAt: '', read: false },
+    { id: 'b', type: 'message', conversationId: 'c_persona_b', characterId: 'char:c2', title: 'B', body: '', createdAt: '', read: false },
+  ]));
+
+  removeLineConversationData('char:c2', { removeChatItem: false });
+
+  const chats = JSON.parse(storage.getItem('line:chat-items'));
+  assert.equal(chats.length, 3);
+  assert.equal(chats[0].characterId, undefined);
+  assert.equal(chats[1].characterId, undefined);
+  assert.equal(chats[0].unread, 0);
+  assert.equal(chats[1].unread, 0);
+  assert.equal(chats[2].npcId, 'npc:n2');
+  assert.notEqual(storage.getItem('line:conversation:c_persona_a'), null);
+  assert.notEqual(storage.getItem('line:conversation:c_persona_b'), null);
+  assert.deepEqual(JSON.parse(storage.getItem('line:runtime:notifications')), []);
+});
