@@ -34,3 +34,9 @@ test('LineConversationView flushes the full snapshot in the message persistence 
   assert.ok(source.includes('saveLineConversationSnapshot(conversationStorageId, messages)'));
   assert.ok(source.includes('usePersistentState is debounced'));
 });
+
+test('LINE shows only one typing indicator while an empty AI placeholder is visible', async () => {
+  const source = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
+  assert.match(source, /isTyping\s*&&\s*!visibleMessages\.some\(message\s*=>/);
+  assert.match(source, /message\.kind\s*===\s*'ai-reply'/);
+});
