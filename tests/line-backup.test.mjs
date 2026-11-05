@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { exportLineBackup, importLineBackup, migrateLineIdentityPrefixes, migrateLineMessagesToRole } from '../src/store/lineRuntime.ts';
+import { exportLineBackup, importLineBackup, migrateLineIdentityPrefixes, migrateLineMessagesToRole, removeLineConversationData } from '../src/store/lineRuntime.ts';
 
 class MemoryStorage {
   values = new Map();
@@ -204,4 +204,22 @@ test('role migration never overwrites a malformed conversation transcript', () =
   const report = migrateLineMessagesToRole();
   assert.deepEqual(report, { conversations: 0, messages: 0 });
   assert.equal(storage.getItem('line:conversation:chat-corrupt'), corrupt);
+});
+
+
+test('LINE chat cleanup never overwrites corrupt runtime metadata or notification storage', () => {
+  const storage = new MemoryStorage();
+  const corruptMeta = '{broken-runtime-meta';
+  const corruptNotifications = '{broken-notifications';
+  storage.setItem('line:runtime:conversations', corruptMeta);
+  storage.setItem('line:runtime:notifications', corruptNotifications);
+  storage.setItem('line:conversation:chat-corrupt', JSON.stringify([{ id: 'm1', text: 'keep original transcript until explicit cleanup' }]));
+  storage.setItem('line:chat-items', JSON.stringify([{ id: 'chat-corrupt', name: 'Chat' }]));
+  installWindow(storage);
+
+  removeLineConversationData('chat-corrupt');
+
+  assert.equal(storage.getItem('line:runtime:conversations'), corruptMeta);
+  assert.equal(storage.getItem('line:runtime:notifications'), corruptNotifications);
+  assert.equal(storage.getItem('line:conversation:chat-corrupt'), null);
 });
