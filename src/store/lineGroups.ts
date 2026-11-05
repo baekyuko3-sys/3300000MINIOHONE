@@ -1,4 +1,4 @@
-import { readPersistentState } from './usePersistentState';
+import { readPersistentState, reportPersistenceIssue } from './usePersistentState';
 
 export interface LineGroupMember {
   id: string;
@@ -36,7 +36,12 @@ export interface LineGroup {
 const STORAGE_KEY = 'line:groups';
 
 export function getLineGroups(): LineGroup[] {
-  return readPersistentState<LineGroup[]>(STORAGE_KEY, []);
+  const saved = readPersistentState<unknown>(STORAGE_KEY, []);
+  if (!Array.isArray(saved)) {
+    reportPersistenceIssue('read:' + STORAGE_KEY, '群聊数据结构不是数组；已停止读取，避免后续保存覆盖原始数据', new Error('LINE_GROUPS_SCHEMA_INVALID'));
+    return [];
+  }
+  return saved as LineGroup[];
 }
 
 export function getLineGroupById(id: string): LineGroup | null {

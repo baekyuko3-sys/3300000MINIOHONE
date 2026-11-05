@@ -1,4 +1,4 @@
-import { readPersistentState } from './usePersistentState';
+import { readPersistentState, reportPersistenceIssue } from './usePersistentState';
 import { removeLineConversationData } from './lineRuntime';
 
 export interface SaneNpc {
@@ -50,8 +50,12 @@ export interface SaneNpc {
 const KEY = 'phone:npcs';
 
 export function getNpcs(): SaneNpc[] {
-  const saved = readPersistentState<Partial<SaneNpc>[]>(KEY, []);
-  return saved
+  const saved = readPersistentState<unknown>(KEY, []);
+  if (!Array.isArray(saved)) {
+    reportPersistenceIssue('read:' + KEY, 'NPC 数据结构不是数组；已停止读取，避免后续保存覆盖原始数据', new Error('NPC_STORAGE_SCHEMA_INVALID'));
+    return [];
+  }
+  return (saved as Partial<SaneNpc>[])
     .filter(item => item && typeof item === 'object')
     .map(item => ({
       ...item,

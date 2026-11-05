@@ -9,11 +9,16 @@ import {
   readMomentsSettings,
   spawnBatchCommentsForPost,
 } from './momentsComments';
-import { readPersistentState } from './usePersistentState';
+import { readPersistentState, reportPersistenceIssue } from './usePersistentState';
 import type { SaneNpc } from './npcs';
 
 function readPosts(): any[] {
-  return readPersistentState<any[]>(MOMENTS_POSTS_KEY, []);
+  const saved = readPersistentState<unknown>(MOMENTS_POSTS_KEY, []);
+  if (!Array.isArray(saved)) {
+    reportPersistenceIssue('read:' + MOMENTS_POSTS_KEY, '朋友圈动态数据结构不是数组；已停止读取，避免后续保存覆盖原始数据', new Error('MOMENTS_POSTS_SCHEMA_INVALID'));
+    return [];
+  }
+  return saved;
 }
 /**
  * 写帖子必须可验证：写失败（比如本地存储已满）时返回 false，
@@ -203,8 +208,9 @@ async function makeNpcMomentText(npc: SaneNpc): Promise<string> {
 /** 一键生成：随机挑一个允许发帖的角色或 NPC 发一条 */
 export async function generateMomentNow(): Promise<string> {
   const cfg = readMomentsSettings();
-  const chars = readPersistentState<ImportedCharacter[]>('phone:characters', [])
-    .filter(c => isCharacterAllowedToPostMoments(c.id, cfg));
+  const savedCharacters = readPersistentState<unknown>('phone:characters', []);
+  const chars = (Array.isArray(savedCharacters) ? savedCharacters : [])
+    .filter((c: any) => c && typeof c.id === 'string' && isCharacterAllowedToPostMoments(c.id, cfg));
   const npcs = listPostableNpcs(cfg);
   if (!chars.length && !npcs.length) {
     return '没有允许发朋友圈的角色/NPC（去 VROOM 设置里勾选）';
