@@ -46,3 +46,23 @@ test('sticker packs preserve malformed original data against fallback saves', ()
   saveStickerPacks([]);
   assert.equal(storage.getItem('line:sticker-packs'), original);
 });
+
+
+test('direct collection writes also refuse invalid existing schemas without a prior read', () => {
+  const storage = new MemoryStorage();
+  const playlistRaw = JSON.stringify({ items: [] });
+  const historyRaw = JSON.stringify({ items: [] });
+  const stickerRaw = JSON.stringify({ packs: [] });
+  storage.setItem('phone:music-user-playlists', playlistRaw);
+  storage.setItem('phone:music-listen-history', historyRaw);
+  storage.setItem('line:sticker-packs', stickerRaw);
+  installWindow(storage);
+
+  saveUserPlaylists([]);
+  saveMusicListenHistory([]);
+  saveStickerPacks([]);
+
+  assert.equal(storage.getItem('phone:music-user-playlists'), playlistRaw);
+  assert.equal(storage.getItem('phone:music-listen-history'), historyRaw);
+  assert.equal(storage.getItem('line:sticker-packs'), stickerRaw);
+});
