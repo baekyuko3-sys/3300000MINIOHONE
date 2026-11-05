@@ -45,22 +45,33 @@ export function addWalletTransaction(tx: Omit<WalletTransaction, 'id' | 'created
   return full;
 }
 
-// 发红包：扣钱
-// 转账：发送时从现有虚拟钱包扣款，并写入独立流水。
-// 使用整数分比较与扣款，避免小数精度导致余额不足判断错误。
-export function walletSendTransfer(amount: number, counterparty: string, desc = ''): boolean {
-  if (!Number.isFinite(amount) || amount <= 0) return false;
+// 转账结算采用独立追加式状态，保留既有余额、亲情卡及历史流水。
+type TransferSettlement = { id: string; status: 'sent' | 'accepted' | 'refunded'; amount: number; counterparty: string; updatedAt: string };
+const TRANSFER_SETTLEMENT_KEY = 'line:wallet-transfer-settlements';
+function getTransferSettlements(): TransferSettlement[] { return readPersistentState<TransferSettlement[]>(TRANSFER_SETTLEMENT_KEY, []); }
+function saveTransferSettlement(item: TransferSettlement): void {
+  const all = getTransferSettlements();
+  writeWalletState(TRANSFER_SETTLEMENT_KEY, [item, ...all.filter(entry => entry.id !== item.id)].slice(0, 500));
+}
+export function walletSendTransfer(amount: number, counterparty: string, desc = '', operationId?: string): boolean {
+  if (!Number.isFinite(amount) || amount <= 0 || !operationId) return false;
   const cents = Math.round(amount * 100);
   if (cents <= 0) return false;
+  const existing = getTransferSettlements().find(entry => entry.id === operationId);
+  if (existing) return existing.status !== 'refunded';
+  if (Math.round(getWalletBalance() * 100) < cents) return false;
   const normalizedAmount = cents / 100;
-  const balanceCents = Math.round(getWalletBalance() * 100);
-  if (balanceCents < cents) return false;
-  addWalletTransaction({
-    type: 'transfer',
-    amount: -normalizedAmount,
-    desc: desc || '转账支出',
-    counterparty: counterparty || undefined,
-  });
+  addWalletTransaction({ type: 'transfer', amount: -normalizedAmount, desc: desc || '转账支出', counterparty: counterparty || undefined });
+  saveTransferSettlement({ id: operationId, status: 'sent', amount: normalizedAmount, counterparty, updatedAt: new Date().toISOString() });
+  return true;
+}
+export function walletSettleTransfer(operationId: string, decision: 'accepted' | 'rejected'): boolean {
+  const item = getTransferSettlements().find(entry => entry.id === operationId);
+  if (!item || item.status !== 'sent') return false;
+  if (decision === 'rejected') {
+    addWalletTransaction({ type: 'transfer', amount: item.amount, desc: '转账拒收退款', counterparty: item.counterparty });
+    saveTransferSettlement({ ...item, status: 'refunded', updatedAt: new Date().toISOString() });
+  } else saveTransferSettlement({ ...item, status: 'accepted', updatedAt: new Date().toISOString() });
   return true;
 }
 
@@ -75,14 +86,38 @@ export function walletSendRedPacket(totalAmount: number, desc: string): boolean 
   return true;
 }
 
-// 抢红包：加钱
+// 红包领取和退款用消息 ID + 领取者 ID 做幂等保护。
+type PacketOperation = { id: string; claimed: string[]; refunded: boolean };
+const PACKET_OPERATION_KEY = 'line:wallet-redpacket-operations';
+function getPacketOperations(): PacketOperation[] { return readPersistentState<PacketOperation[]>(PACKET_OPERATION_KEY, []); }
+function savePacketOperation(item: PacketOperation): void {
+  const all = getPacketOperations();
+  writeWalletState(PACKET_OPERATION_KEY, [item, ...all.filter(x => x.id !== item.id)].slice(0, 500));
+}
+export function walletClaimRedPacket(packetId: string, claimId: string, amount: number, from: string): boolean {
+  if (!packetId || !claimId || !Number.isFinite(amount) || amount <= 0) return false;
+  const ops = getPacketOperations();
+  const op = ops.find(x => x.id === packetId) || { id: packetId, claimed: [], refunded: false };
+  if (op.refunded || op.claimed.includes(claimId)) return false;
+  const cents = Math.round(amount * 100);
+  if (cents <= 0) return false;
+  addWalletTransaction({ type: 'redpacket_grab', amount: cents / 100, desc: `抢到${from}的红包`, counterparty: from });
+  savePacketOperation({ ...op, claimed: [...op.claimed, claimId] });
+  return true;
+}
+export function walletRefundRedPacket(packetId: string, amount: number, desc = '未领取红包退回'): boolean {
+  if (!packetId || !Number.isFinite(amount) || amount <= 0) return false;
+  const ops = getPacketOperations();
+  const op = ops.find(x => x.id === packetId) || { id: packetId, claimed: [], refunded: false };
+  if (op.refunded) return false;
+  const cents = Math.round(amount * 100);
+  if (cents <= 0) return false;
+  addWalletTransaction({ type: 'redpacket_send', amount: cents / 100, desc });
+  savePacketOperation({ ...op, refunded: true });
+  return true;
+}
 export function walletGrabRedPacket(amount: number, from: string): void {
-  addWalletTransaction({
-    type: 'redpacket_grab',
-    amount,
-    desc: `抢到${from}的红包`,
-    counterparty: from,
-  });
+  addWalletTransaction({ type: 'redpacket_grab', amount, desc: `抢到${from}的红包`, counterparty: from });
 }
 
 // 充值（虚拟）

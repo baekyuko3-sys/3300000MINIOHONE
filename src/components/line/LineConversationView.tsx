@@ -8,7 +8,7 @@ import { generateSpeech, transcribeAudio } from '../../ai/mediaEngine';
 import { readAppSettings } from '../../store/appSettings';
 import type { ChannelAiSettings } from '../../store/appSettings';
 import { getMedia, putMedia } from '../../store/mediaVault';
-import { walletSendRedPacket, walletSendTransfer, walletGrabRedPacket, spendFamilyCard } from '../../store/lineWallet';
+import { walletSendRedPacket, walletSendTransfer, walletClaimRedPacket, spendFamilyCard } from '../../store/lineWallet';
 import { VroomImage } from '../VroomImage';
 import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory, updateCharacterMemoryItem, deleteCharacterMemoryItem, clearCharacterMemory, clearAllCharacterMemoryVariants } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
@@ -4088,12 +4088,13 @@ export function LineConversationView({
     const transferValue = Number(amount);
     const counterparty = isGroup ? (activeGroup?.name || '群聊') : (importedCharacter?.name || characterProfile.nickname || '角色');
     // 先完成钱包扣款与流水写入；余额不足时不创建聊天消息，避免出现“已发送但未扣款”。
-    if (!walletSendTransfer(transferValue, counterparty, note || 'LINE 转账')) {
+    const transferId = `transfer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    if (!walletSendTransfer(transferValue, counterparty, note || 'LINE 转账', transferId)) {
       showToast('钱包余额不足或转账金额无效');
       return;
     }
     const newMsg = {
-      id: Date.now(),
+      id: transferId,
       role: 'user' as const,
       kind: 'transfer' as const,
       text: `[转账] ¥${amount}${note ? ` · ${note}` : ''}`,
@@ -4101,7 +4102,7 @@ export function LineConversationView({
       transferAmount: amount,
       transferNote: note,
       transferStatus: 'sent',
-      metadata: { amount, note, status: 'sent' },
+      metadata: { amount, note, status: 'sent', settlementId: transferId },
     };
     setMessages((prev) => [...prev, newMsg]);
     appendLineMessage(conversationStorageId, newMsg);
@@ -4135,12 +4136,24 @@ export function LineConversationView({
         showToast('已超出该亲情卡本月限额（红包仍已发送）');
       }
     }
+    const packetId = `redpacket-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const totalCents = Math.round(Number(amount) * 100);
+    const shares: number[] = [];
+    let centsLeft = totalCents;
+    for (let slot = 0; slot < count; slot += 1) {
+      const slotsLeft = count - slot;
+      const share = slotsLeft === 1 ? centsLeft : (isGroup && redPacketMode === 'equal')
+        ? Math.floor(totalCents / count) + (slot < totalCents % count ? 1 : 0)
+        : Math.max(1, Math.min(centsLeft - (slotsLeft - 1), Math.round(centsLeft / slotsLeft * (0.35 + Math.random() * 1.3))));
+      shares.push(share); centsLeft -= share;
+    }
+    if (!(isGroup && redPacketMode === 'equal')) shares.sort(() => Math.random() - 0.5);
     const newMsg = {
-      id: Date.now(), role: 'user' as const, kind: 'red-packet' as const,
+      id: packetId, role: 'user' as const, kind: 'red-packet' as const,
       text: `[红包] ¥${amount} · ${blessing}`, time: '刚刚',
       redPacketAmount: amount, redPacketBlessing: blessing, redPacketStatus: 'sent',
       redPacketCount: count, redPacketMode: isGroup ? redPacketMode : 'random', redPacketClaims: [],
-      metadata: { amount, blessing, status: 'sent', count, mode: isGroup ? redPacketMode : 'random', claims: [] },
+      metadata: { amount, blessing, status: 'sent', count, mode: isGroup ? redPacketMode : 'random', claims: [], sharesCents: shares, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() },
     };
     setMessages((prev) => [...prev, newMsg]);
     appendLineMessage(conversationStorageId, newMsg);
@@ -8873,36 +8886,28 @@ export function LineConversationView({
         const alreadyClaimed = claims.some((claim: any) => claim?.userId === 'me');
         const claimPacket = () => {
           if (alreadyClaimed || claims.length >= count) return;
-          const remainingCents = Math.max(0, Math.round(amount * 100));
-          const equalMode = packet.redPacketMode === 'equal' || meta.mode === 'equal';
-          const shares: number[] = [];
-          let centsLeft = remainingCents;
-          for (let slot = 0; slot < count; slot += 1) {
-            const slotsLeft = count - slot;
-            const share = slotsLeft === 1 ? centsLeft : equalMode
-              ? Math.floor(remainingCents / count) + (slot < remainingCents % count ? 1 : 0)
-              : Math.max(1, Math.min(centsLeft - (slotsLeft - 1), Math.round(centsLeft / slotsLeft * (0.35 + Math.random() * 1.3))));
-            shares.push(share);
-            centsLeft -= share;
+          const expiresAt = String(meta.expiresAt || '');
+          if (expiresAt && Date.now() >= new Date(expiresAt).getTime()) {
+            showToast('红包已过期，未领取金额将退回');
+            return;
           }
-          if (!equalMode) shares.sort(() => Math.random() - 0.5);
+          // 每个红包的份额在发送时已固定；领取时绝不重新抽签，也不替 NPC 自动领取。
+          const shares = Array.isArray(meta.sharesCents) ? meta.sharesCents : [];
+          const userCents = Number(shares[claims.length] || 0);
+          if (userCents <= 0) { showToast('红包份额无效，请刷新后重试'); return; }
           const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const userClaim = { userId: 'me', name: '我', amount: ((shares[0] || 0) / 100).toFixed(2), time: now() };
-          const nextClaims = [userClaim];
-          const npcMembers = groupMembers.filter((member: any) => member && member.kind !== 'user' && member.id !== activeGroup?.ownerId);
-          for (let index = 1; index < count && index <= npcMembers.length; index += 1) {
-            const member = npcMembers[index - 1];
-            nextClaims.push({ userId: String(member.id || member.characterId || member.npcId || member.name), name: String(member.nickname || member.name || '群成员'), amount: ((shares[index] || 0) / 100).toFixed(2), time: now() });
-          }
+          const userClaim = { userId: 'me', name: '我', amount: (userCents / 100).toFixed(2), time: now() };
+          const nextClaims = [...claims, userClaim];
           const nextStatus = nextClaims.length >= count ? 'claimed' : 'partial';
           const updated = { ...packet, redPacketClaims: nextClaims, redPacketStatus: nextStatus, metadata: { ...meta, claims: nextClaims, status: nextStatus } };
+          if (!walletClaimRedPacket(String(packet.id), 'me', userCents / 100, String(packet.senderName || '群成员'))) {
+            showToast('该红包已领取或已结算，不能重复领取'); return;
+          }
           setMessages((prev) => prev.map((item: any) => String(item.id) === String(packet.id) ? updated : item));
           updateLineMessage(conversationStorageId, packet.id, { redPacketClaims: nextClaims, redPacketStatus: updated.redPacketStatus, metadata: updated.metadata } as any);
           setActiveRedPacket(updated);
-          // 钱包加钱
-          walletGrabRedPacket(Number(userClaim.amount), String(packet.senderName || '群成员'));
-          if (nextClaims.length >= count) showToast('红包已被领完');
-          else showToast(`你领取了 ¥${userClaim.amount}，群成员已自动领取`);
+          if (nextClaims.length >= count) showToast('红包已领完');
+          else showToast(`你领取了 ¥${userClaim.amount}`);
         };
         return <div className="absolute inset-0 z-[90] flex items-center justify-center bg-black/45 p-5" onClick={() => setShowRedPacketModal(false)}><div className="relative w-full max-w-[300px] overflow-hidden rounded-[16px] bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="bg-[#c96e7d] px-4 pb-4 pt-5 text-center text-white"><button type="button" onClick={() => setShowRedPacketModal(false)} className="absolute right-3 top-2 text-[22px] leading-none text-white/80">×</button><div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-[10px] bg-white/15 text-[20px]">🧧</div><div className="text-[12px] text-white/80">{String(packet.role === 'user' ? '我' : packet.senderName || '群成员')} 的红包</div><div className="mt-1 text-[14px] font-medium">{String(packet.redPacketBlessing || meta.blessing || '恭喜发财')}</div>{alreadyClaimed ? <div className="mt-3 text-[28px] font-semibold">¥{String(claims.find((claim: any) => claim.userId === 'me')?.amount || '0.00')}</div> : <div className="mt-3 text-[13px] text-white/85">{packet.redPacketStatus === 'claimed' ? '红包已领完' : '恭喜发财，大吉大利'}</div>}</div><div className="p-4">{!alreadyClaimed && packet.redPacketStatus !== 'claimed' && claims.length < count && <button type="button" onClick={claimPacket} className="mb-3 w-full rounded-[10px] bg-[#f2c65c] py-2.5 text-[13px] font-semibold text-[#6d4518] active:scale-[0.99]">开红包</button>}{alreadyClaimed && <div className="mb-3 text-center text-[11px] text-[#999]">已领取红包，下面是领取详情</div>}<div className="flex items-center justify-between border-b border-[#f0f0f1] pb-2 text-[11px] text-[#777]"><span>领取详情</span><span>{claims.length}/{count} 个红包</span></div><div className="max-h-[220px] overflow-y-auto">{claims.length ? claims.map((claim: any, index: number) => <div key={`${claim.userId || claim.name}-${index}`} className="flex items-center gap-2.5 border-b border-[#f5f5f6] py-2.5 last:border-0"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f4f4f5] text-[11px] text-[#666]">{String(claim.name || '成员').slice(0, 1)}</div><div className="min-w-0 flex-1"><div className="truncate text-[12px] font-medium text-[#333]">{String(claim.name || '群成员')}</div><div className="mt-0.5 text-[10px] text-[#aaa]">{String(claim.time || '')}</div></div><div className="text-[13px] font-semibold text-[#333]">¥{Number(claim.amount || 0).toFixed(2)}</div></div>) : <div className="py-5 text-center text-[11px] text-[#aaa]">还没有人领取</div>}</div><div className="mt-2 text-[10px] text-[#aaa]">已领取 ¥{claims.reduce((sum: number, claim: any) => sum + Number(claim.amount || 0), 0).toFixed(2)} · 剩余 {Math.max(0, count - claims.length)} 个</div></div></div></div>;
       })()}
