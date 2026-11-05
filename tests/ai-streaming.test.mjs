@@ -95,3 +95,30 @@ test('bounded media response reader cancels a stalled response body', async () =
   await assert.rejects(readBlobResponseWithTimeout(response, 10, 1024), /AI_RESPONSE_BODY_TIMEOUT/);
   assert.equal(cancelled, true);
 });
+
+
+test('caller abort cancels a non-streaming response body after headers arrive', async () => {
+  let cancelled = false;
+  const controller = new AbortController();
+  const response = new Response(new ReadableStream({
+    pull() { return new Promise(() => {}); },
+    cancel() { cancelled = true; },
+  }));
+  const pending = readResponseTextWithTimeout(response, 30000, 1024 * 1024, controller.signal);
+  controller.abort();
+  await assert.rejects(pending, /AI_ABORTED/);
+  assert.equal(cancelled, true);
+});
+
+test('caller abort cancels an active SSE reader', async () => {
+  let cancelled = false;
+  const controller = new AbortController();
+  const response = new Response(new ReadableStream({
+    pull() { return new Promise(() => {}); },
+    cancel() { cancelled = true; },
+  }));
+  const pending = parseSseResponse(response, extractOpenAiText, undefined, 30000, undefined, undefined, controller.signal);
+  controller.abort();
+  await assert.rejects(pending, /AI_ABORTED/);
+  assert.equal(cancelled, true);
+});
