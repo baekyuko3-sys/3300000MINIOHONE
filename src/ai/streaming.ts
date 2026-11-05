@@ -65,7 +65,8 @@ export async function readBlobResponseWithTimeout(
   maxBytes = 32 * 1024 * 1024,
 ): Promise<Blob> {
   const bytes = await readResponseBytesWithTimeout(response, timeoutMs, maxBytes);
-  return new Blob([bytes], { type: response.headers.get('content-type') || 'application/octet-stream' });
+  const blobBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  return new Blob([blobBuffer], { type: response.headers.get('content-type') || 'application/octet-stream' });
 }
 
 export async function readError(response: Response): Promise<string> {
