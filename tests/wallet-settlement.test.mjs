@@ -71,7 +71,7 @@ test('red packet debit stores fixed shares and duplicate send does not debit aga
 });
 
 test('NPC reservations are unique on sent packets; incoming claims credit once at the fixed share value', () => {
-  setWalletBalance(0);
+  setWalletBalance(3);
   assert.equal(walletSendRedPacket(3, '红包', 'sent-1', [100, 200]), true);
   assert.equal(walletRegisterRedPacketClaim('sent-1', 'npc:a', 0), true);
   assert.equal(walletRegisterRedPacketClaim('sent-1', 'npc:b', 0), false);
