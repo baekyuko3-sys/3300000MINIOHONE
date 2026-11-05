@@ -11,7 +11,7 @@ import { generateCreativeText, readStoredAiSettings } from '../../ai/aiEngine';
 import { getCharacterMemory } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
 import { buildNpcAllContentContext, serializeNpcAllContentContext } from '../../store/npcContext';
-import { deleteNpc, getNpcs, removeNpcReferences, type SaneNpc, upsertNpc, getActivePersona } from '../../store/npcs';
+import { deleteNpc, getNpcs, removeNpcReferences, type SaneNpc, upsertNpc, upsertNpcs, getActivePersona } from '../../store/npcs';
 import { NpcAvatar } from '../NpcAvatar';
 import { putMedia } from '../../store/mediaVault';
 
@@ -338,7 +338,7 @@ export function NpcScreenView({ onNavigate }: { onNavigate: (screen: ScreenType)
         index,
       }));
 
-      created.forEach(upsertNpc);
+      if (!upsertNpcs(created)) throw new Error('NPC 保存失败：本地数据未确认写入，原有资料已保留');
       setNpcs(prev => [...created, ...prev]);
       setPrompt('');
       setArchiveCharacterId(boundCharacter.id);
