@@ -4210,7 +4210,7 @@ export function LineConversationView({
       const candidates = isGroup
         ? groupAiMembers.map(({ member, character }) => ({ id: String(member.id), name: String(member.nickname || member.name || character.name), personality: character.personality || '', background: character.scenario || '', context: character.systemPrompt || character.description || '' }))
         : importedCharacter ? [{ id: String(importedCharacter.id), name: importedCharacter.name || characterProfile.nickname, personality: importedCharacter.personality || '', background: importedCharacter.scenario || '', context: importedCharacter.systemPrompt || importedCharacter.description || '' }] : [];
-      if (!candidates.length || count <= 1) return;
+      if (!candidates.length) return;
       const recent = messagesRef.current.slice(-12).map((m: any) => `${m.role === 'user' ? '我' : (m.senderName || m.characterName || '角色')}：${String(m.text || '').slice(0, 180)}`).join('\n');
       try {
         const raw = await generateCreativeText({
@@ -7173,6 +7173,7 @@ export function LineConversationView({
                     <div className="flex-1 min-w-0">
                       <div className="text-[10px] text-[#999] tracking-[1px]">{isMe ? '转账' : '收到转账'}</div>
                       <div className="text-[16px] font-semibold mt-0.5">¥{String(msg.transferAmount || msg.metadata?.amount || '0')}</div>
+                      <div className="mt-1 text-[9px] text-[#999]">{String(msg.transferStatus || msg.metadata?.status || 'sent') === 'accepted' ? '已收款' : String(msg.transferStatus || msg.metadata?.status || 'sent') === 'refunded' ? '已退回' : '等待确认'}</div>
                     </div>
                     <div className="text-[#d0d0d0] text-[14px]">›</div>
                   </div>
