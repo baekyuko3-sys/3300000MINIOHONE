@@ -281,18 +281,37 @@ export function walletClaimRedPacket(packetId: string, claimId: string, amount: 
 }
 
 /** Only the original sender may refund; refund amount is derived from the stored share table. */
-export function walletRefundRedPacket(packetId: string, _amount: number, desc = '未领取红包退回', _sharesCents?: number[], claimedSlots: number[] = []): boolean {
+export function walletRefundRedPacket(packetId: string, _amount: number, desc = '未领取红包退回', legacySharesCents?: number[], claimedSlots: number[] = []): boolean {
   if (!packetId) return false;
+  const validLegacyShares = Array.isArray(legacySharesCents) && legacySharesCents.length > 0 && legacySharesCents.every(value => Number.isInteger(value) && value > 0)
+    ? legacySharesCents
+    : null;
   const result = commitWalletLedger(current => {
-    const packet = findPacket(current, packetId);
-    if (!packet?.sent || !packet.sharesCents) return null;
+    const existing = findPacket(current, packetId);
+    // Older app versions deducted the balance without registering the packet ID.
+    // The caller only reaches this path for an expired message sent by the user.
+    const packet: PacketOperation | undefined = existing || (validLegacyShares
+      ? { id: packetId, claimed: [], refunded: false, sent: true, sharesCents: [...validLegacyShares], totalCents: validLegacyShares.reduce((sum, value) => sum + value, 0), slots: {} }
+      : undefined);
+    if (!packet?.sent) return null;
     if (packet.refunded) return { next: current, result: true };
+    const shares = packet.sharesCents || (validLegacyShares && {
+      shares: [...validLegacyShares],
+      total: validLegacyShares.reduce((sum, value) => sum + value, 0),
+    });
+    const fixedShares = Array.isArray(shares) ? shares : shares?.shares;
+    if (!fixedShares?.length || fixedShares.some(value => !Number.isInteger(value) || value <= 0)) return null;
     const occupied = new Set<number>([
       ...Object.values(packet.slots || {}),
       ...claimedSlots.filter(Number.isInteger),
     ]);
-    const refundCents = packet.sharesCents.reduce((sum, share, index) => sum + (occupied.has(index) ? 0 : share), 0);
-    const updated: PacketOperation = { ...packet, refunded: true };
+    const refundCents = fixedShares.reduce((sum, share, index) => sum + (occupied.has(index) ? 0 : share), 0);
+    const updated: PacketOperation = {
+      ...packet,
+      sharesCents: fixedShares,
+      totalCents: packet.totalCents || fixedShares.reduce((sum, value) => sum + value, 0),
+      refunded: true,
+    };
     const transactions = refundCents > 0
       ? [makeTransaction({ type: 'redpacket_send', amount: refundCents / 100, desc }), ...current.transactions].slice(0, 200)
       : current.transactions;
