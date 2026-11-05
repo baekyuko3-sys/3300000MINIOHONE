@@ -171,7 +171,7 @@ export async function addWalletTransaction(tx: Omit<WalletTransaction, 'id' | 'c
     if (balanceCents < 0) return null;
     const full = makeTransaction({ ...tx, amount: delta / 100 });
     return {
-      next: { ...current, balanceCents, transactions: [full, ...current.transactions].slice(0, 200) },
+      next: { ...current, balanceCents, transactions: [full, ...current.transactions] },
       result: full,
     };
   });
@@ -202,7 +202,7 @@ export async function walletSendTransfer(amount: number, counterparty: string, d
       next: {
         ...current,
         balanceCents: current.balanceCents - cents,
-        transactions: [transaction, ...current.transactions].slice(0, 200),
+        transactions: [transaction, ...current.transactions],
         transfers: [settlement, ...current.transfers.filter(entry => entry.id !== operationId)],
         familyCards: applyFamilyCardSpend(current.familyCards, familyHolderName, cents),
       },
@@ -229,7 +229,7 @@ export async function walletSettleTransfer(operationId: string, decision: 'accep
         ...current,
         balanceCents: current.balanceCents + Math.round(item.amount * 100),
         familyCards: applyFamilyCardAdjustment(current.familyCards, item.familyHolderName, -Math.round(item.amount * 100)),
-        transactions: [transaction, ...current.transactions].slice(0, 200),
+        transactions: [transaction, ...current.transactions],
         transfers: [updated, ...current.transfers.filter(entry => entry.id !== operationId)],
       },
       result: true,
@@ -274,7 +274,7 @@ export async function walletSendRedPacket(totalAmount: number, desc: string, ope
       next: {
         ...current,
         balanceCents: current.balanceCents - cents,
-        transactions: [transaction, ...current.transactions].slice(0, 200),
+        transactions: [transaction, ...current.transactions],
         packets: [packet, ...current.packets.filter(entry => entry.id !== operationId)],
         familyCards: applyFamilyCardSpend(current.familyCards, familyHolderName, cents),
       },
@@ -332,7 +332,7 @@ export async function walletClaimRedPacket(packetId: string, claimId: string, am
       next: {
         ...current,
         balanceCents: current.balanceCents + cents,
-        transactions: [transaction, ...current.transactions].slice(0, 200),
+        transactions: [transaction, ...current.transactions],
         packets: [nextPacket, ...current.packets.filter(entry => entry.id !== packetId)],
       },
       result: true,
@@ -387,7 +387,7 @@ export async function walletRefundRedPacket(packetId: string, _amount: number, d
       refunded: true,
     };
     const transactions = refundCents > 0
-      ? [makeTransaction({ type: 'redpacket_send', amount: refundCents / 100, desc }), ...current.transactions].slice(0, 200)
+      ? [makeTransaction({ type: 'redpacket_send', amount: refundCents / 100, desc }), ...current.transactions]
       : current.transactions;
     return {
       next: {

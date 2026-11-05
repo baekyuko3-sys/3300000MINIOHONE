@@ -210,5 +210,5 @@ test('wallet operation idempotency survives more than 500 historical settlements
   }
   assert.equal(await walletSendTransfer(1, '角色', '', 'long-transfer-0'), true);
   assert.equal(getWalletBalance(), 1480);
-  assert.equal(getWalletTransactions().length, 200);
+  assert.equal(getWalletTransactions().length, 520);
 });
