@@ -1061,7 +1061,7 @@ async function callOpenAiCompatible(input: AiReplyInput): Promise<string> {
 }
 
 function escapeCotRegex(value: string): string {
-  return value.replace(/[.*+?^$()|[\]{}\\]/g, '\\export async function generateCharacterReply(input: AiReplyInput): Promise<AiReplyResult> {');
+  return value.replace(/[.*+?^$()|[\]{}\\]/g, '\\$&');
 }
 
 /**
@@ -1069,7 +1069,7 @@ function escapeCotRegex(value: string): string {
  * The final model may try to produce a second, different COT paragraph, so make
  * the pipeline use the already-completed prepass summary in the selected format.
  */
-function normalizeCotOutputToSelectedPreset(rawText: string, cotTag: string, summary: string): string {
+export function normalizeCotOutputToSelectedPreset(rawText: string, cotTag: string, summary: string): string {
   const rawTag = String(cotTag || '<cot>...</cot>').trim();
   const safeSummary = String(summary || '').trim();
   if (!safeSummary) return rawText;
