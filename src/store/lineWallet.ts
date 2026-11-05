@@ -116,18 +116,27 @@ function makeTransaction(tx: Omit<WalletTransaction, 'id' | 'createdAt'>): Walle
   };
 }
 
+let fallbackWalletQueue: Promise<unknown> = Promise.resolve();
+
 async function commitWalletLedger<T>(mutate: (current: WalletLedger) => { next: WalletLedger; result: T } | null): Promise<T | null> {
-  if (typeof window === 'undefined' || !('locks' in navigator) || !navigator.locks?.request) return null;
+  if (typeof window === 'undefined') return null;
+  const execute = (): T | null => {
+    const current = readWalletLedger();
+    const changed = mutate(current);
+    if (!changed || !persistWalletLedger(changed.next)) return null;
+    // Keep legacy family-card readers in sync, but the ledger remains authoritative.
+    try { window.localStorage.setItem(FAMILY_KEY, JSON.stringify(changed.next.familyCards)); } catch { /* ledger commit already succeeded */ }
+    notifyWalletUpdated();
+    return changed.result;
+  };
   try {
-    return await navigator.locks.request(WALLET_LOCK_NAME, { mode: 'exclusive' }, () => {
-      const current = readWalletLedger();
-      const changed = mutate(current);
-      if (!changed || !persistWalletLedger(changed.next)) return null;
-      // Keep legacy family-card readers in sync, but the ledger remains authoritative.
-      try { window.localStorage.setItem(FAMILY_KEY, JSON.stringify(changed.next.familyCards)); } catch { /* ledger commit already succeeded */ }
-      notifyWalletUpdated();
-      return changed.result;
-    });
+    const lockManager = (navigator as Navigator & { locks?: { request: <R>(name: string, options: { mode: 'exclusive' }, callback: () => R) => Promise<R> } }).locks;
+    if (lockManager?.request) return await lockManager.request(WALLET_LOCK_NAME, { mode: 'exclusive' }, execute);
+    // Compatibility fallback: serialize this tab's operations. Cross-tab safety is provided
+    // by Web Locks in current Chromium, Firefox and Safari; this fallback keeps older browsers usable.
+    const task = fallbackWalletQueue.then(execute, execute);
+    fallbackWalletQueue = task.then(() => undefined, () => undefined);
+    return await task;
   } catch {
     return null;
   }
@@ -369,12 +378,12 @@ export async function walletRefundRedPacket(packetId: string, _amount: number, d
 
 export async function walletGrabRedPacket(amount: number, from: string): Promise<void> {
   if (!Number.isFinite(amount) || amount <= 0) return;
-  addWalletTransaction({ type: 'redpacket_grab', amount, desc: `抢到${from}的红包`, counterparty: from });
+  await addWalletTransaction({ type: 'redpacket_grab', amount, desc: `抢到${from}的红包`, counterparty: from });
 }
 
-export async function walletTopup(amount: number): Promise<void> {
-  if (!Number.isFinite(amount) || amount <= 0) return;
-  addWalletTransaction({ type: 'topup', amount: Math.round(amount * 100) / 100, desc: '钱包充值' });
+export async function walletTopup(amount: number): Promise<boolean> {
+  if (!Number.isFinite(amount) || amount <= 0) return false;
+  return Boolean(await addWalletTransaction({ type: 'topup', amount: Math.round(amount * 100) / 100, desc: '钱包充值' }));
 }
 
 export function formatWalletAmount(amount: number): string {
@@ -460,7 +469,7 @@ export async function spendFamilyCard(holderName: string, amount: number): Promi
 }
 
 // 自定义金额充值
-export async function walletTopupCustom(amount: number): Promise<void> {
-  if (amount <= 0 || !isFinite(amount)) return;
-  walletTopup(Math.round(amount * 100) / 100);
+export async function walletTopupCustom(amount: number): Promise<boolean> {
+  if (amount <= 0 || !isFinite(amount)) return false;
+  return walletTopup(Math.round(amount * 100) / 100);
 }
