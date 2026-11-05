@@ -12,6 +12,7 @@ import {
   walletRefundRedPacket,
   addFamilyCard,
   getFamilyCards,
+  getWalletPacketClaims,
 } from '../src/store/lineWallet.ts';
 
 function installStorage() {
@@ -85,6 +86,15 @@ test('NPC reservations are unique on sent packets; incoming claims credit once a
   assert.equal(await walletClaimRedPacket('incoming-2', 'me', 1, '朋友', 0, [100, 250], 9), false);
   assert.equal(getWalletBalance(), 2.5);
   assert.equal(getWalletTransactions().length, 2);
+});
+
+test('reserved NPC packet slots can be reconstructed from the wallet ledger', async () => {
+  await setWalletBalance(10);
+  assert.equal(await walletSendRedPacket(3, '红包', 'packet-recovery', [100, 200]), true);
+  assert.equal(await walletRegisterRedPacketClaim('packet-recovery', 'npc:member-1', 1), true);
+  assert.deepEqual(getWalletPacketClaims('packet-recovery'), [
+    { claimId: 'npc:member-1', slotIndex: 1, amountCents: 200 },
+  ]);
 });
 
 test('sender cannot claim own packet; refund is capped by unclaimed stored shares and idempotent', async () => {
