@@ -611,7 +611,7 @@ test('moments generation shows a persistent on-screen indicator, not a blank fee
   assert.ok(source.includes('momentsGeneratingText'));
   assert.ok(source.includes("{isRefreshingMoments && ("));
   assert.ok(source.includes('{momentsGeneratingText}'));
-  assert.ok(source.includes("setMomentsGeneratingText('正在让 ' + source.name + ' 发朋友圈…')"));
+  assert.ok(source.includes("setMomentsGeneratingText('正在让角色生成朋友圈…')"));
   assert.ok(source.includes("setMomentsGeneratingText('正在让 ' + pickedNpc.name + ' 发朋友圈…')"));
   assert.ok(source.includes('disabled={isRefreshingMoments}'));
   assert.ok(source.includes('if (isRefreshingMoments) return;'));

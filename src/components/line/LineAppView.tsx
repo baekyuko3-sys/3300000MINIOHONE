@@ -382,7 +382,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     if (useNpc) {
       const pickedNpc = visibleNpcs[Math.floor(Math.random() * visibleNpcs.length)];
       if (!pickedNpc) { showToast('当前人设的朋友圈里没有可见的发帖人'); return; }
-      setMomentsGeneratingText('正在让 ' + pickedNpc.name + ' 发朋友圈…');
+      setMomentsGeneratingText('正在让角色生成朋友圈…');
       setIsRefreshingMoments(true);
       showToast('正在让 NPC 发朋友圈…');
       try {
@@ -398,7 +398,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     }
     const source = visibleAllowed[Math.floor(Math.random() * visibleAllowed.length)];
     if (!source) { showToast('请先在朋友圈设置里允许至少一个角色发动态'); return; }
-    setMomentsGeneratingText('正在让 ' + source.name + ' 发朋友圈…');
+    setMomentsGeneratingText('正在让角色生成朋友圈…');
     setIsRefreshingMoments(true);
     showToast('正在生成朋友圈…');
     try {
