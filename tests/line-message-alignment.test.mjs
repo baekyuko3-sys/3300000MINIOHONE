@@ -317,6 +317,25 @@ test('vroom npc avatars come only from the npc app, never the bound character', 
   }
 });
 
+test('moments read like a normal person posting, in character', async () => {
+  // 朋友圈文案要像正常人随手发的、合角色性格，不再是 30-120 字的小作文；
+  // 四处发动态的提示词（角色、NPC、主动、点开一键生成）都要同一句。
+  const { readFile } = await import('node:fs/promises');
+  const momentsSrc = await readFile(new URL('../src/store/momentsAfterChat.ts', import.meta.url), 'utf8');
+  const proactiveSrc = await readFile(new URL('../src/store/proactiveRuntime.ts', import.meta.url), 'utf8');
+  const lineAppSrc = await readFile(new URL('../src/components/line/LineAppView.tsx', import.meta.url), 'utf8');
+  assert.ok(!momentsSrc.includes('30-120字'));
+  const momentHits = momentsSrc.match(/像正常人随手发的朋友圈/g) || [];
+  assert.ok(momentHits.length >= 2, 'character + npc moment prompts');
+  assert.ok(momentsSrc.includes('不要写成散文和小作文'));
+  assert.ok(momentsSrc.includes('符合这个角色的性格和身份'));
+  assert.ok(momentsSrc.includes('符合这个NPC的性格和身份'));
+  assert.ok(proactiveSrc.includes('像正常人随手发的朋友圈'));
+  assert.ok(!proactiveSrc.includes('控制在手机朋友圈适合的长度'));
+  assert.ok(lineAppSrc.includes('只写一条像正常人随手发的朋友圈动态'));
+  assert.ok(lineAppSrc.includes('语气要符合这个角色的性格和身份'));
+});
+
 test('chat send button is always clickable (no disabled-when-empty)', async () => {
   // The paper-plane send button must never be disabled: it stays colored and
   // tappable even with empty input; the empty-input guard in onClick/handleSend

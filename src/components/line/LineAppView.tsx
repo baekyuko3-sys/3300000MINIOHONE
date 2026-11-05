@@ -373,7 +373,8 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         settings,
         systemPrompt: [
           '你正在一个私人虚拟手机的朋友圈中扮演角色。',
-          '只写一条自然的朋友圈动态，不要解释自己是 AI。',
+          '只写一条像正常人随手发的朋友圈动态：口语、简短，一般一两句话，不要写成散文和小作文；语气要符合这个角色的性格和身份，不要解释自己是 AI。',
+          '绝对不要输出【朋友圈配图：...】或[图片描述]之类的括号说明文字，直接写动态内容本身。',
           '不要替用户行动，也不要编造不存在的聊天经历。',
           '只根据下面的人设和相关世界书条目写，不要引用聊天记录。',
           '',
@@ -390,7 +391,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         const newAiPost = {
           id: 'moment-ai-' + Date.now().toString(36),
           name: source.name,
-          text: text.trim(),
+          text: text.trim().replace(/【朋友圈配图[：:][^】]*】/g, '').replace(/\[朋友圈配图[：:][^\]]*\]/g, '').trim(),
           time: '刚刚',
           tag: '#AI动态',
           liked: false,
