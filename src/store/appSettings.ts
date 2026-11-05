@@ -1,3 +1,5 @@
+import { reportPersistenceIssue } from './usePersistentState';
+
 export type ChatProvider = 'gemini' | 'openai-compatible' | 'custom';
 
 export interface ChannelAiSettings {
@@ -167,27 +169,39 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 };
 
 const STORAGE_KEY = 'phone:settings';
+let appSettingsWriteBlocked = false;
 
 export function readAppSettings(): AppSettings {
+  appSettingsWriteBlocked = false;
   if (typeof window === 'undefined') return DEFAULT_APP_SETTINGS;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
+    if (raw === null) return DEFAULT_APP_SETTINGS;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('APP_SETTINGS_SCHEMA_INVALID');
     return { ...DEFAULT_APP_SETTINGS, ...parsed };
-  } catch {
+  } catch (error) {
+    appSettingsWriteBlocked = true;
+    reportPersistenceIssue('read:' + STORAGE_KEY, 'AI 与应用设置损坏或格式不符；已锁定写入以保留原始配置', error);
     return DEFAULT_APP_SETTINGS;
   }
 }
 
 export function saveAppSettings(patch: Partial<AppSettings>): AppSettings {
-  const next = { ...readAppSettings(), ...patch };
+  const current = readAppSettings();
+  const next = { ...current, ...patch };
   if (typeof window !== 'undefined') {
+    if (appSettingsWriteBlocked) return current;
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    } catch {
-      // Keep the app usable if storage is unavailable.
+      const serialized = JSON.stringify(next);
+      window.localStorage.setItem(STORAGE_KEY, serialized);
+      if (window.localStorage.getItem(STORAGE_KEY) !== serialized) throw new Error('APP_SETTINGS_WRITE_VERIFY_FAILED');
+      window.dispatchEvent(new CustomEvent('sane333:settings-changed'));
+      return next;
+    } catch (error) {
+      reportPersistenceIssue('write:' + STORAGE_KEY, 'AI 与应用设置写入失败；原始配置已保留', error);
+      return current;
     }
-    window.dispatchEvent(new CustomEvent('sane333:settings-changed'));
   }
   return next;
 }
