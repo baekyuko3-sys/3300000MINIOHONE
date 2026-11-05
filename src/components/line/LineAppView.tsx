@@ -6899,10 +6899,10 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                     className="flex-1 px-4 py-3 rounded-[14px] border border-[#e8e4de] text-[15px] outline-none"
                   />
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       const el = document.getElementById('wallet-topup-input') as HTMLInputElement;
                       const v = parseFloat(el?.value || '0');
-                      if (v > 0) { walletTopupCustom(v); el.value = ''; showToast(`已充值 ¥${v.toFixed(2)}`); }
+                      if (v > 0) { await walletTopupCustom(v); el.value = ''; showToast(`已充值 ¥${v.toFixed(2)}`); }
                     }}
                     className="px-6 py-3 rounded-[14px] bg-[#1a1a1a] text-white text-[14px]"
                   >充值</button>
@@ -6911,7 +6911,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                   {[50, 100, 200, 500].map(amt => (
                     <button
                       key={amt}
-                      onClick={() => { walletTopupCustom(amt); showToast(`已充值 ¥${amt}`); }}
+                      onClick={async () => { await walletTopupCustom(amt); showToast(`已充值 ¥${amt}`); }}
                       className="flex-1 py-2.5 rounded-[12px] border border-[#e8e4de] text-[13px] text-[#666]"
                     >¥{amt}</button>
                   ))}
@@ -6990,7 +6990,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                         <div className="text-[13px] font-medium">{fc.holderName}</div>
                         <div className="text-[10px] text-[#bbb] mt-0.5">¥{fc.monthlyLimit.toFixed(0)} / 月 · 已用 ¥{fc.spentThisMonth.toFixed(0)}</div>
                       </div>
-                      <button onClick={() => { removeFamilyCard(fc.id); showToast('已取消'); }} className="text-[11px] text-[#ccc]">取消</button>
+                      <button onClick={async () => { await removeFamilyCard(fc.id); showToast('已取消'); }} className="text-[11px] text-[#ccc]">取消</button>
                       <span className="text-[#ddd] ml-2">›</span>
                     </div>
                   ))}
