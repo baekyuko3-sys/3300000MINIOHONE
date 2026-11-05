@@ -1308,6 +1308,7 @@ export async function generateCharacterReply(input: AiReplyInput): Promise<AiRep
         // COT is a separate planning request; allow slower local/Docker-compatible endpoints
         // more time than the normal 30-second request timeout.
         timeoutMs: 60000,
+        signal: input.signal,
         macroNames: replyMacroNames,
       });
 
@@ -1469,6 +1470,7 @@ export async function generateCharacterReply(input: AiReplyInput): Promise<AiRep
       systemPrompt: repairSystemPrompt,
       userPrompt: input.userMessage,
       history: debugMessages,
+      signal: input.signal,
       macroNames: replyMacroNames,
       temperature: Math.min(0.8, input.settings.temperature ?? 0.8),
     })).trim();
