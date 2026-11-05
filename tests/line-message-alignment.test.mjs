@@ -569,3 +569,19 @@ test('together-music drawer picks songs from the music app library', async () =>
   assert.ok(source.indexOf('const musicLikedTracks') > source.indexOf('const importedCharacter'));
 });
 
+test('stale chunk after a redeploy reloads once instead of boot-crashing', async () => {
+  // After a redeploy the old App chunk is gone (404) while a stale tab still
+  // tries to import it: the boot must reload once automatically, never loop,
+  // and a successful boot must clear the flag for the next stale chunk.
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/main.tsx', import.meta.url), 'utf8');
+  assert.ok(source.includes('Failed to fetch dynamically imported module'));
+  assert.ok(source.includes('sane333:chunk-reload-v1'));
+  assert.ok(source.includes('if (reloadOnceForStaleChunk(error)) return;'));
+  assert.ok(source.includes('window.location.reload()'));
+  assert.ok(source.includes('sessionStorage.getItem(CHUNK_RELOAD_KEY)'));
+  assert.ok(source.includes('sessionStorage.removeItem(CHUNK_RELOAD_KEY)'));
+  // The reload check must come before the crash screen in the boot catch.
+  assert.ok(source.indexOf('reloadOnceForStaleChunk(error)') < source.indexOf("title: '有问题 · 待修复'"));
+});
+
