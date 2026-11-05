@@ -714,6 +714,51 @@ test('moments feed only shows LINE friends', async () => {
   assert.ok(view.includes('(!effectivePersonaId || f.personaId === effectivePersonaId)'));
 });
 
+test('sticker batch import reads uwu-style lines', async () => {
+  const prevWindow = globalThis.window;
+  const store = new Map();
+  const mockStorage = {
+    get length() { return store.size; },
+    key: (i) => [...store.keys()][i] ?? null,
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => { store.set(k, String(v)); },
+    removeItem: (k) => { store.delete(k); },
+    clear: () => { store.clear(); },
+  };
+  globalThis.window = { localStorage: mockStorage };
+  try {
+    const { addStickerPack, batchImportStickers, getStickerPacks } = await import('../src/store/stickers.ts');
+    const pack = addStickerPack('测试');
+    // Coral's exact format (full-width colon, catbox link) plus uwu's
+    // other accepted shapes; joined with CRLF like a Windows txt file.
+    const text = [
+      '焦虑：https://files.catbox.moe/2a9wte.jpeg',
+      '开心:https://example.com/happy.gif',
+      '难过 https://example.com/sad.png',
+      '无奈https://example.com/meh.png',
+      '惊讶：https://example.com/wow.png。',
+      '# 这是注释',
+      '// 也是注释',
+      '这行没有链接',
+      '焦虑：https://files.catbox.moe/2a9wte.jpeg',
+    ].join('\r\n');
+    const { imported, skipped } = batchImportStickers(pack.id, text);
+    assert.equal(imported, 5);
+    assert.equal(skipped, 4);
+    const stickers = getStickerPacks().find(p => p.id === pack.id).stickers;
+    assert.deepEqual(stickers.map(s => s.name), ['焦虑', '开心', '难过', '无奈', '惊讶']);
+    assert.equal(stickers[0].imageUrl, 'https://files.catbox.moe/2a9wte.jpeg');
+    assert.equal(stickers[4].imageUrl, 'https://example.com/wow.png');
+  } finally {
+    if (prevWindow === undefined) delete globalThis.window;
+    else globalThis.window = prevWindow;
+  }
+  const { readFile } = await import('node:fs/promises');
+  const panel = await readFile(new URL('../src/components/line/StickerManagerPanel.tsx', import.meta.url), 'utf8');
+  assert.ok(panel.includes('选择 txt 文件'));
+  assert.ok(panel.includes('accept=".txt"'));
+});
+
 test('moments failure paths use the plain-language translator', async () => {
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../src/components/line/LineAppView.tsx', import.meta.url), 'utf8');

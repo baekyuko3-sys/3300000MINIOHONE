@@ -36,6 +36,7 @@ export default function StickerManagerPanel({ onClose, showToast }: StickerManag
   const [moveTarget, setMoveTarget] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
+  const batchFileInputRef = useRef<HTMLInputElement>(null);
 
   const packs = useMemo(() => getStickerPacks(), [version]);
   const refresh = () => setVersion(v => v + 1);
@@ -115,6 +116,20 @@ export default function StickerManagerPanel({ onClose, showToast }: StickerManag
     setShowBatch(false);
     refresh();
     showToast(`导入 ${imported} 个${skipped ? `，跳过 ${skipped} 行` : ''}`);
+  };
+
+  // 从 txt 文件读批量导入内容：读出来填进输入框，确认后点“开始导入”。
+  const handleBatchFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const text = await file.text();
+      if (!text.trim()) { showToast('这个文件是空的'); return; }
+      setBatchText(prev => (prev.trim() ? prev.replace(/\s+$/, '') + '\n' + text.trim() : text.trim()));
+    } catch {
+      showToast('读文件失败，换个 txt 试试');
+    }
   };
 
   const handleDeleteSticker = (sticker: Sticker) => {
@@ -310,14 +325,16 @@ export default function StickerManagerPanel({ onClose, showToast }: StickerManag
         <div className="absolute inset-0 z-10 bg-black/30 flex items-center justify-center p-6" onClick={() => setShowBatch(false)}>
           <div className="bg-white rounded-[16px] p-4 w-full max-w-[300px]" onClick={e => e.stopPropagation()}>
             <div className="text-sm font-semibold text-[#333] mb-1">批量导入{activePack ? ` · ${activePack.name}` : ''}</div>
-            <div className="text-[10px] text-[#aaa] mb-2">每行一个，格式：名称:URL</div>
+            <div className="text-[10px] text-[#aaa] mb-2">每行一个：名称:URL、名称：URL、名称 URL 都能认</div>
             <textarea
               value={batchText}
               onChange={e => setBatchText(e.target.value)}
               rows={6}
-              placeholder={'开心:https://example.com/happy.gif\n哭泣:https://example.com/cry.png'}
+              placeholder={'焦虑：https://files.catbox.moe/2a9wte.jpeg\n开心:https://example.com/happy.gif'}
               className="w-full px-3 py-2 rounded-[10px] border border-[#e8e8e9] text-xs outline-none focus:border-[#d4aab5] resize-none"
             />
+            <input ref={batchFileInputRef} type="file" accept=".txt" className="hidden" onChange={handleBatchFile} />
+            <button type="button" onClick={() => batchFileInputRef.current?.click()} className="mt-2 w-full py-2 rounded-[10px] bg-[#f7f7f8] text-xs text-[#666] cursor-pointer">选择 txt 文件</button>
             <div className="flex gap-2 mt-3">
               <button type="button" onClick={() => setShowBatch(false)} className="flex-1 py-2 rounded-[10px] bg-[#f7f7f8] text-xs text-[#666] cursor-pointer">取消</button>
               <button type="button" onClick={handleBatchImport} className="flex-1 py-2 rounded-[10px] bg-[#292724] text-xs text-white cursor-pointer">开始导入</button>

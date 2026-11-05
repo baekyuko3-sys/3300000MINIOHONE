@@ -133,7 +133,10 @@ export function moveStickerToPack(fromPackId: string, toPackId: string, stickerI
 }
 
 /**
- * 批量导入：每行一个，格式 `名称:URL`
+ * 批量导入：每行一个，宽泛格式（照 uwu 的解析）：
+ * 先在行里找 http(s):// 链接，名字就是链接前面那段，末尾分隔符去掉。
+ * 认 `名称:URL`、`名称：URL`、`名称 URL`、`名称URL`；`#` 或 `//` 开头的行当注释跳过；
+ * 链接后面多余的标点去掉；同一个链接只导一次；Windows 换行也能读。
  * 返回 { imported, skipped }
  */
 export function batchImportStickers(packId: string, text: string): { imported: number; skipped: number } {
@@ -142,14 +145,20 @@ export function batchImportStickers(packId: string, text: string): { imported: n
   if (!pack) return { imported: 0, skipped: 0 };
   let imported = 0;
   let skipped = 0;
-  for (const rawLine of String(text || '').split('\n')) {
+  const seenUrls = new Set<string>();
+  for (const rawLine of String(text || '').split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line) continue;
-    const colonIdx = line.indexOf(':');
-    if (colonIdx <= 0) { skipped++; continue; }
-    const name = line.slice(0, colonIdx).trim();
-    const url = line.slice(colonIdx + 1).trim();
-    if (!name || !url || !/^https?:\/\//i.test(url)) { skipped++; continue; }
+    if (/^[#/]/.test(line)) { skipped++; continue; }
+    const urlMatch = line.match(/(https?:\/\/[^\s]+)/i);
+    if (!urlMatch) { skipped++; continue; }
+    const url = urlMatch[0].replace(/[.,;:：，、。？！]+$/, '').trim();
+    if (!/^https?:\/\//i.test(url)) { skipped++; continue; }
+    const urlIndex = line.indexOf(urlMatch[0]);
+    const name = line.slice(0, urlIndex).trim().replace(/[:：\-|,，、\s]+$/, '').trim();
+    if (!name) { skipped++; continue; }
+    if (seenUrls.has(url)) { skipped++; continue; }
+    seenUrls.add(url);
     pack.stickers.push({ id: genId('sticker'), name, imageUrl: url, group: pack.name });
     imported++;
   }
