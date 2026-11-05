@@ -415,11 +415,19 @@ export function getTogetherSessionInfo(session: MusicStrangerSession | null): {
   };
 }
 
-export function saveStrangerSession(session: MusicStrangerSession | null): void {
-  if (typeof window === 'undefined') return;
-  if (session) window.localStorage.setItem(MUSIC_STRANGER_KEY, JSON.stringify(session));
-  else window.localStorage.removeItem(MUSIC_STRANGER_KEY);
-  window.dispatchEvent(new CustomEvent('sane333:music-stranger-changed'));
+export function saveStrangerSession(session: MusicStrangerSession | null): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    if (session) window.localStorage.setItem(MUSIC_STRANGER_KEY, JSON.stringify(session));
+    else window.localStorage.removeItem(MUSIC_STRANGER_KEY);
+    window.dispatchEvent(new CustomEvent('sane333:music-stranger-changed'));
+    return true;
+  } catch (error) {
+    // Keep music/LINE usable when storage quota or browser privacy settings reject a write.
+    console.error('[Music] stranger session persistence failed', error);
+    try { window.dispatchEvent(new CustomEvent('sane333:music-persistence-error')); } catch { /* ignore */ }
+    return false;
+  }
 }
 
 function joinUrl(baseUrl: string, path: string): string {

@@ -2422,7 +2422,12 @@ export function MusicHtmlView({ active = true, onNavigate }: MusicHtmlViewProps)
             };
             sessionRef.current = withMine;
             setSession(withMine);
-            saveStrangerSession(withMine);
+            if (!saveStrangerSession(withMine)) {
+              sessionRef.current = sessionNow;
+              setSession(sessionNow);
+              showToast('私信未能保存，请检查浏览器存储空间后重试');
+              return;
+            }
             const reply = await askDmReply(withMine, currentNow, text);
             const latest = readStrangerSession();
             if (!latest || latest.id !== withMine.id || latest.status === 'ended') return;
@@ -2446,7 +2451,9 @@ export function MusicHtmlView({ active = true, onNavigate }: MusicHtmlViewProps)
             };
             sessionRef.current = withReply;
             setSession(withReply);
-            saveStrangerSession(withReply);
+            if (!saveStrangerSession(withReply)) {
+              showToast('TA 已回复，但回复暂未写入本地记录；请检查浏览器存储空间');
+            }
           };
           const lockManager = typeof navigator !== 'undefined'
             ? (navigator as Navigator & { locks?: { request: <T>(name: string, options: { mode: 'exclusive' }, callback: () => Promise<T>) => Promise<T> } }).locks
