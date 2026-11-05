@@ -11,7 +11,6 @@ import {
 } from './momentsComments';
 import { readPersistentState } from './usePersistentState';
 import type { SaneNpc } from './npcs';
-import { setFriendEdge } from './vroomScope';
 
 function readPosts(): any[] {
   return readPersistentState<any[]>(MOMENTS_POSTS_KEY, []);
@@ -374,12 +373,8 @@ export async function maybePostGroupMomentAfterRound(opts: {
     if (comments.length) post.commentsList = comments;
   } catch { /* best-effort */ }
   if (!writePosts([post, ...readPosts()])) return false;
-  // 群里发出来的朋友圈，确保用户看得见：加一条 VROOM 可见边（作者→当前人设）。
-  try {
-    const viewerKey = 'persona:' + (opts.personaId || 'default');
-    const authorKey = post.npcId ? 'npc:' + post.npcId : post.characterId ? 'character:' + post.characterId : '';
-    if (authorKey) setFriendEdge(viewerKey, authorKey, true);
-  } catch { /* best-effort */ }
+  // 注意：这里不再自动给作者开 VROOM 可见边——朋友圈只能出现加了好友的人，
+  // 群成员不是好友时，联动帖子照常存下来，但不会进当前人设的 feed。
   return true;
 }
 

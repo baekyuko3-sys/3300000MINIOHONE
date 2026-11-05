@@ -54,7 +54,7 @@ import {
   type MomentsCommentSettings,
 } from '../../store/momentsComments';
 import { buildMomentWorldbookContext, generateNpcMomentNow, refreshMomentsFeed, writePosts } from '../../store/momentsAfterChat';
-import { edgePair, isAllowedEdge as isVroomAllowedEdge, isBlockedEdge as isVroomBlockedEdge, readVroomScopeSettings, setFriendEdge as setVroomFriendEdge } from '../../store/vroomScope';
+import { edgePair, isAllowedEdge as isVroomAllowedEdge, isBlockedEdge as isVroomBlockedEdge, pruneAllowedEdgesForNonFriends, readVroomScopeSettings, setFriendEdge as setVroomFriendEdge } from '../../store/vroomScope';
 import {
   Pin, Bell, BellOff, Bookmark, Heart, MessageCircle, Share2, Plus, Search,
   Check, Trash2, X, Sliders, SlidersHorizontal, ChevronRight, UserCheck, Shield, Volume2,
@@ -370,11 +370,11 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       return;
     }
     const visibleAllowed = allowed.filter(character => {
-      const isFriend = friendsList.some(f => !f.deleted && !f.npcId && ((character.id && f.characterId === character.id) || (character.name && f.name === character.name)));
+      const isFriend = friendsList.some(f => !f.deleted && !f.npcId && character.id && f.characterId && bareIdentityId(String(f.characterId)) === bareIdentityId(character.id));
       return isVisibleMomentAuthor('character:' + character.id, isFriend, character.id);
     });
     const visibleNpcs = allowedNpcs.filter(npc => {
-      const isFriend = friendsList.some(f => !f.deleted && f.npcId === npc.id && (!f.personaId || f.personaId === effectivePersonaId));
+      const isFriend = friendsList.some(f => !f.deleted && f.npcId === npc.id && (!effectivePersonaId || f.personaId === effectivePersonaId));
       return isVisibleMomentAuthor('npc:' + npc.id, isFriend, npc.boundCharacterId || undefined);
     });
     if (!visibleAllowed.length && !visibleNpcs.length) {
@@ -470,7 +470,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     if (isRefreshingMoments) return;
     setMomentsGenerateError(null);
     const visibleNpcs = listPostableNpcs(momentsSettings).filter(npc => {
-      const isFriend = friendsList.some(f => !f.deleted && f.npcId === npc.id && (!f.personaId || f.personaId === effectivePersonaId));
+      const isFriend = friendsList.some(f => !f.deleted && f.npcId === npc.id && (!effectivePersonaId || f.personaId === effectivePersonaId));
       return isVisibleMomentAuthor('npc:' + npc.id, isFriend, npc.boundCharacterId || undefined);
     });
     if (!visibleNpcs.length) {
@@ -1289,6 +1289,17 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 一次性清理：群聊联动以前自动开出去的非好友可见边，升级后第一次打开就清掉。
+  // 只删“作者不是好友”的允许边；好友的边、拉黑边都不动。跑一次就记下来，不重复跑。
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem('sane333:vroom-edge-prune-v1')) return;
+      pruneAllowedEdgesForNonFriends();
+    } catch { /* best-effort */ }
+    try { window.localStorage.setItem('sane333:vroom-edge-prune-v1', 'done'); } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const refreshRequests = () => setNpcRequestRevision(value => value + 1);
     window.addEventListener('sane333:npc-friend-requests-updated', refreshRequests);
@@ -1481,6 +1492,9 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     if (p?.characterId) return false;
     if (p?.isMine === true) return true;
     if (p?.personaId && effectivePersonaId && p.personaId === effectivePersonaId) return true;
+    // 名字只认“没有任何编号”的旧帖（只能是用户自己发的）；带角色/NPC 编号的帖子
+    // 名字和人设撞了也不算自己的，必须过好友门。
+    if (p?.npcId || p?.characterId) return false;
     const myNames = new Set([activePersonaForFilter?.name, currentUser.name].filter(Boolean));
     return myNames.has(p?.name);
   };
@@ -1504,6 +1518,8 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     // 注意：不要校验 text 字段，图片/卡片帖的 text 可能为空，渲染层已做 String() 兜底。
     if (!p || typeof p !== 'object' || !p.id) return false;
     if (isOwnMoment(p)) return true;
+    // 没有任何编号、只有名字的帖子无法核实是不是好友，直接隐藏，不进 feed。
+    if (!p.npcId && !p.characterId) return false;
     const authorKey = p.npcId ? 'npc:' + p.npcId : p.characterId ? 'character:' + p.characterId : p.name ? 'character-name:' + p.name : '';
     const viewerKey = 'persona:' + (effectivePersonaId || 'default');
     if (authorKey && isVroomBlockedEdge(viewerKey, authorKey)) return false;
@@ -1512,13 +1528,15 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     const blockedIds = Array.isArray(p.blockedIds) ? p.blockedIds.map(String) : [];
     const viewerIds = [effectivePersonaId || '', 'persona:' + (effectivePersonaId || 'default'), activePersonaForFilter?.name || '', currentUser.name || '', 'user'].filter(Boolean);
     if (blockedIds.some(id => viewerIds.includes(id))) return false;
-    if (['group', 'partial', 'custom'].includes(String(p.visibility || '')) && allowedIds.length && !allowedIds.some(id => viewerIds.includes(id))) return false;
-    // Only LINE friends (or explicitly allowed VROOM edges) appear in the phone's feed.
-    // A public post does not turn an unadded stranger into a LINE friend.
+    // 分组/部分/自定义可见：没选人就是谁也看不见（空名单不再等于公开）。
+    if (['group', 'partial', 'custom'].includes(String(p.visibility || '')) && !allowedIds.some(id => viewerIds.includes(id))) return false;
+    // Only LINE friends (or a manually allowed VROOM edge from settings) appear
+    // in the phone's feed. A public post does not turn an unadded stranger into
+    // a LINE friend, and group-linkage no longer grants edges automatically.
     if (authorKey) {
       const isFriend = p.npcId
-        ? friendsList.some(f => !f.deleted && f.npcId === p.npcId && (!f.personaId || f.personaId === effectivePersonaId))
-        : friendsList.some(f => !f.deleted && !f.npcId && ((p.characterId && f.characterId === p.characterId) || (p.name && f.name === p.name)));
+        ? friendsList.some(f => !f.deleted && f.npcId === p.npcId && (!effectivePersonaId || f.personaId === effectivePersonaId))
+        : friendsList.some(f => !f.deleted && !f.npcId && p.characterId && f.characterId && bareIdentityId(String(f.characterId)) === bareIdentityId(String(p.characterId)));
       if (!isFriend && !isVroomAllowedEdge(viewerKey, authorKey)) return false;
     }
     if (hasBounds) {
@@ -1538,13 +1556,18 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     // 用户自己的评论始终显示
     if (comment.kind === 'user') return true;
     if (comment.npcId) {
-      return friendsList.some(f => !f.deleted && f.npcId === comment.npcId && (!f.personaId || f.personaId === effectivePersonaId));
+      return friendsList.some(f => !f.deleted && f.npcId === comment.npcId && (!effectivePersonaId || f.personaId === effectivePersonaId));
     }
-    return friendsList.some(f =>
-      !f.deleted && !f.npcId &&
-      ((comment.characterId && f.characterId === comment.characterId) ||
-       (comment.user && f.name === comment.user))
-    );
+    if (comment.characterId) {
+      return friendsList.some(f =>
+        !f.deleted && !f.npcId && f.characterId &&
+        bareIdentityId(String(f.characterId)) === bareIdentityId(String(comment.characterId))
+      );
+    }
+    // 没有任何编号的评论，只认用户自己的名字；同名陌生人的评论不显示。
+    if (!comment.user) return false;
+    const myNames = new Set([activePersonaForFilter?.name, currentUser.name].filter(Boolean));
+    return myNames.has(comment.user);
   };
 
   /** 递归过滤评论树：非好友的评论（及其回复）不显示 */
@@ -4276,7 +4299,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
             <div className="px-5 pt-5 pb-8">
               {(() => {
                 const character = importedCharacters.find(c => c.id === characterMomentsProfile.characterId);
-                const posts = momentsPosts.filter(p => p.characterId === characterMomentsProfile.characterId || (!p.characterId && p.name === characterMomentsProfile.name));
+                const posts = visibleMoments.filter(p => p.characterId === characterMomentsProfile.characterId || (!p.characterId && p.name === characterMomentsProfile.name));
                 const avatar = character?.avatar || '';
                 return (
                   <>

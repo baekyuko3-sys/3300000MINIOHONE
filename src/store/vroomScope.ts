@@ -52,6 +52,46 @@ export function setFriendEdge(a: string, b: string, friend: boolean) {
   });
 }
 
+const bareEdgeId = (id: string) => String(id || '').replace(/^(char|npc):/, '');
+
+/**
+ * 一次性清理：删掉作者不是好友的 VROOM 可见边。
+ * 群聊联动以前会自动给发帖的群成员开边，非好友就这样永久进了朋友圈；
+ * 联动不再开边之后，历史开出去的边也要按“作者是不是好友”清掉。
+ * 好友的边不动，拉黑边不动，看不懂的边不动。
+ */
+export function pruneAllowedEdgesForNonFriends(): { removed: number; kept: number } {
+  const store = readEdges();
+  const friends = readJson<any[]>('line:friends-list', []);
+  const isCharacterFriend = (characterId?: string, name?: string) =>
+    friends.some(f => f && typeof f === 'object' && !f.deleted && !f.npcId && (
+      (characterId && f.characterId && bareEdgeId(String(f.characterId)) === bareEdgeId(characterId)) ||
+      (name && f.name === name)
+    ));
+  const kept: string[] = [];
+  let removed = 0;
+  for (const pair of store.allow) {
+    const parts = String(pair || '').split('|');
+    const personaPart = parts.find(x => x.startsWith('persona:'));
+    const authorPart = parts.find(x => x.startsWith('character:') || x.startsWith('npc:') || x.startsWith('character-name:'));
+    if (!personaPart || !authorPart) { kept.push(pair); continue; }
+    const personaId = personaPart.slice('persona:'.length);
+    let friend = false;
+    if (authorPart.startsWith('npc:')) {
+      const npcId = authorPart.slice('npc:'.length);
+      friend = friends.some(f => f && typeof f === 'object' && !f.deleted && f.npcId === npcId && f.personaId === personaId);
+    } else if (authorPart.startsWith('character:')) {
+      friend = isCharacterFriend(authorPart.slice('character:'.length));
+    } else {
+      friend = isCharacterFriend(undefined, authorPart.slice('character-name:'.length));
+    }
+    if (friend) kept.push(pair);
+    else removed++;
+  }
+  if (removed > 0) writeEdges({ allow: kept, block: store.block });
+  return { removed, kept: kept.length };
+}
+
 export type VroomViewerKind = 'persona' | 'character' | 'npc' | 'user';
 
 export interface VroomViewer {

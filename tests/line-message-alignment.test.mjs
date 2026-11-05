@@ -653,6 +653,67 @@ test('AI errors are translated to plain language for the moments failure card', 
   assert.equal(humanizeAiError(new Error('something odd happened')), 'something odd happened');
 });
 
+test('one-time prune removes VROOM allow edges for non-friends only', async () => {
+  const prevWindow = globalThis.window;
+  const store = new Map();
+  const mockStorage = {
+    get length() { return store.size; },
+    key: (i) => [...store.keys()][i] ?? null,
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => { store.set(k, String(v)); },
+    removeItem: (k) => { store.delete(k); },
+    clear: () => { store.clear(); },
+  };
+  globalThis.window = { localStorage: mockStorage, dispatchEvent: () => {}, addEventListener: () => {}, removeEventListener: () => {} };
+  try {
+    const { setFriendEdge, pruneAllowedEdgesForNonFriends, isAllowedEdge, isBlockedEdge } = await import('../src/store/vroomScope.ts');
+    setFriendEdge('persona:p1', 'character:c1', true); // friend -> kept
+    setFriendEdge('persona:p1', 'character:c2', true); // not a friend -> removed
+    setFriendEdge('persona:p1', 'character:char:c9', true); // friend under char: prefix -> kept
+    setFriendEdge('persona:p1', 'npc:n1', true); // NPC friend of this persona -> kept
+    setFriendEdge('persona:p1', 'npc:n2', true); // NPC friend of another persona -> removed
+    setFriendEdge('persona:p1', 'character:c3', false); // block edge -> untouched
+    mockStorage.setItem('line:friends-list', JSON.stringify([
+      { name: 'A', characterId: 'c1', kind: 'character', note: '', online: true, pinyin: '' },
+      { name: 'Nine', characterId: 'c9', kind: 'character', note: '', online: true, pinyin: '' },
+      { name: 'N1', npcId: 'n1', personaId: 'p1', kind: 'npc', note: '', online: true, pinyin: '' },
+      { name: 'N2', npcId: 'n2', personaId: 'p2', kind: 'npc', note: '', online: true, pinyin: '' },
+    ]));
+    const result = pruneAllowedEdgesForNonFriends();
+    assert.equal(result.removed, 2);
+    assert.equal(isAllowedEdge('persona:p1', 'character:c1'), true);
+    assert.equal(isAllowedEdge('persona:p1', 'character:c2'), false);
+    assert.equal(isAllowedEdge('persona:p1', 'character:char:c9'), true);
+    assert.equal(isAllowedEdge('persona:p1', 'npc:n1'), true);
+    assert.equal(isAllowedEdge('persona:p1', 'npc:n2'), false);
+    assert.equal(isBlockedEdge('persona:p1', 'character:c3'), true);
+    assert.equal(pruneAllowedEdgesForNonFriends().removed, 0);
+  } finally {
+    if (prevWindow === undefined) delete globalThis.window;
+    else globalThis.window = prevWindow;
+  }
+});
+
+test('moments feed only shows LINE friends', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const view = await readFile(new URL('../src/components/line/LineAppView.tsx', import.meta.url), 'utf8');
+  const afterChat = await readFile(new URL('../src/store/momentsAfterChat.ts', import.meta.url), 'utf8');
+  // Group linkage no longer grants a permanent visible edge.
+  assert.ok(!afterChat.includes('setFriendEdge'));
+  assert.ok(view.includes('pruneAllowedEdgesForNonFriends()'));
+  // A post with no id at all cannot prove it is from a friend: hidden.
+  assert.ok(view.includes('if (!p.npcId && !p.characterId) return false;'));
+  // "My own post" by name only counts for posts with no character/NPC id;
+  // a character post whose name collides with the persona name is not mine.
+  assert.ok(view.includes('if (p?.npcId || p?.characterId) return false;'));
+  // Group/partial/custom visibility with nobody selected hides the post.
+  assert.ok(!view.includes('allowedIds.length && !allowedIds.some'));
+  // A friend's profile moments list goes through the same feed gates.
+  assert.ok(view.includes('const posts = visibleMoments.filter(p => p.characterId === characterMomentsProfile.characterId'));
+  // NPC friend checks match the friends tab: the persona must match.
+  assert.ok(view.includes('(!effectivePersonaId || f.personaId === effectivePersonaId)'));
+});
+
 test('moments failure paths use the plain-language translator', async () => {
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../src/components/line/LineAppView.tsx', import.meta.url), 'utf8');
