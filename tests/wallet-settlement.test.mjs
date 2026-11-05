@@ -90,7 +90,7 @@ test('NPC reservations are unique on sent packets; incoming claims credit once a
 test('sender cannot claim own packet; refund is capped by unclaimed stored shares and idempotent', async () => {
   await setWalletBalance(20);
   assert.equal(await walletSendRedPacket(6, '红包', 'packet-2', [100, 200, 300]), true);
-  assert.equal(await walletClaimRedPacket('packet-2', 'me', 1, '我', 0), false);
+  assert.equal(await walletClaimRedPacket('packet-2', 'me', 1, '我', 0, [100, 200, 300], 6), false);
   assert.equal(await walletRegisterRedPacketClaim('packet-2', 'npc:a', 0), true);
   assert.equal(await walletRefundRedPacket('packet-2', 999, '退回', [999999], []), true);
   assert.equal(await walletRefundRedPacket('packet-2', 999, '重复退款'), true);
@@ -168,4 +168,17 @@ test('red packet refund reverses only the refunded portion of family card spend'
   assert.equal(await walletRefundRedPacket('family-packet', 5, '退回', [100, 200, 300], [0]), true);
   assert.equal(getWalletBalance(), 19);
   assert.equal(getFamilyCards()[0].spentThisMonth, 1);
+});
+
+test('legacy family cards migrate into the consolidated ledger without losing allowance', async () => {
+  const values = installStorage();
+  values.set('line:wallet-balance', JSON.stringify(12));
+  values.set('line:wallet-family-cards', JSON.stringify([{
+    id: 'legacy-card', holderName: '旧角色', monthlyLimit: 100, spentThisMonth: 23,
+    createdAt: '2026-01-01T00:00:00.000Z', monthKey: '2026-11',
+  }]));
+  await setWalletBalance(12);
+  assert.equal(getFamilyCards()[0].id, 'legacy-card');
+  assert.equal(getFamilyCards()[0].spentThisMonth, 23);
+  assert.equal(getWalletBalance(), 12);
 });
