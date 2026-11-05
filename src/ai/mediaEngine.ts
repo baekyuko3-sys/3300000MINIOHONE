@@ -1,4 +1,5 @@
 import type { AppSettings } from '../store/appSettings';
+import { readBlobResponseWithTimeout, readJsonResponseWithTimeout } from './streaming';
 
 export interface GeneratedMedia {
   url: string;
@@ -17,11 +18,7 @@ function dataUrlFromBytes(bytes: ArrayBuffer, mimeType: string): string {
 }
 
 async function readJsonOrText(response: Response): Promise<any> {
-  try {
-    return await response.json();
-  } catch {
-    return { message: await response.text() };
-  }
+  return readJsonResponseWithTimeout(response, 30000, 32 * 1024 * 1024);
 }
 
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 60000): Promise<Response> {
@@ -91,7 +88,7 @@ export async function generateSpeech(text: string, settings: AppSettings): Promi
 
   const mime = settings.voiceFormat === 'wav' ? 'audio/wav' : settings.voiceFormat === 'ogg' ? 'audio/ogg' : 'audio/mpeg';
   return {
-    url: dataUrlFromBytes(await response.arrayBuffer(), mime),
+    url: dataUrlFromBytes(await readBlobResponseWithTimeout(response, 30000, 32 * 1024 * 1024).then(blob => blob.arrayBuffer()), mime),
     mimeType: mime,
     source: 'api',
   };
