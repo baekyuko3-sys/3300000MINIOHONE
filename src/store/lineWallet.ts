@@ -197,7 +197,7 @@ export async function walletSendTransfer(amount: number, counterparty: string, d
         ...current,
         balanceCents: current.balanceCents - cents,
         transactions: [transaction, ...current.transactions].slice(0, 200),
-        transfers: [settlement, ...current.transfers.filter(entry => entry.id !== operationId)].slice(0, 500),
+        transfers: [settlement, ...current.transfers.filter(entry => entry.id !== operationId)],
         familyCards: applyFamilyCardSpend(current.familyCards, familyHolderName, cents),
       },
       result: true,
@@ -215,7 +215,7 @@ export async function walletSettleTransfer(operationId: string, decision: 'accep
     const now = new Date().toISOString();
     const updated: TransferSettlement = { ...item, status: decision === 'accepted' ? 'accepted' : 'refunded', updatedAt: now };
     if (decision === 'accepted') {
-      return { next: { ...current, transfers: [updated, ...current.transfers.filter(entry => entry.id !== operationId)].slice(0, 500) }, result: true };
+      return { next: { ...current, transfers: [updated, ...current.transfers.filter(entry => entry.id !== operationId)] }, result: true };
     }
     const transaction = makeTransaction({ type: 'transfer', amount: item.amount, desc: '转账拒收退款', counterparty: item.counterparty || undefined });
     return {
@@ -224,7 +224,7 @@ export async function walletSettleTransfer(operationId: string, decision: 'accep
         balanceCents: current.balanceCents + Math.round(item.amount * 100),
         familyCards: applyFamilyCardAdjustment(current.familyCards, item.familyHolderName, -Math.round(item.amount * 100)),
         transactions: [transaction, ...current.transactions].slice(0, 200),
-        transfers: [updated, ...current.transfers.filter(entry => entry.id !== operationId)].slice(0, 500),
+        transfers: [updated, ...current.transfers.filter(entry => entry.id !== operationId)],
       },
       result: true,
     };
@@ -255,7 +255,7 @@ export async function walletSendRedPacket(totalAmount: number, desc: string, ope
         ...current,
         balanceCents: current.balanceCents - cents,
         transactions: [transaction, ...current.transactions].slice(0, 200),
-        packets: [packet, ...current.packets.filter(entry => entry.id !== operationId)].slice(0, 500),
+        packets: [packet, ...current.packets.filter(entry => entry.id !== operationId)],
         familyCards: applyFamilyCardSpend(current.familyCards, familyHolderName, cents),
       },
       result: true,
@@ -279,7 +279,7 @@ export async function walletRegisterRedPacketClaim(packetId: string, claimId: st
       claimed: [...packet.claimed, claimId],
     };
     return {
-      next: { ...current, packets: [nextPacket, ...current.packets.filter(entry => entry.id !== packetId)].slice(0, 500) },
+      next: { ...current, packets: [nextPacket, ...current.packets.filter(entry => entry.id !== packetId)] },
       result: true,
     };
   });
@@ -313,7 +313,7 @@ export async function walletClaimRedPacket(packetId: string, claimId: string, am
         ...current,
         balanceCents: current.balanceCents + cents,
         transactions: [transaction, ...current.transactions].slice(0, 200),
-        packets: [nextPacket, ...current.packets.filter(entry => entry.id !== packetId)].slice(0, 500),
+        packets: [nextPacket, ...current.packets.filter(entry => entry.id !== packetId)],
       },
       result: true,
     };
@@ -375,7 +375,7 @@ export async function walletRefundRedPacket(packetId: string, _amount: number, d
         balanceCents: current.balanceCents + refundCents,
         familyCards: applyFamilyCardAdjustment(current.familyCards, packet.familyHolderName, -refundCents),
         transactions,
-        packets: [updated, ...current.packets.filter(entry => entry.id !== packetId)].slice(0, 500),
+        packets: [updated, ...current.packets.filter(entry => entry.id !== packetId)],
       },
       result: true,
     };

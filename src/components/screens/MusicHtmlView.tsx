@@ -2386,7 +2386,9 @@ export function MusicHtmlView({ active = true, onNavigate }: MusicHtmlViewProps)
           setBubble(reaction);
         } else if (type === 'dm-send') {
           const text = String(data.text || '').trim();
-          const requestedSessionId = String(sessionRef.current?.id || '');
+          const requestedSession = sessionRef.current;
+          const requestedSessionId = String(requestedSession?.id || '');
+          const requestedUpdatedAt = String(requestedSession?.updatedAt || '');
           if (!text || !requestedSessionId) return;
           const sendDm = async () => {
             // Re-read after acquiring the cross-tab lock. Two music tabs may
@@ -2394,6 +2396,13 @@ export function MusicHtmlView({ active = true, onNavigate }: MusicHtmlViewProps)
             const sessionNow = readStrangerSession();
             const currentNow = currentRef.current;
             if (!sessionNow || sessionNow.id !== requestedSessionId || !currentNow || sessionNow.status === 'ended') return;
+            // A second tab may have queued the same send while the first tab
+            // held the lock. If the session changed before this callback ran,
+            // discard that stale duplicate instead of sending it after the reply.
+            if (String(sessionNow.updatedAt || '') !== requestedUpdatedAt) {
+              showToast('这条私信已在另一个窗口发送');
+              return;
+            }
             const pendingAt = Date.parse(String(sessionNow.dmPendingAt || sessionNow.updatedAt || ''));
             const pendingIsFresh = Boolean(sessionNow.dmPending && Number.isFinite(pendingAt) && Date.now() - pendingAt < 120_000);
             if (pendingIsFresh) {

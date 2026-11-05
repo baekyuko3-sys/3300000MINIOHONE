@@ -74,7 +74,10 @@ interface DynamicIslandProps {
  */
 export function DynamicIsland({ enabled, onOpenMusic, island }: DynamicIslandProps) {
   const [track, setTrack] = useState<MusicTrack | null>(() => readMusicCurrent());
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => {
+    const session = readStrangerSession();
+    return Boolean(session && session.status !== 'ended');
+  });
   const [playing, setPlaying] = useState(false);
   const [pos, setPos] = useState(0);
   const [dur, setDur] = useState(0);

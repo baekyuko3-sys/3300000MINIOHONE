@@ -182,3 +182,14 @@ test('legacy family cards migrate into the consolidated ledger without losing al
   assert.equal(getFamilyCards()[0].spentThisMonth, 23);
   assert.equal(getWalletBalance(), 12);
 });
+
+test('wallet operation idempotency survives more than 500 historical settlements', async () => {
+  await setWalletBalance(2000);
+  for (let index = 0; index < 520; index += 1) {
+    assert.equal(await walletSendTransfer(1, '角色', '', 'long-transfer-' + index), true);
+    assert.equal(await walletSettleTransfer('long-transfer-' + index, 'accepted'), true);
+  }
+  assert.equal(await walletSendTransfer(1, '角色', '', 'long-transfer-0'), true);
+  assert.equal(getWalletBalance(), 1480);
+  assert.equal(getWalletTransactions().length, 200);
+});
