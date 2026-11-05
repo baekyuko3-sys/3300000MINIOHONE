@@ -4142,8 +4142,14 @@ export function LineConversationView({
       transferStatus: 'sent',
       metadata: { amount, note, status: 'sent', settlementId: transferId },
     };
+    const persistedTransferMessages = appendLineMessage(conversationStorageId, newMsg);
+    if (!persistedTransferMessages.some((item: any) => String(item.id) === String(transferId))) {
+      // 钱包已扣款但聊天记录落盘失败时，立即走同一结算 ID 退款。
+      walletSettleTransfer(transferId, 'rejected');
+      showToast('转账消息保存失败，金额已退回');
+      return;
+    }
     setMessages((prev) => [...prev, newMsg]);
-    appendLineMessage(conversationStorageId, newMsg);
     // 单聊收款由角色 AI 按人设和剧情判断；群聊收款对象不明确，保持待确认。
     if (!isGroup && importedCharacter) {
       void (async () => {
@@ -4216,8 +4222,14 @@ export function LineConversationView({
       redPacketCount: count, redPacketMode: isGroup ? redPacketMode : 'random', redPacketClaims: [],
       metadata: { amount, blessing, status: 'sent', count, mode: isGroup ? redPacketMode : 'random', claims: [], sharesCents: shares, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() },
     };
+    const persistedPacketMessages = appendLineMessage(conversationStorageId, newMsg);
+    if (!persistedPacketMessages.some((item: any) => String(item.id) === String(packetId))) {
+      // 消息未能落盘时退回整笔红包，不能留下只有扣款、没有可领取卡片的状态。
+      walletRefundRedPacket(packetId, Number(amount), '红包消息保存失败，已退回', shares, []);
+      showToast('红包消息保存失败，金额已退回');
+      return;
+    }
     setMessages((prev) => [...prev, newMsg]);
-    appendLineMessage(conversationStorageId, newMsg);
     // NPC 是否领取由角色 AI 根据人设和当前剧情独立判断；AI 失败时保持未领取。
     void (async () => {
       const candidates = isGroup
@@ -8996,7 +9008,8 @@ export function LineConversationView({
         const count = Math.max(1, Number(packet.redPacketCount || meta.count || 1));
         const alreadyClaimed = claims.some((claim: any) => claim?.userId === 'me');
         const claimPacket = () => {
-          if (alreadyClaimed || claims.length >= count) return;
+          if (packet.role === 'user') { showToast('这是你发出的红包，不能领取'); return; }
+          if (alreadyClaimed || claims.length >= count || packet.redPacketStatus === 'expired' || meta.status === 'expired') return;
           const expiresAt = String(meta.expiresAt || '');
           if (expiresAt && Date.now() >= new Date(expiresAt).getTime()) {
             showToast('红包已过期，未领取金额将退回');
@@ -9022,7 +9035,7 @@ export function LineConversationView({
           if (nextClaims.length >= count) showToast('红包已领完');
           else showToast(`你领取了 ¥${userClaim.amount}`);
         };
-        return <div className="absolute inset-0 z-[90] flex items-center justify-center bg-black/45 p-5" onClick={() => setShowRedPacketModal(false)}><div className="relative w-full max-w-[300px] overflow-hidden rounded-[16px] bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="bg-[#c96e7d] px-4 pb-4 pt-5 text-center text-white"><button type="button" onClick={() => setShowRedPacketModal(false)} className="absolute right-3 top-2 text-[22px] leading-none text-white/80">×</button><div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-[10px] bg-white/15 text-[20px]">🧧</div><div className="text-[12px] text-white/80">{String(packet.role === 'user' ? '我' : packet.senderName || '群成员')} 的红包</div><div className="mt-1 text-[14px] font-medium">{String(packet.redPacketBlessing || meta.blessing || '恭喜发财')}</div>{alreadyClaimed ? <div className="mt-3 text-[28px] font-semibold">¥{String(claims.find((claim: any) => claim.userId === 'me')?.amount || '0.00')}</div> : <div className="mt-3 text-[13px] text-white/85">{packet.redPacketStatus === 'claimed' ? '红包已领完' : '恭喜发财，大吉大利'}</div>}</div><div className="p-4">{!alreadyClaimed && packet.redPacketStatus !== 'claimed' && claims.length < count && <button type="button" onClick={claimPacket} className="mb-3 w-full rounded-[10px] bg-[#f2c65c] py-2.5 text-[13px] font-semibold text-[#6d4518] active:scale-[0.99]">开红包</button>}{alreadyClaimed && <div className="mb-3 text-center text-[11px] text-[#999]">已领取红包，下面是领取详情</div>}<div className="flex items-center justify-between border-b border-[#f0f0f1] pb-2 text-[11px] text-[#777]"><span>领取详情</span><span>{claims.length}/{count} 个红包</span></div><div className="max-h-[220px] overflow-y-auto">{claims.length ? claims.map((claim: any, index: number) => <div key={`${claim.userId || claim.name}-${index}`} className="flex items-center gap-2.5 border-b border-[#f5f5f6] py-2.5 last:border-0"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f4f4f5] text-[11px] text-[#666]">{String(claim.name || '成员').slice(0, 1)}</div><div className="min-w-0 flex-1"><div className="truncate text-[12px] font-medium text-[#333]">{String(claim.name || '群成员')}</div><div className="mt-0.5 text-[10px] text-[#aaa]">{String(claim.time || '')}</div></div><div className="text-[13px] font-semibold text-[#333]">¥{Number(claim.amount || 0).toFixed(2)}</div></div>) : <div className="py-5 text-center text-[11px] text-[#aaa]">还没有人领取</div>}</div><div className="mt-2 text-[10px] text-[#aaa]">已领取 ¥{claims.reduce((sum: number, claim: any) => sum + Number(claim.amount || 0), 0).toFixed(2)} · 剩余 {Math.max(0, count - claims.length)} 个</div></div></div></div>;
+        return <div className="absolute inset-0 z-[90] flex items-center justify-center bg-black/45 p-5" onClick={() => setShowRedPacketModal(false)}><div className="relative w-full max-w-[300px] overflow-hidden rounded-[16px] bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="bg-[#c96e7d] px-4 pb-4 pt-5 text-center text-white"><button type="button" onClick={() => setShowRedPacketModal(false)} className="absolute right-3 top-2 text-[22px] leading-none text-white/80">×</button><div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-[10px] bg-white/15 text-[20px]">🧧</div><div className="text-[12px] text-white/80">{String(packet.role === 'user' ? '我' : packet.senderName || '群成员')} 的红包</div><div className="mt-1 text-[14px] font-medium">{String(packet.redPacketBlessing || meta.blessing || '恭喜发财')}</div>{alreadyClaimed ? <div className="mt-3 text-[28px] font-semibold">¥{String(claims.find((claim: any) => claim.userId === 'me')?.amount || '0.00')}</div> : <div className="mt-3 text-[13px] text-white/85">{packet.redPacketStatus === 'claimed' ? '红包已领完' : '恭喜发财，大吉大利'}</div>}</div><div className="p-4">{packet.role !== 'user' && !alreadyClaimed && packet.redPacketStatus !== 'claimed' && packet.redPacketStatus !== 'expired' && meta.status !== 'expired' && claims.length < count && <button type="button" onClick={claimPacket} className="mb-3 w-full rounded-[10px] bg-[#f2c65c] py-2.5 text-[13px] font-semibold text-[#6d4518] active:scale-[0.99]">开红包</button>}{alreadyClaimed && <div className="mb-3 text-center text-[11px] text-[#999]">已领取红包，下面是领取详情</div>}<div className="flex items-center justify-between border-b border-[#f0f0f1] pb-2 text-[11px] text-[#777]"><span>领取详情</span><span>{claims.length}/{count} 个红包</span></div><div className="max-h-[220px] overflow-y-auto">{claims.length ? claims.map((claim: any, index: number) => <div key={`${claim.userId || claim.name}-${index}`} className="flex items-center gap-2.5 border-b border-[#f5f5f6] py-2.5 last:border-0"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f4f4f5] text-[11px] text-[#666]">{String(claim.name || '成员').slice(0, 1)}</div><div className="min-w-0 flex-1"><div className="truncate text-[12px] font-medium text-[#333]">{String(claim.name || '群成员')}</div><div className="mt-0.5 text-[10px] text-[#aaa]">{String(claim.time || '')}</div></div><div className="text-[13px] font-semibold text-[#333]">¥{Number(claim.amount || 0).toFixed(2)}</div></div>) : <div className="py-5 text-center text-[11px] text-[#aaa]">还没有人领取</div>}</div><div className="mt-2 text-[10px] text-[#aaa]">已领取 ¥{claims.reduce((sum: number, claim: any) => sum + Number(claim.amount || 0), 0).toFixed(2)} · 剩余 {Math.max(0, count - claims.length)} 个</div></div></div></div>;
       })()}
 
       {/* 7. AI DEBUG SHEET — show the actual prompt, raw model output and parser result */}
