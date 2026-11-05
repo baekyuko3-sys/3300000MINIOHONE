@@ -1,6 +1,6 @@
 import { generateCreativeText, resolveChannelAiSettings } from '../ai/aiEngine';
 import { buildNpcRuntimeContext } from './npcContext';
-import { readPersistentState, reportPersistenceIssue } from './usePersistentState';
+import { reportPersistenceIssue } from './usePersistentState';
 import type { SaneNpc } from './npcs';
 
 export type NpcFriendRequestSource = 'group-chat' | 'vroom' | 'npc-initiative' | 'user-initiated';
