@@ -96,12 +96,8 @@ export function activateLineTogetherIsland(input: {
   };
   saveStrangerSession(session);
 
-  // 音乐页只认 React 里的 session；派事件让它同步并打开一起听播放页
-  window.dispatchEvent(
-    new CustomEvent('sane333:open-music-together', {
-      detail: { sessionId: session.id, openPlayer: true },
-    }),
-  );
+  // saveStrangerSession 已派发 music-stranger-changed；
+  // DynamicIsland 会自行同步并展开共听浮窗，不应因此跳转到音乐主界面。
 }
 
 /** 结束 LINE 一起听时收起灵动岛共听态（仅匹配到的会话） */
