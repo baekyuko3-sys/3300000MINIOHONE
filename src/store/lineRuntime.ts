@@ -69,13 +69,22 @@ const NOTIFICATION_KEY = 'line:runtime:notifications';
 const CONVERSATION_PREFIX = 'line:conversation:';
 const MAX_NOTIFICATIONS = 200;
 
+const blockedLineJsonKeys = new Set<string>();
+
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
   let raw: string | null = null;
   try {
     raw = window.localStorage.getItem(key);
-    return raw ? JSON.parse(raw) as T : fallback;
+    if (raw === null) {
+      blockedLineJsonKeys.delete(key);
+      return fallback;
+    }
+    const parsed = JSON.parse(raw) as T;
+    blockedLineJsonKeys.delete(key);
+    return parsed;
   } catch (error) {
+    blockedLineJsonKeys.add(key);
     // Preserve malformed LINE data before a later write can replace the original value.
     if (raw !== null && raw.length <= 1_000_000) {
       try {
@@ -87,15 +96,26 @@ function readJson<T>(key: string, fallback: T): T {
         reportPersistenceIssue('line-recovery:' + key, 'LINE 损坏数据恢复副本保存失败；请尽快导出本地数据', recoveryError);
       }
     }
-    reportPersistenceIssue('line-read:' + key, 'LINE 本地数据读取或解析失败，已使用备用值；已尝试保留原始内容', error);
+    reportPersistenceIssue('line-read:' + key, 'LINE 本地数据读取或解析失败，已使用备用值；原始存储键已锁定写入', error);
     return fallback;
   }
 }
 
-function writeJson(key: string, value: unknown) {
-  if (typeof window === 'undefined') return;
-  try { window.localStorage.setItem(key, JSON.stringify(value)); }
-  catch (error) { reportPersistenceIssue('line-write:' + key, 'LINE 会话数据写入失败；本次更改可能尚未保存', error); }
+function writeJson(key: string, value: unknown): boolean {
+  if (typeof window === 'undefined') return false;
+  if (blockedLineJsonKeys.has(key)) {
+    reportPersistenceIssue('line-write-blocked:' + key, 'LINE 数据键处于损坏保护状态；已阻止默认值覆盖原始内容');
+    return false;
+  }
+  try {
+    const serialized = JSON.stringify(value);
+    window.localStorage.setItem(key, serialized);
+    if (window.localStorage.getItem(key) !== serialized) throw new Error('LINE_STORAGE_WRITE_VERIFY_FAILED');
+    return true;
+  } catch (error) {
+    reportPersistenceIssue('line-write:' + key, 'LINE 会话数据写入失败；本次更改可能尚未保存', error);
+    return false;
+  }
 }
 
 function conversationKey(id: string) {
