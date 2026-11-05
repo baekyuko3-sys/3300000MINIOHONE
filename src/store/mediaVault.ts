@@ -19,14 +19,32 @@ function openDb(): Promise<IDBDatabase> {
 
   dbPromise = new Promise((resolve, reject) => {
     const request = window.indexedDB.open(DB_NAME, DB_VERSION);
-    request.onerror = () => { dbPromise = null; reject(request.error || new Error('MEDIA_DB_OPEN_FAILED')); };
+    let settled = false;
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      dbPromise = null;
+      reject(error);
+    };
+    request.onerror = () => fail(request.error || new Error('MEDIA_DB_OPEN_FAILED'));
+    request.onblocked = () => fail(new Error('MEDIA_DB_OPEN_BLOCKED: 请关闭其他旧版本页面后重试'));
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: 'id' });
       }
     };
-    request.onsuccess = () => { const db = request.result; db.onclose = () => { dbPromise = null; }; resolve(db); };
+    request.onsuccess = () => {
+      const db = request.result;
+      if (settled) { db.close(); return; }
+      settled = true;
+      db.onclose = () => { dbPromise = null; };
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
   });
 
   return dbPromise;
@@ -61,6 +79,7 @@ export async function putMedia(dataUrl: string, preferredId?: string): Promise<s
     tx.objectStore(STORE_NAME).put(record);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error || new Error('MEDIA_WRITE_FAILED'));
+    tx.onabort = () => reject(tx.error || new Error('MEDIA_WRITE_ABORTED'));
   });
 
   return id;
@@ -84,6 +103,7 @@ export async function deleteMedia(id: string): Promise<void> {
     tx.objectStore(STORE_NAME).delete(id);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error || new Error('MEDIA_DELETE_FAILED'));
+    tx.onabort = () => reject(tx.error || new Error('MEDIA_DELETE_ABORTED'));
   });
 }
 
