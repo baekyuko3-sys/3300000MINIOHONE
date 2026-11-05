@@ -272,7 +272,7 @@ function sessionPayload(session: MusicStrangerSession | null, characters: Import
     hue: pickHue(session.characterId || session.characterName),
     startedAt: session.createdAt,
     unread: 0,
-    load: false,
+    load: Boolean(session.dmPending),
     allowRand: sessionAllowsCharRandom(session),
     charRandomPace: sessionCharRandomPace(session),
     anonymous: Boolean(session.anonymous),
@@ -2368,14 +2368,21 @@ export function MusicHtmlView({ active = true, onNavigate }: MusicHtmlViewProps)
           const text = String(data.text || '').trim();
           const sessionNow = sessionRef.current;
           const currentNow = currentRef.current;
-          if (!text || !sessionNow || !currentNow) return;
+          if (!text || !sessionNow || !currentNow || sessionNow.status === 'ended') return;
+          if (sessionNow.dmPending) {
+            showToast('TA 正在回复，请稍等一下');
+            return;
+          }
+          const sentAt = new Date().toISOString();
           const withMine: MusicStrangerSession = {
             ...sessionNow,
+            dmPending: true,
+            dmPendingAt: sentAt,
             reactionLog: [
               ...sessionNow.reactionLog,
-              { trackId: currentNow.id, text: `我说：${text}`, createdAt: new Date().toISOString() },
+              { trackId: currentNow.id, text: `我说：${text}`, createdAt: sentAt },
             ],
-            updatedAt: new Date().toISOString(),
+            updatedAt: sentAt,
           };
           sessionRef.current = withMine;
           setSession(withMine);
@@ -2384,11 +2391,17 @@ export function MusicHtmlView({ active = true, onNavigate }: MusicHtmlViewProps)
           const latest = sessionRef.current;
           if (!latest || latest.id !== withMine.id) return;
           if (!reply) {
-            showToast('TA 这会儿没回上，再发一句试试');
+            const settled = { ...latest, dmPending: false, dmPendingAt: undefined, updatedAt: new Date().toISOString() };
+            sessionRef.current = settled;
+            setSession(settled);
+            saveStrangerSession(settled);
+            showToast('TA 这会儿没回上，你的消息已保留，可以稍后再发');
             return;
           }
           const withReply: MusicStrangerSession = {
             ...latest,
+            dmPending: false,
+            dmPendingAt: undefined,
             reactionLog: [
               ...latest.reactionLog,
               { trackId: currentNow.id, text: reply, createdAt: new Date().toISOString() },

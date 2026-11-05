@@ -262,7 +262,7 @@ const loginHtml=cook?`<div style="font-size:11px;color:#857b73;margin-bottom:10p
 sheet(`<h3>外观与音乐 API${X}</h3>${fb('ap','外观（背景 / 强调色）')}<div class="lb">背景 · 马卡龙</div><div class="sw">${sb(MB)}</div><div class="lb">背景 · 莫兰迪</div><div class="sw">${sb(MO)}</div><div class="lb">纯白 · 夜间 · 自定义背景</div><div class="sw">${sb(SP)}${cp('cbg',th.bg)}</div><div class="lb">强调色</div><div class="sw">${AC.map(c=>`<button data-a="pa" data-c="${c}" class="${th.acc==c?'on2':''}" style="--s:${c}"></button>`).join('')}${cp('cac',th.acc)}</div></div>${fb('api','网易云 Music API')}<p>填写 API 根地址。搜索成功不代表一定有可播放音源。</p><input type="text" id="apiIn" value="${esc(apiBase)}"><button class="sv" data-a="test">测试连接并保存</button><button class="sv" data-a="save" style="margin-top:8px;background:var(--card);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)">仅保存地址</button></div>${fb('qr','登录凭证（解锁灰色歌曲）')}${loginHtml}</div>${fb('char','角色听歌')}<label class="set-row"><input type="checkbox" id="set-char-auto-collect" ${charAutoCollect?'checked':''}><div><b>角色可自主收藏一起听的歌</b><small>开启后，一起听时 TA 会按人设偶尔把当前歌收进自己的歌单，并可能说一句。</small></div></label><label class="set-row"><input type="checkbox" id="set-charpl-notify-look" ${charPlNotify?'checked':''}><div><b>听了角色歌单让 TA 知道</b><small>听 TA 的歌单时，可能会在 LINE 私聊发一句（同一张几小时内最多一次）。</small></div></label><p style="font-size:12px;color:var(--mut);margin-top:10px;line-height:1.6">角色歌单不会自动更新，需要时在角色歌单页点「生成」手动刷新。</p><button class="sv" data-a="open-char-playlists-from-set" style="margin-top:8px;background:var(--card);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)">打开角色歌单</button><button class="sv" data-a="save-char-listen-set" style="margin-top:8px">保存角色听歌设定</button></div>`)}
 
 document.addEventListener('input',e=>{const i=e.target;if(i.id=='cbg'||i.id=='cac'){th[i.id=='cbg'?'bg':'acc']=i.value;i.parentNode.style.setProperty('--s',i.value);apply();post('theme',{theme:th})} if(i.id=='q'){const v=i.value.trim();if(!v){searchResults=[];list();return}post('search',{query:v})}});
-document.addEventListener('keydown',e=>{if(e.target&&e.target.id=='q'&&e.key=='Enter'){post('search',{query:e.target.value.trim()})} if(e.target&&e.target.id=='inp'&&e.key=='Enter')post('dm-send',{text:e.target.value.trim()})});
+document.addEventListener('keydown',e=>{if(e.target&&e.target.id=='q'&&e.key=='Enter'){post('search',{query:e.target.value.trim()})} if(e.target&&e.target.id=='inp'&&e.key=='Enter'){if(se&&se.load){toast('TA 正在回复…');return}post('dm-send',{text:e.target.value.trim()})}});
 
 document.addEventListener('click',e=>{
 const h=e.target.closest('[data-h]');if(h){post('toggle-like',{id:h.dataset.h});return}
@@ -301,7 +301,7 @@ else if(a=='save-listen-set'){if(!se)return;const rand=!!($('#set-rand')&&$('#se
 else if(a=='react'){post('react');$('#layer').innerHTML=''}
 else if(a=='end'){post('end-session');$('#layer').innerHTML=''}
 else if(a=='dm'){if(se&&se.m!='s'){toast('熟人一起听请去 LINE 聊');return}openDM()}else if(a=='dmx')closeDM();
-else if(a=='send'){const v=$('#inp').value.trim();if(!v)return;$('#inp').value='';post('dm-send',{text:v})}
+else if(a=='send'){if(se&&se.load){toast('TA 正在回复…');return}const v=$('#inp').value.trim();if(!v)return;$('#inp').value='';post('dm-send',{text:v})}
 else if(a=='pick')post('pick');
 else if(a=='add')post('add-playlist');
 else if(a=='back')post('back');

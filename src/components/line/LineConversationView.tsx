@@ -4309,14 +4309,15 @@ export function LineConversationView({
     if (!name) { showToast('请填写地点名称'); return; }
     const address = locationAddress.trim();
     const newMsg = {
-      id: Date.now(),
+      id: 'virtual-location-' + Date.now().toString(36),
       role: 'user' as const,
       kind: 'location' as const,
-      text: `[定位] ${name}${address ? ` · ${address}` : ''}`,
+      text: `[虚拟位置] ${name}${address ? ` · ${address}` : ''}`,
       time: '刚刚',
       locationName: name,
       locationAddress: address,
-      metadata: { name, address },
+      locationType: 'virtual',
+      metadata: { name, address, source: 'virtual', mapLabel: address || name },
     };
     setMessages((prev) => [...prev, newMsg]);
     appendLineMessage(conversationStorageId, newMsg);
@@ -7247,7 +7248,7 @@ export function LineConversationView({
                       {(() => { const packetMeta = msg.metadata && typeof msg.metadata === 'object' ? msg.metadata : {}; const packetClaims = Array.isArray(msg.redPacketClaims) ? msg.redPacketClaims : Array.isArray(packetMeta.claims) ? packetMeta.claims : []; const packetCount = Math.max(1, Number(msg.redPacketCount || packetMeta.count || 1)); const packetStatus = String(msg.redPacketStatus || packetMeta.status || 'sent'); return packetStatus === 'claimed' || packetClaims.length >= packetCount ? `已领完 · ${packetClaims.length}人领取` : packetClaims.length ? `已领取 ${packetClaims.length}/${packetCount}` : isMe ? '已发出 · 点击查看' : '点击领取'; })()}
                     </div>
                   </button>
-                ) : msg.kind === 'location' || msg.kind === 'location' ? (
+                ) : msg.kind === 'location' ? (
                   <div
                     onContextMenu={(e) => { e.preventDefault(); setContextMenuMsg(msg); }}
                     className="w-[190px] rounded-[16px] overflow-hidden bg-white shadow-[0_6px_20px_rgba(0,0,0,0.1)]"
@@ -7264,7 +7265,7 @@ export function LineConversationView({
                           <line x1="48" y1="72" x2="150" y2="72"/><line x1="70" y1="6" x2="70" y2="104"/><line x1="132" y1="6" x2="132" y2="104"/>
                         </g>
                         <line x1="48" y1="110" x2="138" y2="0" stroke="#c9a86a" strokeWidth="2.5"/>
-                        <text x="92" y="40" fontSize="6.5" fill="#a8a080" letterSpacing="1.5" fontStyle="italic" fontFamily="Georgia">Central Park</text>
+                        <text x="92" y="40" fontSize="6.5" fill="#a8a080" letterSpacing="1.1" fontStyle="italic" fontFamily="Georgia">{String(msg.metadata?.mapLabel || msg.locationAddress || msg.locationName || '虚拟位置').slice(0, 18)}</text>
                       </svg>
                       {/* 金色图钉 */}
                       <div className="absolute left-1/2 top-[48%] -translate-x-1/2 -translate-y-full text-center">
@@ -7282,9 +7283,8 @@ export function LineConversationView({
                         <div className="text-[10px] text-[#bbb] mt-1">共享的位置</div>
                       )}
                     </div>
-                    <div className="flex mt-2.5 border-t border-[#f2f0ec]">
-                      <div className="flex-1 text-center py-2.5 text-[11px] font-medium text-[#a88040]">查看位置</div>
-                      <div className="flex-1 text-center py-2.5 text-[11px] font-medium text-[#a88040] border-l border-[#f2f0ec]">路线</div>
+                    <div className="mt-2.5 border-t border-[#f2f0ec] px-3 py-2 text-center text-[9px] text-[#a88040]">
+                      虚拟位置 · 不读取真实 GPS
                     </div>
                   </div>
                 ) : msg.kind === 'offline-invite' ? (
@@ -8987,6 +8987,9 @@ export function LineConversationView({
 
             {moneySheetType === 'location' && (
               <>
+                <div className="rounded-[10px] bg-[#faf6f2] px-3 py-2 text-[10px] leading-relaxed text-[#9a806c]">
+                  虚拟定位：填写想分享的地点即可，不会读取你的真实 GPS 或当前地址。
+                </div>
                 <label className="block space-y-1.5">
                   <span className="text-[10px] text-[#999]">地点名称</span>
                   <input

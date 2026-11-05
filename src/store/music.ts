@@ -85,6 +85,9 @@ export interface MusicStrangerSession {
   track: MusicTrack;
   status: 'listening' | 'paused' | 'ended';
   reactionLog: Array<{ trackId: string; text: string; createdAt: string }>;
+  /** 音乐页私信正在等待 AI 回复；不写入 LINE 普通聊天。 */
+  dmPending?: boolean;
+  dmPendingAt?: string;
   createdAt: string;
   updatedAt: string;
 }
