@@ -3,11 +3,18 @@ export async function readResponseBytesWithTimeout(
   response: Response,
   timeoutMs = 30000,
   maxBytes = 16 * 1024 * 1024,
+  signal?: AbortSignal,
 ): Promise<Uint8Array> {
   if (!response.body) return new Uint8Array();
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
+  let abortHandler: (() => void) | undefined;
+  const abortPromise = signal ? new Promise<never>((_, reject) => {
+    abortHandler = () => reject(new Error('AI_ABORTED: 当前回复请求已取消'));
+    if (signal.aborted) abortHandler();
+    else signal.addEventListener('abort', abortHandler, { once: true });
+  }) : null;
   try {
     while (true) {
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -16,7 +23,7 @@ export async function readResponseBytesWithTimeout(
         const timeoutPromise = new Promise<ReadableStreamReadResult<Uint8Array>>((_, reject) => {
           timer = setTimeout(() => reject(new Error('AI_RESPONSE_BODY_TIMEOUT: 服务商响应正文读取超时')), timeoutMs);
         });
-        const { value, done } = await Promise.race([readPromise, timeoutPromise]);
+        const { value, done } = await Promise.race(abortPromise ? [readPromise, timeoutPromise, abortPromise] : [readPromise, timeoutPromise]);
         if (done) break;
         if (value) {
           total += value.byteLength;
@@ -35,6 +42,7 @@ export async function readResponseBytesWithTimeout(
     try { await reader.cancel(error); } catch { /* stream already closed */ }
     throw error;
   } finally {
+    if (signal && abortHandler) signal.removeEventListener('abort', abortHandler);
     try { reader.releaseLock(); } catch { /* already released */ }
   }
 }
@@ -43,8 +51,9 @@ export async function readResponseTextWithTimeout(
   response: Response,
   timeoutMs = 30000,
   maxBytes = 16 * 1024 * 1024,
+  signal?: AbortSignal,
 ): Promise<string> {
-  const bytes = await readResponseBytesWithTimeout(response, timeoutMs, maxBytes);
+  const bytes = await readResponseBytesWithTimeout(response, timeoutMs, maxBytes, signal);
   return new TextDecoder().decode(bytes);
 }
 
@@ -52,8 +61,9 @@ export async function readJsonResponseWithTimeout<T = any>(
   response: Response,
   timeoutMs = 30000,
   maxBytes = 16 * 1024 * 1024,
+  signal?: AbortSignal,
 ): Promise<T> {
-  const text = await readResponseTextWithTimeout(response, timeoutMs, maxBytes);
+  const text = await readResponseTextWithTimeout(response, timeoutMs, maxBytes, signal);
   if (!text.trim()) throw new Error('AI_EMPTY_RESPONSE_BODY');
   try { return JSON.parse(text) as T; }
   catch { throw new Error('AI_INVALID_JSON_RESPONSE: 服务商返回了无法解析的 JSON'); }
@@ -63,19 +73,21 @@ export async function readBlobResponseWithTimeout(
   response: Response,
   timeoutMs = 30000,
   maxBytes = 32 * 1024 * 1024,
+  signal?: AbortSignal,
 ): Promise<Blob> {
-  const bytes = await readResponseBytesWithTimeout(response, timeoutMs, maxBytes);
+  const bytes = await readResponseBytesWithTimeout(response, timeoutMs, maxBytes, signal);
   const blobBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
   return new Blob([blobBuffer], { type: response.headers.get('content-type') || 'application/octet-stream' });
 }
 
-export async function readError(response: Response): Promise<string> {
+export async function readError(response: Response, signal?: AbortSignal): Promise<string> {
   const statusLabel = response.statusText ? ' ' + response.statusText : '';
   let text = '';
   try {
-    text = (await readResponseTextWithTimeout(response, 15000, 64 * 1024)).trim().slice(0, 4000);
-  } catch {
-    return '[' + response.status + statusLabel + '] AI 请求失败';
+    text = (await readResponseTextWithTimeout(response, 15000, 64 * 1024, signal)).trim().slice(0, 4000);
+  } catch (error) {
+    if (signal?.aborted) throw new Error('AI_ABORTED: 当前回复请求已取消');
+    return '[' + response.status + statusLabel + '] ' + (error instanceof Error ? error.message : 'AI 请求失败');
   }
   if (!text) return '[' + response.status + statusLabel + '] AI 请求失败';
   try {
@@ -102,9 +114,10 @@ export async function parseSseResponse(
   idleTimeoutMs = 45000,
   onReasoning?: (delta: string) => void,
   extractReasoning?: (data: any) => string,
+  signal?: AbortSignal,
 ): Promise<string> {
   if (!response.body) {
-    const text = await response.text();
+    const text = await readResponseTextWithTimeout(response, idleTimeoutMs, 16 * 1024 * 1024, signal);
     if (!text.trim()) return '';
     let data: any;
     try { data = JSON.parse(text); }
@@ -125,6 +138,12 @@ export async function parseSseResponse(
   let buffer = '';
   let fullText = '';
   let streamDone = false;
+  let abortHandler: (() => void) | undefined;
+  const abortPromise = signal ? new Promise<never>((_, reject) => {
+    abortHandler = () => reject(new Error('AI_ABORTED: 当前回复请求已取消'));
+    if (signal.aborted) abortHandler();
+    else signal.addEventListener('abort', abortHandler, { once: true });
+  }) : null;
 
   const processLine = (line: string) => {
     const trimmed = line.trim();
@@ -161,7 +180,7 @@ export async function parseSseResponse(
             idleTimeoutMs,
           );
         });
-        const { value, done } = await Promise.race([readPromise, timeoutPromise]);
+        const { value, done } = await Promise.race(abortPromise ? [readPromise, timeoutPromise, abortPromise] : [readPromise, timeoutPromise]);
         if (done) break;
         if (value) {
           buffer += decoder.decode(value, { stream: true });
@@ -181,6 +200,7 @@ export async function parseSseResponse(
     if (buffer && !streamDone) processLine(buffer);
     return fullText.trim();
   } finally {
+    if (signal && abortHandler) signal.removeEventListener('abort', abortHandler);
     if (streamDone) {
       try { await reader.cancel(); } catch { /* already closed */ }
     }
