@@ -1,3 +1,4 @@
+import { reportPersistenceIssue } from './usePersistentState';
 export type AiDebugLevel = 'info' | 'success' | 'error';
 export interface AiDebugEntry {
   id: string; time: string; level: AiDebugLevel; event: string; message: string;
@@ -25,16 +26,36 @@ function redactSensitiveValue(value: unknown, depth = 0): unknown {
   return value;
 }
 const KEY='phone:ai-debug-log';
+const blockedDebugKeys = new Set<string>();
 export function readAiDebugLog(): AiDebugEntry[] {
   if(typeof window==='undefined') return [];
-  try { const v=JSON.parse(localStorage.getItem(KEY)||'[]'); return Array.isArray(v)?v.map(item => redactSensitiveValue(item) as AiDebugEntry):[]; } catch { return []; }
+  try {
+    const raw = window.localStorage.getItem(KEY);
+    if (raw === null) { blockedDebugKeys.delete(KEY); return []; }
+    const value = JSON.parse(raw);
+    if (!Array.isArray(value)) throw new Error('AI_DEBUG_LOG_SCHEMA_INVALID');
+    blockedDebugKeys.delete(KEY);
+    return value.map(item => redactSensitiveValue(item) as AiDebugEntry);
+  } catch (error) {
+    blockedDebugKeys.add(KEY);
+    reportPersistenceIssue('read:' + KEY, 'AI 调试日志损坏或格式不符；已锁定写入以保留原始记录', error);
+    return [];
+  }
 }
 function safeSetItem(key: string, value: string): boolean {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined' || blockedDebugKeys.has(key)) return false;
   try {
+    const raw = window.localStorage.getItem(key);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('AI_DEBUG_TRACE_SCHEMA_INVALID');
+    }
     window.localStorage.setItem(key, value);
+    if (window.localStorage.getItem(key) !== value) throw new Error('AI_DEBUG_WRITE_VERIFY_FAILED');
     return true;
-  } catch {
+  } catch (error) {
+    blockedDebugKeys.add(key);
+    reportPersistenceIssue('write:' + key, 'AI 调试记录写入失败；原始诊断数据已保留', error);
     return false;
   }
 }
@@ -85,14 +106,17 @@ export function readAiDebugTrace(conversationId?: string): AiDebugTrace | null {
   if(typeof window==='undefined') return null;
   try {
     const key = traceKey(conversationId);
-    const v=JSON.parse(localStorage.getItem(key)||'null');
-    if(v&&typeof v==='object') return redactSensitiveValue(v) as AiDebugTrace;
+    const raw = window.localStorage.getItem(key);
+    if (raw === null) { blockedDebugKeys.delete(key); return null; }
+    const v=JSON.parse(raw);
+    if(v&&typeof v==='object'&&!Array.isArray(v)) { blockedDebugKeys.delete(key); return redactSensitiveValue(v) as AiDebugTrace; }
+    throw new Error('AI_DEBUG_TRACE_SCHEMA_INVALID');
     if(conversationId) {
       const latest=JSON.parse(localStorage.getItem(TRACE_KEY)||'null');
       if(latest && typeof latest==='object' && String(latest.context?.conversationId || '') === conversationId) return redactSensitiveValue(latest) as AiDebugTrace;
     }
     return null;
-  } catch { return null; }
+  } catch (error) { blockedDebugKeys.add(traceKey(conversationId)); reportPersistenceIssue('read:' + traceKey(conversationId), 'AI 调试追踪损坏；已锁定写入以保留原始记录', error); return null; }
 }
 export function writeAiDebugTrace(trace: Omit<AiDebugTrace,'id'|'time'> & Partial<Pick<AiDebugTrace,'id'|'time'>>) {
   if(typeof window==='undefined') return;
