@@ -1,8 +1,78 @@
+
+export async function readResponseBytesWithTimeout(
+  response: Response,
+  timeoutMs = 30000,
+  maxBytes = 16 * 1024 * 1024,
+): Promise<Uint8Array> {
+  if (!response.body) return new Uint8Array();
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const readPromise = reader.read();
+        const timeoutPromise = new Promise<ReadableStreamReadResult<Uint8Array>>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('AI_RESPONSE_BODY_TIMEOUT: 服务商响应正文读取超时')), timeoutMs);
+        });
+        const { value, done } = await Promise.race([readPromise, timeoutPromise]);
+        if (done) break;
+        if (value) {
+          total += value.byteLength;
+          if (total > maxBytes) throw new Error('AI_RESPONSE_BODY_TOO_LARGE: 服务商响应超过允许大小');
+          chunks.push(value);
+        }
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+      }
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    return bytes;
+  } catch (error) {
+    try { await reader.cancel(error); } catch { /* stream already closed */ }
+    throw error;
+  } finally {
+    try { reader.releaseLock(); } catch { /* already released */ }
+  }
+}
+
+export async function readResponseTextWithTimeout(
+  response: Response,
+  timeoutMs = 30000,
+  maxBytes = 16 * 1024 * 1024,
+): Promise<string> {
+  const bytes = await readResponseBytesWithTimeout(response, timeoutMs, maxBytes);
+  return new TextDecoder().decode(bytes);
+}
+
+export async function readJsonResponseWithTimeout<T = any>(
+  response: Response,
+  timeoutMs = 30000,
+  maxBytes = 16 * 1024 * 1024,
+): Promise<T> {
+  const text = await readResponseTextWithTimeout(response, timeoutMs, maxBytes);
+  if (!text.trim()) throw new Error('AI_EMPTY_RESPONSE_BODY');
+  try { return JSON.parse(text) as T; }
+  catch { throw new Error('AI_INVALID_JSON_RESPONSE: 服务商返回了无法解析的 JSON'); }
+}
+
+export async function readBlobResponseWithTimeout(
+  response: Response,
+  timeoutMs = 30000,
+  maxBytes = 32 * 1024 * 1024,
+): Promise<Blob> {
+  const bytes = await readResponseBytesWithTimeout(response, timeoutMs, maxBytes);
+  return new Blob([bytes], { type: response.headers.get('content-type') || 'application/octet-stream' });
+}
+
 export async function readError(response: Response): Promise<string> {
   const statusLabel = response.statusText ? ' ' + response.statusText : '';
   let text = '';
   try {
-    text = (await response.text()).trim().slice(0, 4000);
+    text = (await readResponseTextWithTimeout(response, 15000, 64 * 1024)).trim().slice(0, 4000);
   } catch {
     return '[' + response.status + statusLabel + '] AI 请求失败';
   }

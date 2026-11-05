@@ -1,4 +1,4 @@
-import { parseSseResponse, readError } from './streaming';
+import { parseSseResponse, readError, readBlobResponseWithTimeout, readJsonResponseWithTimeout } from './streaming';
 import type { ImportedCharacter } from '../data/characterImport';
 import type { ProjectManifest, WorldBook } from '../types';
 import type { CharacterMemory, MemorySection } from '../store/characterMemory';
@@ -813,7 +813,7 @@ async function imageUrlToDataUrl(imageUrl: string): Promise<string | null> {
   try {
     const response = await fetchWithTimeout(imageUrl, { method: 'GET' }, 15000);
     if (!response.ok) return null;
-    const blob = await response.blob();
+    const blob = await readBlobResponseWithTimeout(response, 15000);
     if (!blob.type.startsWith('image/')) return null;
     const bytes = new Uint8Array(await blob.arrayBuffer());
     let binary = '';
@@ -920,7 +920,7 @@ async function callGemini(input: AiReplyInput): Promise<string> {
     return wrapProviderReasoning(result, reasoningStream);
   }
 
-  const data = await response.json();
+  const data = await readJsonResponseWithTimeout(response);
   const text = extractGeminiText(data).trim();
   const result = wrapProviderReasoning(text, extractGeminiReasoning(data));
   input.onDelta?.(result);
@@ -1053,7 +1053,7 @@ async function callOpenAiCompatible(input: AiReplyInput): Promise<string> {
     return wrapProviderReasoning(result, reasoningStream);
   }
 
-  const data = await response.json();
+  const data = await readJsonResponseWithTimeout(response);
   const text = extractOpenAiText(data).trim();
   const result = wrapProviderReasoning(text, extractOpenAiReasoning(data));
   input.onDelta?.(result);
@@ -1662,7 +1662,7 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
       }),
     }, 90000);
     if (!response.ok) throw new Error('AI_PROXY_' + response.status + ': ' + await readError(response));
-    const data = await response.json();
+    const data = await readJsonResponseWithTimeout(response);
     const text = input.settings.provider === 'gemini' ? extractGeminiText(data).trim() : extractOpenAiText(data).trim();
     if (!text) throw new Error('AI_EMPTY_RESPONSE');
     input.onDelta?.(text);
@@ -1701,7 +1701,7 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
       }, input.timeoutMs ?? 90000);
       if (!response.ok) throw new Error('AI_GEMINI_' + response.status + ': ' + await readError(response));
       if (input.settings.streaming) return parseSseResponse(response, extractGeminiText, input.onDelta);
-      const data = await response.json();
+      const data = await readJsonResponseWithTimeout(response);
       const text = extractGeminiText(data).trim();
       input.onDelta?.(text);
       return text;
@@ -1728,7 +1728,7 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
     }, input.timeoutMs ?? 90000);
     if (!response.ok) throw new Error('AI_OPENAI_' + response.status + ': ' + await readError(response));
     if (input.settings.streaming) return parseSseResponse(response, extractOpenAiText, input.onDelta);
-    const data = await response.json();
+    const data = await readJsonResponseWithTimeout(response);
     const text = extractOpenAiText(data).trim();
     input.onDelta?.(text);
     return text;
@@ -1807,7 +1807,7 @@ export async function listOpenAiCompatibleModels(
     throw new Error('AI_MODELS_' + response.status + ': ' + await readError(response));
   }
 
-  const data = await response.json();
+  const data = await readJsonResponseWithTimeout(response);
   const rawModels =
     Array.isArray(data?.data) ? data.data :
     Array.isArray(data?.models) ? data.models :
