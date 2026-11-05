@@ -185,7 +185,7 @@ export async function walletSendTransfer(amount: number, counterparty: string, d
   if (!Number.isFinite(amount) || amount <= 0 || !operationId?.trim()) return false;
   const cents = Math.round(amount * 100);
   if (cents <= 0) return false;
-  const result = commitWalletLedger(current => {
+  const result = await commitWalletLedger(current => {
     const existing = findTransfer(current, operationId);
     if (existing) return { next: current, result: existing.status !== 'refunded' && existing.amount === cents / 100 };
     if (current.balanceCents < cents) return null;
@@ -208,7 +208,7 @@ export async function walletSendTransfer(amount: number, counterparty: string, d
 
 export async function walletSettleTransfer(operationId: string, decision: 'accepted' | 'rejected'): Promise<boolean> {
   if (!operationId || (decision !== 'accepted' && decision !== 'rejected')) return false;
-  const result = commitWalletLedger(current => {
+  const result = await commitWalletLedger(current => {
     const item = findTransfer(current, operationId);
     if (!item) return null;
     if (item.status !== 'sent') return { next: current, result: item.status === (decision === 'accepted' ? 'accepted' : 'refunded') };
@@ -241,7 +241,7 @@ export async function walletSendRedPacket(totalAmount: number, desc: string, ope
   const cents = Math.round(totalAmount * 100);
   if (cents <= 0) return false;
   if (!Array.isArray(sharesCents) || !sharesCents.length || sharesCents.some(value => !Number.isInteger(value) || value <= 0) || sharesCents.reduce((sum, value) => sum + value, 0) !== cents) return false;
-  const result = commitWalletLedger(current => {
+  const result = await commitWalletLedger(current => {
     const existing = findPacket(current, operationId);
     if (existing) {
       const sameShares = Array.isArray(existing.sharesCents) && existing.sharesCents.length === sharesCents.length && existing.sharesCents.every((value, index) => value === sharesCents[index]);
@@ -267,7 +267,7 @@ export async function walletSendRedPacket(totalAmount: number, desc: string, ope
 /** Reserve a unique share for an NPC on a packet sent by this wallet. */
 export async function walletRegisterRedPacketClaim(packetId: string, claimId: string, slotIndex: number): Promise<boolean> {
   if (!packetId || !claimId || !Number.isInteger(slotIndex) || slotIndex < 0) return false;
-  const result = commitWalletLedger(current => {
+  const result = await commitWalletLedger(current => {
     const packet = findPacket(current, packetId);
     if (!packet?.sent || packet.refunded || !packet.sharesCents || slotIndex >= packet.sharesCents.length) return null;
     const existingSlot = packet.slots?.[claimId];
@@ -295,7 +295,7 @@ export async function walletClaimRedPacket(packetId: string, claimId: string, am
   const totalCents = Math.round((totalAmount as number) * 100);
   const slot = slotIndex as number;
   if (cents <= 0 || slot >= sharesCents.length || sharesCents[slot] !== cents || sharesCents.reduce((sum, value) => sum + value, 0) !== totalCents) return false;
-  const result = commitWalletLedger(current => {
+  const result = await commitWalletLedger(current => {
     const packet = findPacket(current, packetId);
     if (packet?.sent || packet?.refunded || packet?.claimed.includes(claimId)) return null;
     if (packet?.sharesCents && (packet.sharesCents.length !== sharesCents.length || packet.sharesCents.some((value, index) => value !== sharesCents[index]))) return null;
@@ -327,7 +327,7 @@ export async function walletRefundRedPacket(packetId: string, _amount: number, d
   const validLegacyShares = Array.isArray(legacySharesCents) && legacySharesCents.length > 0 && legacySharesCents.every(value => Number.isInteger(value) && value > 0)
     ? legacySharesCents
     : null;
-  const result = commitWalletLedger(current => {
+  const result = await commitWalletLedger(current => {
     const existing = findPacket(current, packetId);
     if (existing?.refunded) return { next: current, result: true };
     if (existing?.sent === false) return null;
