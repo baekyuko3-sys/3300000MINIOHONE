@@ -1,3 +1,4 @@
+import { reportPersistenceIssue } from './usePersistentState';
 import type { ThemeMode, WidgetConfig } from '../types';
 
 export interface SavedFont {
@@ -109,11 +110,42 @@ export const DEFAULT_APPEARANCE: AppearanceScheme = {
   updatedAt: new Date(0).toISOString(),
 };
 
-function safeParse<T>(raw: string | null, fallback: T): T {
+const blockedAppearanceKeys = new Set<string>();
+
+function readStored<T>(storageKey: string, fallback: T, valid: (value: unknown) => boolean): T {
+  if (typeof window === 'undefined') return fallback;
   try {
-    return raw ? JSON.parse(raw) as T : fallback;
-  } catch {
+    const raw = window.localStorage.getItem(storageKey);
+    if (raw === null) { blockedAppearanceKeys.delete(storageKey); return fallback; }
+    const parsed: unknown = JSON.parse(raw);
+    if (!valid(parsed)) throw new Error('APPEARANCE_STORAGE_SCHEMA_INVALID');
+    blockedAppearanceKeys.delete(storageKey);
+    return parsed as T;
+  } catch (error) {
+    blockedAppearanceKeys.add(storageKey);
+    reportPersistenceIssue('read:' + storageKey, '外观配置损坏或格式不符；已锁定写入以保留壁纸、字体和锁屏设置', error);
     return fallback;
+  }
+}
+
+function writeStored(storageKey: string, value: unknown): boolean {
+  if (typeof window === 'undefined' || blockedAppearanceKeys.has(storageKey)) return false;
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (raw !== null) {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(value) ? !Array.isArray(parsed) : (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))) {
+        throw new Error('APPEARANCE_STORAGE_SCHEMA_INVALID');
+      }
+    }
+    const serialized = JSON.stringify(value);
+    window.localStorage.setItem(storageKey, serialized);
+    if (window.localStorage.getItem(storageKey) !== serialized) throw new Error('APPEARANCE_STORAGE_WRITE_VERIFY_FAILED');
+    return true;
+  } catch (error) {
+    blockedAppearanceKeys.add(storageKey);
+    reportPersistenceIssue('write:' + storageKey, '外观配置写入失败；原始配置已保留', error);
+    return false;
   }
 }
 
@@ -167,31 +199,23 @@ function normalizeAppearance(value: Partial<AppearanceScheme>): AppearanceScheme
 
 export function readAppearance(): AppearanceScheme {
   if (typeof window === 'undefined') return DEFAULT_APPEARANCE;
-  const parsed = safeParse<Partial<AppearanceScheme>>(window.localStorage.getItem(KEY), {});
+  const parsed = readStored<Partial<AppearanceScheme>>(KEY, {}, value => !!value && typeof value === 'object' && !Array.isArray(value));
   return normalizeAppearance(parsed);
 }
 
 export function saveAppearance(value: Partial<AppearanceScheme>): AppearanceScheme {
   const next = normalizeAppearance({ ...readAppearance(), ...value, updatedAt: new Date().toISOString() });
   if (typeof window !== 'undefined') {
-    try {
-      window.localStorage.setItem(KEY, JSON.stringify(next));
-      window.dispatchEvent(new CustomEvent('sane333:appearance-changed'));
-    } catch (error) {
-      // 大字体 data URL 容易撞配额；抛出让 UI 提示，避免静默失败
-      const message = error instanceof Error ? error.message : 'appearance save failed';
-      throw new Error(message.includes('Quota') || message.includes('quota')
-        ? '本地存储空间不足，字体可能过大'
-        : message);
-    }
+    if (!writeStored(KEY, next)) throw new Error('外观配置保存失败：原始配置已保留，请先导出或修复本地数据');
+    window.dispatchEvent(new CustomEvent('sane333:appearance-changed'));
   }
   return next;
 }
 
 export function getAppearanceSchemes(): AppearanceScheme[] {
   if (typeof window === 'undefined') return [DEFAULT_APPEARANCE];
-  const parsed = safeParse<unknown>(window.localStorage.getItem(SCHEMES_KEY), []);
-  if (!Array.isArray(parsed) || !parsed.length) return [DEFAULT_APPEARANCE];
+  const parsed = readStored<unknown[]>(SCHEMES_KEY, [], Array.isArray);
+  if (!parsed.length) return [DEFAULT_APPEARANCE];
   return parsed.map(item => normalizeAppearance(item as Partial<AppearanceScheme>));
 }
 
@@ -204,7 +228,7 @@ export function saveAppearanceScheme(name: string): AppearanceScheme {
     updatedAt: new Date().toISOString(),
   };
   const next = [...getAppearanceSchemes().filter(item => item.id !== scheme.id), scheme];
-  if (typeof window !== 'undefined') window.localStorage.setItem(SCHEMES_KEY, JSON.stringify(next));
+  if (typeof window !== 'undefined' && !writeStored(SCHEMES_KEY, next)) throw new Error('外观方案保存失败：原始方案已保留');
   return scheme;
 }
 
@@ -217,14 +241,13 @@ export function applyAppearanceScheme(id: string): AppearanceScheme {
 export function deleteAppearanceScheme(id: string) {
   if (id === DEFAULT_APPEARANCE.id || typeof window === 'undefined') return;
   const next = getAppearanceSchemes().filter(item => item.id !== id);
-  window.localStorage.setItem(SCHEMES_KEY, JSON.stringify(next));
+  if (!writeStored(SCHEMES_KEY, next)) throw new Error('外观方案删除失败：原始方案已保留');
 }
 
 
 export function getSavedFonts(): SavedFont[] {
   if (typeof window === 'undefined') return [];
-  const parsed = safeParse<unknown>(window.localStorage.getItem(FONTS_KEY), []);
-  if (!Array.isArray(parsed)) return [];
+  const parsed = readStored<unknown[]>(FONTS_KEY, [], Array.isArray);
   return parsed.filter(item => item && typeof item === 'object').map(item => {
     const value = item as Partial<SavedFont>;
     return { id: String(value.id || ''), name: String(value.name || '未命名字体'), source: (value.source === 'url' ? 'url' : 'upload') as 'upload' | 'url', value: String(value.value || ''), createdAt: String(value.createdAt || new Date().toISOString()) };
@@ -232,10 +255,10 @@ export function getSavedFonts(): SavedFont[] {
 }
 export function saveFont(font: Omit<SavedFont, 'id' | 'createdAt'>): SavedFont {
   const next: SavedFont = { ...font, id: 'font-' + Date.now().toString(36), createdAt: new Date().toISOString() };
-  if (typeof window !== 'undefined') window.localStorage.setItem(FONTS_KEY, JSON.stringify([next, ...getSavedFonts()]));
+  if (typeof window !== 'undefined' && !writeStored(FONTS_KEY, [next, ...getSavedFonts()])) throw new Error('字体保存失败：原始字体列表已保留');
   return next;
 }
 export function deleteSavedFont(id: string) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(FONTS_KEY, JSON.stringify(getSavedFonts().filter(font => font.id !== id)));
+  if (!writeStored(FONTS_KEY, getSavedFonts().filter(font => font.id !== id))) throw new Error('字体删除失败：原始字体列表已保留');
 }
