@@ -1059,10 +1059,9 @@ export function LineConversationView({
           ...currentClaims,
           ...recovered.map(item => {
             const npcId = item.claimId.startsWith('npc:') ? item.claimId.slice(4) : '';
-            const member = npcId ? groupMembers.find((candidate: any) => String(candidate.id) === npcId) : null;
             return {
               userId: item.claimId,
-              name: item.claimId === 'me' ? '我' : (member?.nickname || member?.name || npcId || item.claimId),
+              name: item.claimId === 'me' ? '我' : (npcId || item.claimId),
               slotIndex: item.slotIndex,
               amount: (item.amountCents / 100).toFixed(2),
               time: '已恢复',
