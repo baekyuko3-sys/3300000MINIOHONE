@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSseResponse, readError, readJsonResponseWithTimeout, readResponseTextWithTimeout } from '../src/ai/streaming.ts';
+import { parseSseResponse, readError, readJsonResponseWithTimeout, readResponseTextWithTimeout, readBlobResponseWithTimeout } from '../src/ai/streaming.ts';
 
 const extractOpenAiText = data => (data?.choices || [])
   .map(choice => choice?.delta?.content || '')
