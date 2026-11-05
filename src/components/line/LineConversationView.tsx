@@ -8,7 +8,7 @@ import { generateSpeech, transcribeAudio } from '../../ai/mediaEngine';
 import { readAppSettings } from '../../store/appSettings';
 import type { ChannelAiSettings } from '../../store/appSettings';
 import { getMedia, putMedia } from '../../store/mediaVault';
-import { walletSendRedPacket, walletSendTransfer, walletClaimRedPacket, walletRefundRedPacket, walletSettleTransfer, spendFamilyCard } from '../../store/lineWallet';
+import { walletSendRedPacket, walletSendTransfer, walletClaimRedPacket, walletRegisterRedPacketClaim, walletRefundRedPacket, walletSettleTransfer, spendFamilyCard } from '../../store/lineWallet';
 import { VroomImage } from '../VroomImage';
 import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory, updateCharacterMemoryItem, deleteCharacterMemoryItem, clearCharacterMemory, clearAllCharacterMemoryVariants } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
@@ -834,38 +834,6 @@ export function LineConversationView({
   const musicInviteDecisionDoneRef = useRef<Set<string>>(new Set());
 
 
-  // 新红包到期后自动退回未领取份额；旧红包没有 sharesCents 时不猜测退款。
-  useEffect(() => {
-    let changed = false;
-    const now = Date.now();
-    for (const message of messages) {
-      if (message.kind !== 'red-packet') continue;
-      const meta = message.metadata && typeof message.metadata === 'object' ? message.metadata : {};
-      const expiresAt = Date.parse(String(meta.expiresAt || ''));
-      const shares = Array.isArray(meta.sharesCents) ? meta.sharesCents.map((value: any) => Math.max(0, Math.round(Number(value) || 0))) : null;
-      if (!shares || !Number.isFinite(expiresAt) || now < expiresAt || meta.refundedAt || meta.status === 'expired') continue;
-      const claims = Array.isArray(message.redPacketClaims) ? message.redPacketClaims : Array.isArray(meta.claims) ? meta.claims : [];
-      const occupied = new Set<number>(claims.map((claim: any, index: number) => Number.isInteger(claim?.slotIndex) ? Number(claim.slotIndex) : index));
-      const remainingCents = shares.reduce((sum: number, cents: number, index: number) => sum + (occupied.has(index) ? 0 : cents), 0);
-      if (remainingCents > 0 && !walletRefundRedPacket(String(message.id), remainingCents / 100, '未领取红包退回', shares, [...occupied])) continue;
-      const status = remainingCents > 0 ? 'expired' : 'claimed';
-      const updatedMeta = { ...meta, status, refundedAt: new Date().toISOString(), refundAmount: remainingCents / 100 };
-      const updated = { ...message, redPacketStatus: status, metadata: updatedMeta };
-      setMessages(prev => prev.map((item: any) => String(item.id) === String(message.id) ? updated : item));
-      updateLineMessage(conversationStorageId, message.id, { redPacketStatus: status, metadata: updatedMeta } as any);
-      if (String(activeRedPacket?.id) === String(message.id)) setActiveRedPacket(updated);
-      changed = true;
-    }
-    if (changed) window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
-  }, [conversationStorageId, messages, activeRedPacket?.id]);
-  // 即使聊天页面一直开着，也定期扫描到期红包；卸载时自动清理。
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setMessages(current => [...current]);
-    }, 60_000);
-    return () => window.clearInterval(timer);
-  }, [conversationStorageId]);
-
   // LINE keeps the complete conversation in storage, but only renders the newest
   // page at first. Older messages load naturally as you scroll upward.
   const LINE_PAGE_SIZE = 100; // 100 messages stay freely scrollable; older messages are folded by page.
@@ -1062,6 +1030,39 @@ export function LineConversationView({
   const [redPacketMode, setRedPacketMode] = useState<'random' | 'equal'>('random');
   const [activeRedPacket, setActiveRedPacket] = useState<any | null>(null);
   const [showRedPacketModal, setShowRedPacketModal] = useState(false);
+  // 新红包到期后自动退回未领取份额；旧红包没有 sharesCents 时不猜测退款。
+  useEffect(() => {
+    let changed = false;
+    const now = Date.now();
+    for (const message of messages) {
+      if (message.kind !== 'red-packet') continue;
+      const meta = message.metadata && typeof message.metadata === 'object' ? message.metadata : {};
+      const expiresAt = Date.parse(String(meta.expiresAt || ''));
+      const shares = Array.isArray(meta.sharesCents) ? meta.sharesCents.map((value: any) => Math.max(0, Math.round(Number(value) || 0))) : null;
+      if (!shares || !Number.isFinite(expiresAt) || now < expiresAt || meta.refundedAt || meta.status === 'expired') continue;
+      const claims = Array.isArray(message.redPacketClaims) ? message.redPacketClaims : Array.isArray(meta.claims) ? meta.claims : [];
+      const occupied = new Set<number>(claims.map((claim: any, index: number) => Number.isInteger(claim?.slotIndex) ? Number(claim.slotIndex) : index));
+      const remainingCents = shares.reduce((sum: number, cents: number, index: number) => sum + (occupied.has(index) ? 0 : cents), 0);
+      if (remainingCents > 0 && !walletRefundRedPacket(String(message.id), remainingCents / 100, '未领取红包退回', shares, [...occupied])) continue;
+      const status = remainingCents > 0 ? 'expired' : 'claimed';
+      const updatedMeta = { ...meta, status, refundedAt: new Date().toISOString(), refundAmount: remainingCents / 100 };
+      const updated = { ...message, redPacketStatus: status, metadata: updatedMeta };
+      setMessages(prev => prev.map((item: any) => String(item.id) === String(message.id) ? updated : item));
+      updateLineMessage(conversationStorageId, message.id, { redPacketStatus: status, metadata: updatedMeta } as any);
+      if (String(activeRedPacket?.id) === String(message.id)) setActiveRedPacket(updated);
+      changed = true;
+    }
+    if (changed) window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
+  }, [conversationStorageId, messages, activeRedPacket?.id]);
+  // 即使聊天页面一直开着，也定期扫描到期红包；卸载时自动清理。
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setMessages(current => [...current]);
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [conversationStorageId]);
+
+
   const [locationName, setLocationName] = useState('');
   const [locationAddress, setLocationAddress] = useState('');
   const [playingVoiceId, setPlayingVoiceId] = useState<string | number | null>(null);
@@ -1651,7 +1652,7 @@ export function LineConversationView({
   };
   const groupAiMembers = safeGroupMembers
     .map(member => ({ member, character: resolveGroupMemberCharacter(member) }))
-    .filter(item => item.character && item.member.kind !== 'user' && item.member.id !== activeGroup?.ownerId);
+    .filter((item): item is { member: typeof safeGroupMembers[number]; character: ImportedCharacter } => Boolean(item.character) && item.member.kind !== 'user' && item.member.id !== activeGroup?.ownerId);
   // 诊断：没有可用 AI 身份的成员（NPC 记录丢失 / 角色卡未绑定 / 重名导致无法唯一匹配）。
   // 这些成员会被静默排除在 groupAiMembers 之外，导致"群里有人但没人回复"。
   const unresolvableGroupMembers = safeGroupMembers.filter(

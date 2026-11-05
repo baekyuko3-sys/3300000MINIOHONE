@@ -183,6 +183,18 @@ export function findStickerByName(name: string): Sticker | null {
 }
 
 /** 所有表情总数 */
+/** 从现有表情包中按输入关键词提供联想。 */
+export function getStickerSuggestions(query: string, limit = 5): Sticker[] {
+  const terms = String(query || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return [];
+  const all = readPacks().flatMap(pack => pack.stickers);
+  const matches = all.filter(sticker => {
+    const haystack = (sticker.name + ' ' + sticker.group).toLowerCase();
+    return terms.some(term => haystack.includes(term));
+  });
+  return matches.slice(0, Math.max(0, Math.min(20, Math.floor(limit))));
+}
+
 export function getStickerCount(): number {
   return readPacks().reduce((n, p) => n + p.stickers.length, 0);
 }
