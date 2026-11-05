@@ -1,3 +1,5 @@
+import { reportPersistenceIssue } from './usePersistentState';
+
 export type ListenHistoryKind = 'f' | 's' | 'n';
 
 export interface MusicListenRecord {

@@ -1,3 +1,5 @@
+import { reportPersistenceIssue } from './usePersistentState';
+
 /**
  * 表情包数据层
  * 表情包 = 名称 + 分组 + 图片（URL 或上传压缩后的 dataURL）
@@ -19,7 +21,6 @@ export interface StickerPack {
 
 const KEY = 'line:sticker-packs';
 let stickerPacksWriteBlocked = false;
-import { reportPersistenceIssue } from './usePersistentState';
 
 function readPacks(): StickerPack[] {
   stickerPacksWriteBlocked = false;
