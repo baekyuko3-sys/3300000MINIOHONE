@@ -8,7 +8,7 @@ import { generateSpeech, transcribeAudio } from '../../ai/mediaEngine';
 import { readAppSettings } from '../../store/appSettings';
 import type { ChannelAiSettings } from '../../store/appSettings';
 import { getMedia, putMedia } from '../../store/mediaVault';
-import { walletSendRedPacket, walletSendTransfer, walletClaimRedPacket, walletRegisterRedPacketClaim, walletRefundRedPacket, walletSettleTransfer } from '../../store/lineWallet';
+import { walletSendRedPacket, walletSendTransfer, walletClaimRedPacket, walletRegisterRedPacketClaim, walletRefundRedPacket, walletSettleTransfer, getFamilyCards } from '../../store/lineWallet';
 import { VroomImage } from '../VroomImage';
 import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory, updateCharacterMemoryItem, deleteCharacterMemoryItem, clearCharacterMemory, clearAllCharacterMemoryVariants } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
@@ -4163,6 +4163,10 @@ export function LineConversationView({
       return;
     }
     setMessages((prev) => [...prev, newMsg]);
+    if (!isGroup && importedCharacter?.name) {
+      const card = getFamilyCards().find(item => item.holderName === importedCharacter.name);
+      if (card && card.spentThisMonth > card.monthlyLimit) showToast('已超出该亲情卡本月限额，转账仍已发送');
+    }
     // 单聊收款由角色 AI 按人设和剧情判断；群聊收款对象不明确，保持待确认。
     if (!isGroup && importedCharacter) {
       void (async () => {
@@ -4242,6 +4246,10 @@ export function LineConversationView({
       return;
     }
     setMessages((prev) => [...prev, newMsg]);
+    if (!isGroup && importedCharacter?.name) {
+      const card = getFamilyCards().find(item => item.holderName === importedCharacter.name);
+      if (card && card.spentThisMonth > card.monthlyLimit) showToast('已超出该亲情卡本月限额，红包仍已发送');
+    }
     // NPC 是否领取由角色 AI 根据人设和当前剧情独立判断；AI 失败时保持未领取。
     void (async () => {
       const candidates = isGroup
