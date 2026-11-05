@@ -184,6 +184,102 @@ test('safe storage cleanup only removes logs, histories and snapshots', async ()
   assert.ok(settings.includes('cleanupSafeStorageBloat'));
 });
 
+test('moments write is verified and generation reads only persona plus worldbooks', async () => {
+  // 写帖子失败（存储满）时必须返回 false，不能再报“生成成功”；
+  // 角色发帖的世界书上下文只含已启用条目，禁用条目和重复书要排除。
+  const prevWindow = globalThis.window;
+  const store = new Map();
+  let threw = false;
+  const events = [];
+  const mockStorage = {
+    get length() { return store.size; },
+    key: (i) => [...store.keys()][i] ?? null,
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => { if (threw) throw new Error('QuotaExceededError'); store.set(k, String(v)); },
+    removeItem: (k) => { store.delete(k); },
+    clear: () => { store.clear(); },
+  };
+  globalThis.window = {
+    localStorage: mockStorage,
+    dispatchEvent: (e) => { events.push(e.type); },
+    setInterval: () => 0,
+    clearInterval: () => {},
+    setTimeout: () => 0,
+    clearTimeout: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  };
+  try {
+    const moments = await import('../src/store/momentsAfterChat.ts');
+    // writePosts: success path stores payload and fires refresh event.
+    assert.equal(moments.writePosts([{ id: 'p1', text: 'hi' }]), true);
+    assert.equal(JSON.parse(store.get('line:moments-posts'))[0].id, 'p1');
+    assert.ok(events.includes('sane333:moments-updated'));
+    // writePosts: quota failure returns false and fires no event.
+    events.length = 0;
+    threw = true;
+    assert.equal(moments.writePosts([{ id: 'p2', text: 'nope' }]), false);
+    assert.equal(events.length, 0);
+    assert.equal(JSON.parse(store.get('line:moments-posts'))[0].id, 'p1');
+    threw = false;
+    // Worldbook context: embedded + global books, enabled entries only, deduped.
+    store.set('phone:worldbooks', JSON.stringify([
+      { id: 'b1', name: '世界A', enabled: true, entries: [
+        { id: 'e1', name: '条目一', content: '世界A内容一', enabled: true },
+        { id: 'e2', name: '条目二', content: '世界A内容二', enabled: false },
+      ] },
+      { id: 'b2', name: '世界B', enabled: true, entries: [
+        { id: 'e3', name: '条目三', content: '世界B内容三', enabled: true },
+      ] },
+    ]));
+    store.set('phone:characters', JSON.stringify([
+      { id: 'ch1', name: '阿甲', embeddedWorldBooks: [
+        { id: 'b1', name: '世界A', entries: [
+          { id: 'e1', name: '条目一', content: '世界A内容一', enabled: true },
+          { id: 'e4', name: '条目四', content: '内嵌内容四', enabled: true },
+          { id: 'e5', name: '条目五', content: '内嵌内容五', enabled: false },
+        ] },
+      ] },
+    ]));
+    const ctx = moments.buildMomentWorldbookContext({ id: 'ch1', name: '阿甲', embeddedWorldBooks: [
+      { id: 'b1', name: '世界A', entries: [
+        { id: 'e1', name: '条目一', content: '世界A内容一', enabled: true },
+        { id: 'e4', name: '条目四', content: '内嵌内容四', enabled: true },
+        { id: 'e5', name: '条目五', content: '内嵌内容五', enabled: false },
+      ] },
+    ] });
+    assert.ok(ctx.includes('世界A内容一'));
+    assert.ok(ctx.includes('内嵌内容四'));
+    assert.ok(!ctx.includes('世界A内容二'));
+    assert.ok(!ctx.includes('内嵌内容五'));
+    assert.equal(ctx.split('世界A内容一').length - 1, 1);
+    // NPC without a bound character has no worldbook context.
+    assert.equal(moments.buildNpcMomentWorldbookContext({ id: 'n1', name: '路人' }), '');
+    const npcCtx = moments.buildNpcMomentWorldbookContext({ id: 'n2', name: '小乙', boundCharacterId: 'ch1' });
+    assert.ok(npcCtx.includes('内嵌内容四'));
+  } finally {
+    if (prevWindow === undefined) delete globalThis.window;
+    else globalThis.window = prevWindow;
+  }
+  const { readFile } = await import('node:fs/promises');
+  const momentsSrc = await readFile(new URL('../src/store/momentsAfterChat.ts', import.meta.url), 'utf8');
+  assert.ok(!momentsSrc.includes('刚聊完：我：'));
+  assert.ok(!momentsSrc.includes('buildNpcRuntimeContext'));
+  const lineAppSrc = await readFile(new URL('../src/components/line/LineAppView.tsx', import.meta.url), 'utf8');
+  assert.ok(lineAppSrc.includes('buildMomentWorldbookContext(source)'));
+  const proactiveSrc = await readFile(new URL('../src/store/proactiveRuntime.ts', import.meta.url), 'utf8');
+  const genStart = proactiveSrc.indexOf('async function generateLifeText(');
+  const genEnd = proactiveSrc.indexOf('async function generateOfflineInviteFields(');
+  assert.ok(genStart !== -1 && genEnd > genStart);
+  const genBody = proactiveSrc.slice(genStart, genEnd);
+  assert.ok(genBody.includes('buildMomentWorldbookContext'));
+  assert.ok(genBody.includes('只根据上面的人设和世界书条目写'));
+  assert.ok(!genBody.includes('【长期记忆】'));
+  assert.ok(!genBody.includes('最近聊天：'));
+  assert.ok(!genBody.includes("日程：' + schedule"));
+  assert.ok(proactiveSrc.includes("sane333:navigate', { detail: { screen: 'moments' }"));
+});
+
 test('chat send button is always clickable (no disabled-when-empty)', async () => {
   // The paper-plane send button must never be disabled: it stays colored and
   // tappable even with empty input; the empty-input guard in onClick/handleSend

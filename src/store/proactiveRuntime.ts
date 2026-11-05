@@ -23,7 +23,7 @@ import {
   spawnBatchCommentsForPost,
   tryAutonomousMomentComment,
 } from './momentsComments';
-import { generateNpcMomentNow } from './momentsAfterChat';
+import { buildMomentWorldbookContext, generateNpcMomentNow } from './momentsAfterChat';
 import { getNpcs } from './npcs';
 import { hasNpcFriendship } from './npcSocial';
 import { buildNpcRuntimeContext } from './npcContext';
@@ -185,23 +185,18 @@ async function generateLifeText(
 ): Promise<string> {
   const settings = readStoredAiSettings();
   if (!settings.apiKey.trim()) throw new Error('AI_NOT_CONFIGURED');
-  const profile = getCharacterProfile(character.name, character.id);
-  const target = resolveProactiveTarget(character, schedule);
-  const personaId = target.personaId;
-  const memory = getCharacterMemory(character.id, character.name, personaId);
-  const recentMessages = target.conversationId ? getLineConversationMessages(target.conversationId).filter(isLineMessageAiVisible).slice(-10) : [];
+  const worldbook = buildMomentWorldbookContext(character);
   return generateCreativeText({
     settings,
     systemPrompt: [
       '你是 Sane333 的角色生活引擎。',
       '角色：' + character.name,
       character.description || '', character.personality || '', character.scenario || '',
-      '关系：' + profile.relationship + '；称呼：' + profile.callMe,
-      '长期记忆：' + (memory.summary || '暂无') ,
-      '最近聊天：\n' + recentMessages.map(m => (m.role === 'assistant' ? character.name : '我') + ': ' + (m.text || '[媒体]')).join('\n'),
+      worldbook ? '【相关世界书条目】\n' + worldbook : '',
+      '只根据上面的人设和世界书条目写，不要引用聊天记录、长期记忆或日程。',
       '朋友圈动态必须是角色自己的生活，不要伪装成聊天消息。',
-    ].join('\n'),
-    userPrompt: '请写一条角色自己的朋友圈动态。像真实生活记录，不要向用户提问，不要替用户说话，不要解释这是 AI。可以是照片感、正在做的事、看到的东西或一句自然的话。控制在手机朋友圈适合的长度。绝对不要输出【朋友圈配图：...】之类的括号说明，直接写动态内容。\n日程：' + schedule.time + ' · ' + schedule.title,
+    ].filter(Boolean).join('\n'),
+    userPrompt: '请写一条角色自己的朋友圈动态。像真实生活记录，不要向用户提问，不要替用户说话，不要解释这是 AI。可以是照片感、正在做的事、看到的东西或一句自然的话。控制在手机朋友圈适合的长度。绝对不要输出【朋友圈配图：...】之类的括号说明，直接写动态内容。',
     temperature: settings.temperature ?? 0.85,
   });
 }
@@ -575,7 +570,8 @@ export async function runProactiveCatchup() {
         emitWorldEvent('character.moment', { characterId: character.id, characterName: character.name, data: { preview: text.trim().slice(0, 120) } });
         setCharacterRuntime(character.id, { activity: '刚刚更新了朋友圈', mood: '有自己的生活', lastInteractionAt: new Date().toISOString() }, character.name);
         if (settings.notificationEnabled && 'Notification' in window && Notification.permission === 'granted') {
-          new Notification(character.name + ' · VROOM', { body: text.trim().slice(0, 180), tag: 'sane333-moment-' + character.id });
+          const notification = new Notification(character.name + ' · VROOM', { body: text.trim().slice(0, 180), tag: 'sane333-moment-' + character.id });
+          notification.onclick = () => { window.focus(); window.dispatchEvent(new CustomEvent('sane333:navigate', { detail: { screen: 'moments' } })); notification.close(); };
         }
         notificationBody = text.trim();
       } else if (kind === 'offline-invite') {
@@ -661,7 +657,8 @@ export async function runProactiveCatchup() {
           state.delivered['__npc_moment__'] = npcDayKey;
           dirty = true;
           if (settings.notificationEnabled && 'Notification' in window && Notification.permission === 'granted') {
-            new Notification(npc.name + ' · VROOM', { body: '发了一条朋友圈', tag: 'sane333-npc-moment-' + npc.id });
+            const notification = new Notification(npc.name + ' · VROOM', { body: '发了一条朋友圈', tag: 'sane333-npc-moment-' + npc.id });
+            notification.onclick = () => { window.focus(); window.dispatchEvent(new CustomEvent('sane333:navigate', { detail: { screen: 'moments' } })); notification.close(); };
           }
         }
       }

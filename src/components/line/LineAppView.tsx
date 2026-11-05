@@ -53,7 +53,7 @@ import {
   type MomentComment,
   type MomentsCommentSettings,
 } from '../../store/momentsComments';
-import { generateNpcMomentNow, refreshMomentsFeed } from '../../store/momentsAfterChat';
+import { buildMomentWorldbookContext, generateNpcMomentNow, refreshMomentsFeed } from '../../store/momentsAfterChat';
 import { edgePair, isAllowedEdge as isVroomAllowedEdge, isBlockedEdge as isVroomBlockedEdge, readVroomScopeSettings, setFriendEdge as setVroomFriendEdge } from '../../store/vroomScope';
 import {
   Pin, Bell, BellOff, Bookmark, Heart, MessageCircle, Share2, Plus, Search,
@@ -368,19 +368,21 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     showToast('正在生成朋友圈…');
     try {
       const settings = channelSettings.moments.enabled ? channelAsAiSettings('moments') : resolveChannelAiSettings('moments');
+      const worldbookCtx = buildMomentWorldbookContext(source);
       const text = await generateCreativeText({
         settings,
         systemPrompt: [
           '你正在一个私人虚拟手机的朋友圈中扮演角色。',
           '只写一条自然的朋友圈动态，不要解释自己是 AI。',
           '不要替用户行动，也不要编造不存在的聊天经历。',
-          '可以根据角色卡、当前状态与日常生活写一点真实的小事，长度适中。',
+          '只根据下面的人设和相关世界书条目写，不要引用聊天记录。',
           '',
           '【角色卡】',
           source.description,
           source.personality,
           source.scenario,
-        ].join('\n'),
+          worldbookCtx ? '【相关世界书条目】\n' + worldbookCtx : '',
+        ].filter(Boolean).join('\n'),
         userPrompt: '请为“' + source.name + '”写一条今天的朋友圈动态。',
         temperature: settings.temperature,
       });
