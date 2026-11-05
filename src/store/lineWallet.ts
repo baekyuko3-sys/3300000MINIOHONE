@@ -36,6 +36,25 @@ type WalletLedger = {
   packets: PacketOperation[];
   familyCards: FamilyCard[];
 };
+export type WalletLedgerSnapshot = WalletLedger;
+
+export function isWalletLedgerSnapshot(value: unknown): value is WalletLedgerSnapshot {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const item = value as Partial<WalletLedger>;
+  return item.version === 1 &&
+    Number.isSafeInteger(item.balanceCents) && Number(item.balanceCents) >= 0 &&
+    Array.isArray(item.transactions) &&
+    Array.isArray(item.transfers) &&
+    Array.isArray(item.packets) &&
+    Array.isArray(item.familyCards);
+}
+
+export function exportWalletLedgerSnapshot(): WalletLedgerSnapshot | null {
+  const ledger = readWalletLedger();
+  if (walletLedgerBlocked) return null;
+  try { return JSON.parse(JSON.stringify(ledger)) as WalletLedgerSnapshot; }
+  catch { return null; }
+}
 
 const LEDGER_KEY = 'line:wallet-ledger-v1';
 const LEDGER_BACKUP_KEY = 'line:wallet-ledger-v1:backup';

@@ -108,3 +108,62 @@ test('identity migration resumes after a partial run already prefixed character 
   assert.ok(JSON.parse(storage.getItem('line:runtime:conversations'))['char:c1']);
   assert.equal(storage.getItem('line:fix-id-prefix-v1'), '1');
 });
+
+test('LINE migration backup includes chat index, contacts, groups and the full wallet ledger', async () => {
+  const storage = new MemoryStorage();
+  storage.setItem('line:chat-items', JSON.stringify([{ id: 'chat-1', name: 'Chat' }]));
+  storage.setItem('line:friends-list', JSON.stringify([{ id: 'friend-1', name: 'Friend' }]));
+  storage.setItem('line:groups', JSON.stringify([{ id: 'group-1', name: 'Group', members: [] }]));
+  storage.setItem('line:wallet-ledger-v1', JSON.stringify({
+    version: 1, balanceCents: 1234, transactions: [{ id: 'tx-1', type: 'topup', amount: 12.34, desc: '充值', createdAt: '2026-11-05T00:00:00.000Z' }],
+    transfers: [], packets: [], familyCards: [],
+  }));
+  installWindow(storage);
+  const backup = exportLineBackup();
+  assert.equal(backup.chatItems.length, 1);
+  assert.equal(backup.friends.length, 1);
+  assert.equal(backup.groups.length, 1);
+  assert.equal(backup.walletLedger.balanceCents, 1234);
+  assert.equal(backup.walletLedger.transactions.length, 1);
+  assert.equal(backup.mediaIncluded, false);
+});
+
+test('LINE backup import restores chat index, contacts, groups and wallet ledger together', () => {
+  const storage = new MemoryStorage();
+  installWindow(storage);
+  const backup = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    conversations: { 'chat-2': [{ id: 'm2', role: 'user', text: 'hello' }] },
+    metadata: { 'chat-2': { id: 'chat-2', name: 'Chat 2', isGroup: false } },
+    notifications: [],
+    chatItems: [{ id: 'chat-2', name: 'Chat 2' }],
+    friends: [{ id: 'friend-2', name: 'Friend 2' }],
+    groups: [{ id: 'group-2', name: 'Group 2', members: [] }],
+    walletLedger: {
+      version: 1, balanceCents: 8800, transactions: [{ id: 'tx-2', type: 'topup', amount: 88, desc: '充值', createdAt: '2026-11-05T00:00:00.000Z' }],
+      transfers: [], packets: [], familyCards: [],
+    },
+  };
+  importLineBackup(backup);
+  assert.equal(JSON.parse(storage.getItem('line:chat-items'))[0].id, 'chat-2');
+  assert.equal(JSON.parse(storage.getItem('line:friends-list'))[0].id, 'friend-2');
+  assert.equal(JSON.parse(storage.getItem('line:groups'))[0].id, 'group-2');
+  assert.equal(JSON.parse(storage.getItem('line:wallet-ledger-v1')).balanceCents, 8800);
+  assert.equal(JSON.parse(storage.getItem('line:wallet-ledger-v1:backup')).balanceCents, 8800);
+});
+
+test('legacy version-one transcript backups remain importable without replacing wallet data', () => {
+  const storage = new MemoryStorage();
+  const currentWallet = JSON.stringify({ version: 1, balanceCents: 500, transactions: [], transfers: [], packets: [], familyCards: [] });
+  storage.setItem('line:wallet-ledger-v1', currentWallet);
+  installWindow(storage);
+  importLineBackup({
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    conversations: { 'legacy-chat': [{ id: 'm1', role: 'user', text: 'old backup' }] },
+    metadata: {},
+    notifications: [],
+  });
+  assert.equal(storage.getItem('line:wallet-ledger-v1'), currentWallet);
+});

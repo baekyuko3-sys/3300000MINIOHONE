@@ -1,5 +1,6 @@
 import type { OfflineEvent } from '../types';
 import { reportPersistenceIssue } from './usePersistentState';
+import { exportWalletLedgerSnapshot, isWalletLedgerSnapshot } from './lineWallet';
 
 export type LineMessageKind =
   | 'text' | 'image' | 'video' | 'file' | 'voice' | 'sticker'
@@ -589,7 +590,13 @@ export interface LineBackup {
   conversations: Record<string, LineRuntimeMessage[]>;
   metadata: Record<string, LineConversationMeta>;
   notifications: LineNotification[];
-  /** This lightweight transcript backup does not include the separate IndexedDB media vault. */
+  /** Chat index, contacts and groups travel with the transcripts when present. */
+  chatItems?: unknown[];
+  friends?: unknown[];
+  groups?: unknown[];
+  /** Balance, full transaction history, transfers, packet claims and family cards. */
+  walletLedger?: import('./lineWallet').WalletLedgerSnapshot;
+  /** The separate IndexedDB media vault is not included in this JSON backup. */
   mediaIncluded?: false;
 }
 
@@ -603,12 +610,17 @@ export function exportLineBackup(): LineBackup {
       }
     }
   }
+  const walletLedger = exportWalletLedgerSnapshot();
   return {
     version: 1,
     exportedAt: new Date().toISOString(),
     conversations,
     metadata: readJson<Record<string, LineConversationMeta>>(META_KEY, {}),
     notifications: getLineNotifications(),
+    chatItems: readJson<unknown[]>('line:chat-items', []),
+    friends: readJson<unknown[]>('line:friends-list', []),
+    groups: readJson<unknown[]>('line:groups', []),
+    ...(walletLedger ? { walletLedger } : {}),
     mediaIncluded: false,
   };
 }
@@ -623,6 +635,19 @@ export function importLineBackup(backup: LineBackup) {
   if (!isPlainRecord(backup.conversations)) throw new Error('LINE_BACKUP_CONVERSATIONS_INVALID');
   if (!isPlainRecord(backup.metadata)) throw new Error('LINE_BACKUP_METADATA_INVALID');
   if (!Array.isArray(backup.notifications)) throw new Error('LINE_BACKUP_NOTIFICATIONS_INVALID');
+  for (const [field, errorCode] of [
+    ['chatItems', 'LINE_BACKUP_CHAT_ITEMS_INVALID'],
+    ['friends', 'LINE_BACKUP_FRIENDS_INVALID'],
+    ['groups', 'LINE_BACKUP_GROUPS_INVALID'],
+  ] as const) {
+    const value = (backup as any)[field];
+    if (value !== undefined && (!Array.isArray(value) || value.some((item: unknown) => !isPlainRecord(item)))) {
+      throw new Error(errorCode);
+    }
+  }
+  if ((backup as any).walletLedger !== undefined && !isWalletLedgerSnapshot((backup as any).walletLedger)) {
+    throw new Error('LINE_BACKUP_WALLET_LEDGER_INVALID');
+  }
 
   // Validate and normalize the entire payload before the first persistent write.
   const conversations = new Map<string, LineRuntimeMessage[]>();
@@ -656,6 +681,15 @@ export function importLineBackup(backup: LineBackup) {
   for (const [id, messages] of conversations) writes.set(conversationKey(id), JSON.stringify(messages));
   writes.set(META_KEY, JSON.stringify(backup.metadata));
   writes.set(NOTIFICATION_KEY, JSON.stringify(notifications));
+  if ((backup as any).chatItems !== undefined) writes.set('line:chat-items', JSON.stringify((backup as any).chatItems));
+  if ((backup as any).friends !== undefined) writes.set('line:friends-list', JSON.stringify((backup as any).friends));
+  if ((backup as any).groups !== undefined) writes.set('line:groups', JSON.stringify((backup as any).groups));
+  if ((backup as any).walletLedger !== undefined) {
+    const walletRaw = JSON.stringify((backup as any).walletLedger);
+    writes.set('line:wallet-ledger-v1', walletRaw);
+    writes.set('line:wallet-ledger-v1:backup', walletRaw);
+    writes.set('line:wallet-family-cards', JSON.stringify((backup as any).walletLedger.familyCards));
+  }
   const previous = new Map<string, string | null>();
   for (const key of writes.keys()) previous.set(key, window.localStorage.getItem(key));
 
@@ -686,6 +720,9 @@ export function importLineBackup(backup: LineBackup) {
   }
 
   window.dispatchEvent(new CustomEvent('sane333:line-runtime-changed'));
+  if ((backup as any).walletLedger !== undefined) {
+    window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
+  }
 }
 
 export function clearLineConversation(id: string) {
