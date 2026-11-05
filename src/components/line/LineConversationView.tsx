@@ -8,7 +8,7 @@ import { generateSpeech, transcribeAudio } from '../../ai/mediaEngine';
 import { readAppSettings } from '../../store/appSettings';
 import type { ChannelAiSettings } from '../../store/appSettings';
 import { getMedia, putMedia } from '../../store/mediaVault';
-import { walletSendRedPacket, walletSendTransfer, walletClaimRedPacket, walletRegisterRedPacketClaim, walletRefundRedPacket, walletSettleTransfer, spendFamilyCard } from '../../store/lineWallet';
+import { walletSendRedPacket, walletSendTransfer, walletClaimRedPacket, walletRegisterRedPacketClaim, walletRefundRedPacket, walletSettleTransfer } from '../../store/lineWallet';
 import { VroomImage } from '../VroomImage';
 import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory, updateCharacterMemoryItem, deleteCharacterMemoryItem, clearCharacterMemory, clearAllCharacterMemoryVariants } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
@@ -1040,9 +1040,12 @@ export function LineConversationView({
   }, [moneySheetType]);
   // 新红包到期后自动退回未领取份额；旧红包没有 sharesCents 时不猜测退款。
   useEffect(() => {
+    let cancelled = false;
+    void (async () => {
     let changed = false;
     const now = Date.now();
     for (const message of messages) {
+      if (cancelled) return;
       // 仅退回本机发出的红包；收到的红包不能在本机凭空生成退款余额。
       if (message.kind !== 'red-packet' || message.role !== 'user') continue;
       const meta = message.metadata && typeof message.metadata === 'object' ? message.metadata : {};
@@ -1052,7 +1055,7 @@ export function LineConversationView({
       const claims = Array.isArray(message.redPacketClaims) ? message.redPacketClaims : Array.isArray(meta.claims) ? meta.claims : [];
       const occupied = new Set<number>(claims.map((claim: any, index: number) => Number.isInteger(claim?.slotIndex) ? Number(claim.slotIndex) : index));
       const remainingCents = shares.reduce((sum: number, cents: number, index: number) => sum + (occupied.has(index) ? 0 : cents), 0);
-      if (remainingCents > 0 && !walletRefundRedPacket(String(message.id), remainingCents / 100, '未领取红包退回', shares, [...occupied])) continue;
+      if (remainingCents > 0 && !await walletRefundRedPacket(String(message.id), remainingCents / 100, '未领取红包退回', shares, [...occupied])) continue;
       const status = remainingCents > 0 ? 'expired' : 'claimed';
       const updatedMeta = { ...meta, status, refundedAt: new Date().toISOString(), refundAmount: remainingCents / 100 };
       const updated = { ...message, redPacketStatus: status, metadata: updatedMeta };
@@ -1061,7 +1064,9 @@ export function LineConversationView({
       if (String(activeRedPacket?.id) === String(message.id)) setActiveRedPacket(updated);
       changed = true;
     }
-    if (changed) window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
+    if (changed && !cancelled) window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
+    })();
+    return () => { cancelled = true; };
   }, [conversationStorageId, messages, activeRedPacket?.id]);
   // 即使聊天页面一直开着，也定期扫描到期红包；卸载时自动清理。
   useEffect(() => {
