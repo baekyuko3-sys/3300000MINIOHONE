@@ -71,7 +71,7 @@ import {
 } from '../../store/lineMediaCards';
 import { appendLineMessage, editLineMessage, toggleLineReaction, setLineMessageFavorite, recordLineCall, markLineMessageFailed, clearLineConversation, recallLineMessage, updateLineMessage } from '../../store/lineRuntime';
 import { saveCallRecord, getCallHistory, deleteCallRecord, formatCallDuration, type CallRecord } from '../../store/callHistory';
-import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, saveLineConversationSnapshot, searchLineMessages, isLineMessageFromUser, formatChatListTime, stripLeakedInternalBlocks, stripLeakedMarkupTags, normalizeLineMessage, resolveMessageRole, runLineStorageMigrations, npcConversationId, buildDeletedTombstone, isLineMessageAiVisible, type LineRuntimeMessage } from '../../store/lineRuntime';
+import { getLineConversationMessages, markLineConversationRead, saveLineConversationMessages, saveLineConversationSnapshot, searchLineMessages, isLineMessageFromUser, formatChatListTime, stripLeakedInternalBlocks, stripLeakedMarkupTags, normalizeLineMessage, resolveMessageRole, runLineStorageMigrations, npcConversationId, buildDeletedTombstone, isLineMessageAiVisible, mergeConcurrentLineMessages, type LineRuntimeMessage } from '../../store/lineRuntime';
 import { isLineTurnRequestCurrent, releaseLineTypingRequest } from '../../store/lineTurnGuard';
 import { fetchLineWeather, formatLineWeather, type LineWeatherSnapshot } from '../../store/lineReality';
 import { getRecentMomentsForGroup, maybePostGroupMomentAfterRound } from '../../store/momentsAfterChat';
@@ -828,6 +828,29 @@ export function LineConversationView({
   // Async AI work (especially status-bar generation) must always see the newest
   // conversation state, not the render that started the request.
   const messagesRef = useRef<Record<string, any>[]>([]);
+  // Keep multiple open LINE tabs convergent. localStorage emits oldValue/newValue
+  // in other tabs; merge concurrent additions and edits without resurrecting
+  // messages explicitly deleted by the remote tab.
+  useEffect(() => {
+    const key = `line:conversation:${conversationStorageId}`;
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== key) return;
+      const parse = (raw: string | null) => {
+        if (raw === null) return [] as any[];
+        try {
+          const value = JSON.parse(raw);
+          return Array.isArray(value) ? value : null;
+        } catch { return null; }
+      };
+      const previous = parse(event.oldValue);
+      const remote = parse(event.newValue);
+      if (!previous || !remote) return;
+      setMessages((local: any[]) => mergeConcurrentLineMessages(local, previous, remote));
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [conversationStorageId, setMessages]);
+
   messagesRef.current = messages;
   /** 一起听邀请：防止同一张卡重复请求角色接受/婉拒 */
   const musicInviteDecisionBusyRef = useRef<Set<string>>(new Set());

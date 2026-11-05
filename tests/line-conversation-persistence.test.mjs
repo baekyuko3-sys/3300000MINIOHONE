@@ -40,3 +40,22 @@ test('LINE shows only one typing indicator while an empty AI placeholder is visi
   assert.match(source, /isTyping\s*&&\s*!visibleMessages\.some\(message\s*=>/);
   assert.match(source, /message\.kind\s*===\s*'ai-reply'/);
 });
+
+
+test('concurrent LINE tab additions merge without dropping either message', async () => {
+  const { mergeConcurrentLineMessages } = await import('../src/store/lineRuntime.ts');
+  const previous = [{ id: 'old', text: '已有消息' }];
+  const local = [...previous, { id: 'from-tab-a', text: 'A 的消息' }];
+  const remote = [...previous, { id: 'from-tab-b', text: 'B 的消息' }];
+  const merged = mergeConcurrentLineMessages(local, previous, remote);
+  assert.deepEqual(merged.map(item => item.id), ['old', 'from-tab-b', 'from-tab-a']);
+});
+
+test('remote LINE deletions are not resurrected by a local stale snapshot', async () => {
+  const { mergeConcurrentLineMessages } = await import('../src/store/lineRuntime.ts');
+  const previous = [{ id: 'keep', text: '保留' }, { id: 'delete', text: '删除' }];
+  const local = [...previous, { id: 'local-new', text: '本地新增' }];
+  const remote = [{ id: 'keep', text: '保留' }];
+  const merged = mergeConcurrentLineMessages(local, previous, remote);
+  assert.deepEqual(merged.map(item => item.id), ['keep', 'local-new']);
+});

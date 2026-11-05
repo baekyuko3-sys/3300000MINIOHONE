@@ -105,6 +105,46 @@ export function getLineConversationMessages(id: string): LineRuntimeMessage[] {
   return readJson<LineRuntimeMessage[]>(conversationKey(id), []);
 }
 
+/**
+ * Merge a remote tab's storage event with this tab's unsaved transcript.
+ * The event's oldValue/newValue pair distinguishes remote deletions/edits from
+ * local-only messages that have not reached storage yet.
+ */
+export function mergeConcurrentLineMessages<T extends { id?: number | string }>(
+  local: T[],
+  previousStored: T[],
+  remoteStored: T[],
+): T[] {
+  const localList = Array.isArray(local) ? local : [];
+  const previousList = Array.isArray(previousStored) ? previousStored : [];
+  const remoteList = Array.isArray(remoteStored) ? remoteStored : [];
+  const keyOf = (item: T) => item?.id == null ? '' : String(item.id);
+  const equal = (a: unknown, b: unknown) => {
+    try { return JSON.stringify(a) === JSON.stringify(b); } catch { return a === b; }
+  };
+  const previousById = new Map(previousList.map(item => [keyOf(item), item]).filter(([key]) => Boolean(key)) as Array<[string, T]>);
+  const localById = new Map(localList.map(item => [keyOf(item), item]).filter(([key]) => Boolean(key)) as Array<[string, T]>);
+  const remoteIds = new Set(remoteList.map(keyOf).filter(Boolean));
+  const merged = remoteList.map(remote => {
+    const key = keyOf(remote);
+    const previous = previousById.get(key);
+    const localItem = localById.get(key);
+    // If remote did not touch this item, keep this tab's unsaved edit.
+    if (key && previous && localItem && equal(remote, previous) && !equal(localItem, previous)) return localItem;
+    return remote;
+  });
+  const mergedIds = new Set(merged.map(keyOf).filter(Boolean));
+  for (const item of localList) {
+    const key = keyOf(item);
+    // Preserve local-only additions; remote deletions of previously stored IDs win.
+    if (key && !previousById.has(key) && !remoteIds.has(key) && !mergedIds.has(key)) {
+      merged.push(item);
+      mergedIds.add(key);
+    }
+  }
+  return merged;
+}
+
 /** Synchronously persist the complete UI snapshot before a conversation unmounts.
  * The runtime index is intentionally normalized/lossy; this key remains the full transcript source.
  */
