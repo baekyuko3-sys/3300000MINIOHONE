@@ -113,13 +113,19 @@ export function DynamicIsland({ enabled, onOpenMusic, island }: DynamicIslandPro
         setOpen(false);
       }
     };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === 'phone:music-stranger-session') onStrangerChanged();
+      else if (event.key === 'phone:music-current') syncTrack();
+    };
     window.addEventListener('sane333:music-changed', syncTrack);
     window.addEventListener('sane333:music-playback', onTick as EventListener);
     window.addEventListener('sane333:music-stranger-changed', onStrangerChanged);
+    window.addEventListener('storage', onStorage);
     return () => {
       window.removeEventListener('sane333:music-changed', syncTrack);
       window.removeEventListener('sane333:music-playback', onTick as EventListener);
       window.removeEventListener('sane333:music-stranger-changed', onStrangerChanged);
+      window.removeEventListener('storage', onStorage);
     };
   }, []);
 

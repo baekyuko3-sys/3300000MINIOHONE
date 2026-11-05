@@ -2071,15 +2071,23 @@ export function MusicHtmlView({ active = true, onNavigate }: MusicHtmlViewProps)
       const playable = active.track || currentRef.current;
       if (playable) void playTrackRef.current(playable, true);
     };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === 'phone:music-stranger-session') onStranger();
+      else if (event.key === 'phone:music-current') onMusic();
+    };
     window.addEventListener('sane333:music-stranger-changed', onStranger);
     window.addEventListener('sane333:music-changed', onMusic);
     window.addEventListener('sane333:open-music-together', onOpenTogether);
+    // localStorage events do not fire in the writing tab; they are required
+    // here so another tab cannot keep showing a stale together session.
+    window.addEventListener('storage', onStorage);
     // 冷启动时若已在一起听，也补一条记录
     syncSessionFromStore();
     return () => {
       window.removeEventListener('sane333:music-stranger-changed', onStranger);
       window.removeEventListener('sane333:music-changed', onMusic);
       window.removeEventListener('sane333:open-music-together', onOpenTogether);
+      window.removeEventListener('storage', onStorage);
     };
   }, []);
 
