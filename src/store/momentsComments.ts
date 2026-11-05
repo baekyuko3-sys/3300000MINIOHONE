@@ -1,7 +1,7 @@
 import type { ImportedCharacter } from '../data/characterImport';
 import { generateCreativeText, resolveChannelAiSettings } from '../ai/aiEngine';
 import { getActivePersona, getNpcRelationToMe, getNpcs, type SaneNpc } from './npcs';
-import { readPersistentState } from './usePersistentState';
+import { readPersistentState, reportPersistenceIssue } from './usePersistentState';
 import { canViewerSeePost, characterViewerFor, npcViewerFor, type VroomPostLike } from './vroomScope';
 import { buildNpcRuntimeContext } from './npcContext';
 
@@ -581,7 +581,10 @@ export async function tryAutonomousMomentComment(targetPostId?: string): Promise
 
   // 自主巡游使用全局冷却；点赞触发则按目标动态单独冷却，避免无关动态被评论。
   const stateKey = targetPostId ? `${AUTONOMOUS_COMMENT_STATE_KEY}:${targetPostId}` : AUTONOMOUS_COMMENT_STATE_KEY;
-  const state = readPersistentState<{ lastAt?: string }>(stateKey, {});
+  const stateValue = readPersistentState<unknown>(stateKey, {});
+  const state = stateValue && typeof stateValue === 'object' && !Array.isArray(stateValue)
+    ? stateValue as { lastAt?: string }
+    : {};
   const lastAt = state.lastAt ? Date.parse(state.lastAt) : 0;
   const cooldownMs = targetPostId ? 2 * 60 * 1000 : 8 * 60 * 1000;
   if (lastAt && Date.now() - lastAt < cooldownMs) return false;
@@ -638,8 +641,36 @@ export async function tryAutonomousMomentComment(targetPostId?: string): Promise
       const tree = normalizeMomentComments(p.commentsList);
       return { ...p, commentsList: appendMomentComment(tree, comment) };
     });
-    window.localStorage.setItem(MOMENTS_POSTS_KEY, JSON.stringify(nextPosts.slice(0, 200)));
-    window.localStorage.setItem(stateKey, JSON.stringify({ lastAt: new Date().toISOString() }));
+    const postsBefore = window.localStorage.getItem(MOMENTS_POSTS_KEY);
+    const stateBefore = window.localStorage.getItem(stateKey);
+    const postsSerialized = JSON.stringify(nextPosts.slice(0, 200));
+    const stateSerialized = JSON.stringify({ lastAt: new Date().toISOString() });
+    try {
+      window.localStorage.setItem(MOMENTS_POSTS_KEY, postsSerialized);
+      if (window.localStorage.getItem(MOMENTS_POSTS_KEY) !== postsSerialized) throw new Error('MOMENTS_COMMENT_POST_WRITE_FAILED');
+      window.localStorage.setItem(stateKey, stateSerialized);
+      if (window.localStorage.getItem(stateKey) !== stateSerialized) throw new Error('MOMENTS_COMMENT_COOLDOWN_WRITE_FAILED');
+    } catch (writeError) {
+      let rollbackFailed = false;
+      try {
+        if (postsBefore === null) window.localStorage.removeItem(MOMENTS_POSTS_KEY);
+        else window.localStorage.setItem(MOMENTS_POSTS_KEY, postsBefore);
+        if (window.localStorage.getItem(MOMENTS_POSTS_KEY) !== postsBefore) rollbackFailed = true;
+      } catch { rollbackFailed = true; }
+      try {
+        if (stateBefore === null) window.localStorage.removeItem(stateKey);
+        else window.localStorage.setItem(stateKey, stateBefore);
+        if (window.localStorage.getItem(stateKey) !== stateBefore) rollbackFailed = true;
+      } catch { rollbackFailed = true; }
+      reportPersistenceIssue(
+        'moments-autonomous-comment',
+        rollbackFailed
+          ? '朋友圈评论保存失败且回滚未能完全验证；请保留本地备份'
+          : '朋友圈评论或冷却时间保存失败；已回滚本次部分写入',
+        writeError,
+      );
+      return false;
+    }
     window.dispatchEvent(new CustomEvent('sane333:moments-updated', {
       detail: { postId: post.id, commenter: commenterName(commenter), kind: 'autonomous-comment' },
     }));
