@@ -1,3 +1,4 @@
+import { reportPersistenceIssue } from './usePersistentState';
 import type { AppSettings, ChatProvider } from './appSettings';
 
 export interface ApiPreset {
@@ -7,15 +8,38 @@ export interface ApiPreset {
   createdAt: string; updatedAt: string;
 }
 const STORAGE_KEY = 'phone:api-presets';
+let apiPresetsWriteBlocked = false;
 
 export function readApiPresets(): ApiPreset[] {
+  apiPresetsWriteBlocked = false;
   if (typeof window === 'undefined') return [];
-  try { const v = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (raw === null) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('API_PRESETS_SCHEMA_INVALID');
+    return parsed as ApiPreset[];
+  } catch (error) {
+    apiPresetsWriteBlocked = true;
+    reportPersistenceIssue('read:' + STORAGE_KEY, 'API 预设数据损坏或格式不符；已锁定写入以保留密钥和预设', error);
+    return [];
+  }
 }
-export function saveApiPresets(v: ApiPreset[]) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(v));
-  window.dispatchEvent(new CustomEvent('sane333:api-presets-changed'));
+export function saveApiPresets(v: ApiPreset[]): boolean {
+  if (typeof window === 'undefined' || apiPresetsWriteBlocked) return false;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (raw !== null && !Array.isArray(JSON.parse(raw))) throw new Error('API_PRESETS_SCHEMA_INVALID');
+    const serialized = JSON.stringify(v);
+    window.localStorage.setItem(STORAGE_KEY, serialized);
+    if (window.localStorage.getItem(STORAGE_KEY) !== serialized) throw new Error('API_PRESETS_WRITE_VERIFY_FAILED');
+    window.dispatchEvent(new CustomEvent('sane333:api-presets-changed'));
+    return true;
+  } catch (error) {
+    apiPresetsWriteBlocked = true;
+    reportPersistenceIssue('write:' + STORAGE_KEY, 'API 预设写入失败；原始配置已保留', error);
+    return false;
+  }
 }
 export function settingsToApiPreset(s: AppSettings, name: string, id?: string): ApiPreset {
   const now = new Date().toISOString();

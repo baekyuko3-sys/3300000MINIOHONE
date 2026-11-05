@@ -1,3 +1,4 @@
+import { reportPersistenceIssue } from './usePersistentState';
 import type { AiSettings } from '../ai/aiEngine';
 
 export interface CharacterAiProfile {
@@ -23,22 +24,39 @@ export interface CharacterAiProfile {
 }
 
 const STORAGE_KEY = 'phone:character-ai-profiles';
+let characterAiProfilesWriteBlocked = false;
 
 export function readCharacterAiProfiles(): CharacterAiProfile[] {
+  characterAiProfilesWriteBlocked = false;
   if (typeof window === 'undefined') return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
+    if (raw === null) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('CHARACTER_AI_PROFILES_SCHEMA_INVALID');
+    return parsed as CharacterAiProfile[];
+  } catch (error) {
+    characterAiProfilesWriteBlocked = true;
+    reportPersistenceIssue('read:' + STORAGE_KEY, '角色 AI 配置损坏或格式不符；已锁定写入以保留 API 配置', error);
     return [];
   }
 }
 
-export function saveCharacterAiProfiles(profiles: CharacterAiProfile[]) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles));
-  window.dispatchEvent(new CustomEvent('sane333:character-ai-profiles-changed'));
+export function saveCharacterAiProfiles(profiles: CharacterAiProfile[]): boolean {
+  if (typeof window === 'undefined' || characterAiProfilesWriteBlocked) return false;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (raw !== null && !Array.isArray(JSON.parse(raw))) throw new Error('CHARACTER_AI_PROFILES_SCHEMA_INVALID');
+    const serialized = JSON.stringify(profiles);
+    window.localStorage.setItem(STORAGE_KEY, serialized);
+    if (window.localStorage.getItem(STORAGE_KEY) !== serialized) throw new Error('CHARACTER_AI_PROFILES_WRITE_VERIFY_FAILED');
+    window.dispatchEvent(new CustomEvent('sane333:character-ai-profiles-changed'));
+    return true;
+  } catch (error) {
+    characterAiProfilesWriteBlocked = true;
+    reportPersistenceIssue('write:' + STORAGE_KEY, '角色 AI 配置写入失败；原始 API 配置已保留', error);
+    return false;
+  }
 }
 
 export function getCharacterAiProfile(characterId: string, characterName?: string): CharacterAiProfile | null {
