@@ -41,12 +41,25 @@ export type WalletLedgerSnapshot = WalletLedger;
 export function isWalletLedgerSnapshot(value: unknown): value is WalletLedgerSnapshot {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const item = value as Partial<WalletLedger>;
-  return item.version === 1 &&
-    Number.isSafeInteger(item.balanceCents) && Number(item.balanceCents) >= 0 &&
-    Array.isArray(item.transactions) &&
-    Array.isArray(item.transfers) &&
-    Array.isArray(item.packets) &&
-    Array.isArray(item.familyCards);
+  if (item.version !== 1 || !Number.isSafeInteger(item.balanceCents) || Number(item.balanceCents) < 0 ||
+    !Array.isArray(item.transactions) || !Array.isArray(item.transfers) ||
+    !Array.isArray(item.packets) || !Array.isArray(item.familyCards)) return false;
+  const transactionTypes = new Set(['redpacket_send', 'redpacket_grab', 'topup', 'transfer']);
+  if (!item.transactions.every(tx => Boolean(tx) && typeof tx.id === 'string' &&
+    transactionTypes.has(String(tx.type)) && Number.isFinite(tx.amount) &&
+    typeof tx.desc === 'string' && typeof tx.createdAt === 'string')) return false;
+  if (!item.transfers.every(entry => Boolean(entry) && typeof entry.id === 'string' &&
+    ['sent', 'accepted', 'refunded'].includes(String(entry.status)) &&
+    Number.isFinite(entry.amount) && typeof entry.counterparty === 'string')) return false;
+  if (!item.packets.every(packet => Boolean(packet) && typeof packet.id === 'string' &&
+    Array.isArray(packet.claimed) && packet.claimed.every(id => typeof id === 'string') &&
+    typeof packet.refunded === 'boolean' &&
+    (packet.sharesCents === undefined || (Array.isArray(packet.sharesCents) &&
+      packet.sharesCents.every(cents => Number.isInteger(cents) && cents > 0))))) return false;
+  if (!item.familyCards.every(card => Boolean(card) && typeof card.id === 'string' &&
+    typeof card.holderName === 'string' && Number.isFinite(card.monthlyLimit) &&
+    Number.isFinite(card.spentThisMonth))) return false;
+  return true;
 }
 
 export function exportWalletLedgerSnapshot(): WalletLedgerSnapshot | null {
