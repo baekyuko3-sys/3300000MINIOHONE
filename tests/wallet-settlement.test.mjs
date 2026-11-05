@@ -111,9 +111,9 @@ test('legacy sent packet without an operation record can refund only unclaimed f
   assert.equal(getWalletTransactions()[0].amount, 5);
 });
 
-test('received packet cannot be refunded by this wallet', () => {
+test('received or unbacked packet cannot be refunded by this wallet', () => {
   setWalletBalance(4);
-  assert.equal(walletRefundRedPacket('incoming-2', 50), false);
+  assert.equal(walletRefundRedPacket('incoming-2', 50, '退款', [5000], []), false);
   assert.equal(getWalletBalance(), 4);
   assert.equal(getWalletTransactions().length, 0);
 });
