@@ -296,13 +296,30 @@ export function walletRefundRedPacket(packetId: string, _amount: number, desc = 
     : null;
   const result = commitWalletLedger(current => {
     const existing = findPacket(current, packetId);
-    // Older app versions deducted the balance without registering the packet ID.
-    // The caller only reaches this path for an expired message sent by the user.
-    const packet: PacketOperation | undefined = existing || (validLegacyShares
-      ? { id: packetId, claimed: [], refunded: false, sent: true, sharesCents: [...validLegacyShares], totalCents: validLegacyShares.reduce((sum, value) => sum + value, 0), slots: {} }
-      : undefined);
+    if (existing?.refunded) return { next: current, result: true };
+    if (existing?.sent === false) return null;
+    const legacyTotalCents = validLegacyShares?.reduce((sum, value) => sum + value, 0);
+    const legacySendCount = legacyTotalCents
+      ? current.transactions.filter(tx => tx.type === 'redpacket_send' && tx.amount < 0 && Math.round(-tx.amount * 100) === legacyTotalCents).length
+      : 0;
+    const alreadyRecoveredCount = legacyTotalCents
+      ? current.packets.filter(item => item.sent === true && item.refunded && item.totalCents === legacyTotalCents).length
+      : 0;
+    const hasUnmatchedLegacyDebit = legacySendCount > alreadyRecoveredCount;
+    // Old versions sometimes created an operation record only when an NPC claimed.
+    // Reconstruct only when a matching historical debit still exists and is unused.
+    const packet: PacketOperation | undefined = existing?.sent === true
+      ? existing
+      : (validLegacyShares && hasUnmatchedLegacyDebit
+        ? {
+            ...(existing || { id: packetId, claimed: [], refunded: false }),
+            sent: true,
+            sharesCents: existing?.sharesCents?.length ? existing.sharesCents : [...validLegacyShares],
+            totalCents: existing?.totalCents || legacyTotalCents,
+            slots: existing?.slots || {},
+          }
+        : undefined);
     if (!packet?.sent) return null;
-    if (packet.refunded) return { next: current, result: true };
     const fixedShares = packet.sharesCents?.length ? packet.sharesCents : validLegacyShares;
     if (!fixedShares?.length || fixedShares.some(value => !Number.isInteger(value) || value <= 0)) return null;
     const occupied = new Set<number>([
