@@ -75,19 +75,27 @@ export function walletSettleTransfer(operationId: string, decision: 'accepted' |
   return true;
 }
 
-export function walletSendRedPacket(totalAmount: number, desc: string): boolean {
-  const balance = getWalletBalance();
-  if (balance < totalAmount) return false;
-  addWalletTransaction({
-    type: 'redpacket_send',
-    amount: -totalAmount,
-    desc: desc || '发出红包',
-  });
+export function walletSendRedPacket(totalAmount: number, desc: string, operationId?: string): boolean {
+  if (!Number.isFinite(totalAmount) || totalAmount <= 0) return false;
+  const cents = Math.round(totalAmount * 100);
+  if (cents <= 0) return false;
+  const amount = cents / 100;
+  const ops = getPacketOperations();
+  if (operationId) {
+    const existing = ops.find(item => item.id === operationId);
+    if (existing) return existing.sent === true && !existing.refunded;
+  }
+  if (Math.round(getWalletBalance() * 100) < cents) return false;
+  addWalletTransaction({ type: 'redpacket_send', amount: -amount, desc: desc || '发出红包' });
+  if (operationId) {
+    const existing = ops.find(item => item.id === operationId);
+    savePacketOperation({ ...(existing || { id: operationId, claimed: [], refunded: false }), sent: true });
+  }
   return true;
 }
 
 // 红包领取和退款用消息 ID + 领取者 ID 做幂等保护。
-type PacketOperation = { id: string; claimed: string[]; refunded: boolean };
+type PacketOperation = { id: string; claimed: string[]; refunded: boolean; sent?: boolean };
 const PACKET_OPERATION_KEY = 'line:wallet-redpacket-operations';
 function getPacketOperations(): PacketOperation[] { return readPersistentState<PacketOperation[]>(PACKET_OPERATION_KEY, []); }
 function savePacketOperation(item: PacketOperation): void {
