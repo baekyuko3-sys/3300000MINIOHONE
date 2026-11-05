@@ -295,11 +295,7 @@ export function walletRefundRedPacket(packetId: string, _amount: number, desc = 
       : undefined);
     if (!packet?.sent) return null;
     if (packet.refunded) return { next: current, result: true };
-    const shares = packet.sharesCents || (validLegacyShares && {
-      shares: [...validLegacyShares],
-      total: validLegacyShares.reduce((sum, value) => sum + value, 0),
-    });
-    const fixedShares = Array.isArray(shares) ? shares : shares?.shares;
+    const fixedShares = packet.sharesCents || validLegacyShares;
     if (!fixedShares?.length || fixedShares.some(value => !Number.isInteger(value) || value <= 0)) return null;
     const occupied = new Set<number>([
       ...Object.values(packet.slots || {}),
