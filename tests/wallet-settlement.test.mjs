@@ -70,14 +70,18 @@ test('red packet debit stores fixed shares and duplicate send does not debit aga
   assert.equal(getWalletBalance(), 40);
 });
 
-test('red packet claims reserve unique slots and credit only incoming claims', () => {
+test('NPC reservations are unique on sent packets; incoming claims credit once at the fixed share value', () => {
   setWalletBalance(0);
-  assert.equal(walletRegisterRedPacketClaim('incoming-1', 'npc:a', 0), true);
-  assert.equal(walletRegisterRedPacketClaim('incoming-1', 'npc:b', 0), false);
-  assert.equal(walletClaimRedPacket('incoming-1', 'me', 2.5, '朋友', 1), true);
-  assert.equal(walletClaimRedPacket('incoming-1', 'me', 2.5, '朋友', 1), false);
+  assert.equal(walletSendRedPacket(3, '红包', 'sent-1', [100, 200]), true);
+  assert.equal(walletRegisterRedPacketClaim('sent-1', 'npc:a', 0), true);
+  assert.equal(walletRegisterRedPacketClaim('sent-1', 'npc:b', 0), false);
+  assert.equal(walletClaimRedPacket('sent-1', 'me', 2, '我', 1, [100, 200]), false);
+
+  assert.equal(walletClaimRedPacket('incoming-1', 'me', 2.5, '朋友', 1, [100, 250]), true);
+  assert.equal(walletClaimRedPacket('incoming-1', 'me', 2.5, '朋友', 1, [100, 250]), false);
+  assert.equal(walletClaimRedPacket('incoming-2', 'me', 9, '朋友', 0, [100, 250]), false);
   assert.equal(getWalletBalance(), 2.5);
-  assert.equal(getWalletTransactions().length, 1);
+  assert.equal(getWalletTransactions().length, 2);
 });
 
 test('sender cannot claim own packet; refund is capped by unclaimed stored shares and idempotent', () => {
