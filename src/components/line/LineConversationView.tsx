@@ -4189,13 +4189,6 @@ export function LineConversationView({
     if (isGroup && Number(amount) < 0.01 * count) { showToast('红包总金额至少要能分给每个人 0.01 元'); return; }
     // 先生成稳定红包 ID；红包份额校验完成后，再一次性扣款并登记操作。
     const packetId = `redpacket-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    // 亲情卡：计入持卡人月限额（仅单聊）
-    if (!isGroup) {
-      const holder = importedCharacter?.name || '';
-      if (holder && !spendFamilyCard(holder, Number(amount))) {
-        showToast('已超出该亲情卡本月限额（红包仍已发送）');
-      }
-    }
     const totalCents = Math.round(Number(amount) * 100);
     const shares: number[] = [];
     let centsLeft = totalCents;
@@ -4208,6 +4201,13 @@ export function LineConversationView({
     }
     if (!(isGroup && redPacketMode === 'equal')) shares.sort(() => Math.random() - 0.5);
     if (!walletSendRedPacket(Number(amount), blessing, packetId, shares)) { showToast('钱包余额不足或红包份额无效'); return; }
+    // 亲情卡：仅在红包扣款成功后计入持卡人月限额。
+    if (!isGroup) {
+      const holder = importedCharacter?.name || '';
+      if (holder && !spendFamilyCard(holder, Number(amount))) {
+        showToast('已超出该亲情卡本月限额（红包仍已发送）');
+      }
+    }
     const newMsg = {
       id: packetId, role: 'user' as const, kind: 'red-packet' as const,
       text: `[红包] ¥${amount} · ${blessing}`, time: '刚刚',
