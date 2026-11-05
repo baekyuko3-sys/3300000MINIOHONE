@@ -4123,7 +4123,7 @@ export function LineConversationView({
     return n.toFixed(2).replace(/\.00$/, '');
   };
 
-  const handleSendTransfer = () => {
+  const handleSendTransfer = async () => {
     if (walletActionLockRef.current) return;
     walletActionLockRef.current = true;
     const amount = formatMoneyAmount(transferAmount);
@@ -4133,7 +4133,7 @@ export function LineConversationView({
     const counterparty = isGroup ? (activeGroup?.name || '群聊') : (importedCharacter?.name || characterProfile.nickname || '角色');
     // 先完成钱包扣款与流水写入；余额不足时不创建聊天消息，避免出现“已发送但未扣款”。
     const transferId = `transfer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    if (!walletSendTransfer(transferValue, counterparty, note || 'LINE 转账', transferId)) {
+    if (!await walletSendTransfer(transferValue, counterparty, note || 'LINE 转账', transferId, !isGroup ? (importedCharacter?.name || '') : undefined)) {
       walletActionLockRef.current = false;
       showToast('钱包余额不足或转账金额无效');
       return;
@@ -4152,7 +4152,7 @@ export function LineConversationView({
     const persistedTransferMessages = appendLineMessage(conversationStorageId, newMsg);
     if (!persistedTransferMessages.some((item: any) => String(item.id) === String(transferId))) {
       // 钱包已扣款但聊天记录落盘失败时，立即走同一结算 ID 退款。
-      walletSettleTransfer(transferId, 'rejected');
+      await walletSettleTransfer(transferId, 'rejected');
       walletActionLockRef.current = false;
       showToast('转账消息保存失败，金额已退回');
       return;
@@ -4173,7 +4173,7 @@ export function LineConversationView({
           const decision = parsed.decision === 'accepted' || parsed.decision === 'rejected' ? parsed.decision : null;
           // AI 无法给出有效结论时自动退款，避免转账长期扣款却永远无人结算。
           const finalDecision = decision || 'rejected';
-          if (!walletSettleTransfer(transferId, finalDecision)) return;
+          if (!await walletSettleTransfer(transferId, finalDecision)) return;
           const status = finalDecision === 'accepted' ? 'accepted' : 'refunded';
           const patch = { transferStatus: status, metadata: { ...newMsg.metadata, status } };
           setMessages(prev => prev.map((item: any) => String(item.id) === String(transferId) ? { ...item, ...patch } : item));
@@ -4181,7 +4181,7 @@ export function LineConversationView({
           if (!decision) showToast('转账未能确认，金额已退回');
         } catch (error) {
           // 上游异常同样走拒收退款，不能让余额无限期冻结在待确认状态。
-          if (walletSettleTransfer(transferId, 'rejected')) {
+          if (await walletSettleTransfer(transferId, 'rejected')) {
             const patch = { transferStatus: 'refunded', metadata: { ...newMsg.metadata, status: 'refunded' } };
             setMessages(prev => prev.map((item: any) => String(item.id) === String(transferId) ? { ...item, ...patch } : item));
             updateLineMessage(conversationStorageId, transferId, patch as any);
@@ -4191,20 +4191,13 @@ export function LineConversationView({
         }
       })();
     }
-    // 亲情卡：计入持卡人月限额（仅单聊）
-    if (!isGroup) {
-      const holder = importedCharacter?.name || '';
-      if (holder && !spendFamilyCard(holder, Number(amount))) {
-        showToast('已超出该亲情卡本月限额（转账仍已发送）');
-      }
-    }
     setMoneySheetType(null);
     setTransferAmount('');
     setTransferNote('');
     showToast('转账已发送');
   };
 
-  const handleSendRedPacket = () => {
+  const handleSendRedPacket = async () => {
     if (walletActionLockRef.current) return;
     walletActionLockRef.current = true;
     const amount = formatMoneyAmount(redPacketAmount);
@@ -4227,7 +4220,7 @@ export function LineConversationView({
       shares.push(share); centsLeft -= share;
     }
     if (!(isGroup && redPacketMode === 'equal')) shares.sort(() => Math.random() - 0.5);
-    if (!walletSendRedPacket(Number(amount), blessing, packetId, shares)) { walletActionLockRef.current = false; showToast('钱包余额不足或红包份额无效'); return; }
+    if (!await walletSendRedPacket(Number(amount), blessing, packetId, shares, !isGroup ? (importedCharacter?.name || '') : undefined)) { walletActionLockRef.current = false; showToast('钱包余额不足或红包份额无效'); return; }
     const newMsg = {
       id: packetId, role: 'user' as const, kind: 'red-packet' as const,
       text: `[红包] ¥${amount} · ${blessing}`, time: '刚刚',
@@ -4238,19 +4231,12 @@ export function LineConversationView({
     const persistedPacketMessages = appendLineMessage(conversationStorageId, newMsg);
     if (!persistedPacketMessages.some((item: any) => String(item.id) === String(packetId))) {
       // 消息未能落盘时退回整笔红包，不能留下只有扣款、没有可领取卡片的状态。
-      walletRefundRedPacket(packetId, Number(amount), '红包消息保存失败，已退回', shares, []);
+      await walletRefundRedPacket(packetId, Number(amount), '红包消息保存失败，已退回', shares, []);
       walletActionLockRef.current = false;
       showToast('红包消息保存失败，金额已退回');
       return;
     }
     setMessages((prev) => [...prev, newMsg]);
-    // 聊天卡片成功落盘后才计入亲情卡月限额。
-    if (!isGroup) {
-      const holder = importedCharacter?.name || '';
-      if (holder && !spendFamilyCard(holder, Number(amount))) {
-        showToast('已超出该亲情卡本月限额（红包仍已发送）');
-      }
-    }
     // NPC 是否领取由角色 AI 根据人设和当前剧情独立判断；AI 失败时保持未领取。
     void (async () => {
       const candidates = isGroup
@@ -4283,7 +4269,7 @@ export function LineConversationView({
           const cents = Number(latestMeta.sharesCents[slotIndex] || 0);
           if (cents <= 0) continue;
           const claimId = `npc:${candidate.id}`;
-          if (!walletRegisterRedPacketClaim(String(packetId), claimId, slotIndex)) continue;
+          if (!await walletRegisterRedPacketClaim(String(packetId), claimId, slotIndex)) continue;
           occupied.add(slotIndex);
           npcClaims.push({ userId: claimId, name: candidate.name, slotIndex, amount: (cents / 100).toFixed(2), time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) });
         }
@@ -9028,7 +9014,7 @@ export function LineConversationView({
         const amount = Number(packet.redPacketAmount || meta.amount || 0);
         const count = Math.max(1, Number(packet.redPacketCount || meta.count || 1));
         const alreadyClaimed = claims.some((claim: any) => claim?.userId === 'me');
-        const claimPacket = () => {
+        const claimPacket = async () => {
           if (packet.role === 'user') { showToast('这是你发出的红包，不能领取'); return; }
           if (alreadyClaimed || claims.length >= count || packet.redPacketStatus === 'expired' || meta.status === 'expired') return;
           const expiresAt = String(meta.expiresAt || '');
@@ -9047,7 +9033,7 @@ export function LineConversationView({
           const nextClaims = [...claims, userClaim];
           const nextStatus = nextClaims.length >= count ? 'claimed' : 'partial';
           const updated = { ...packet, redPacketClaims: nextClaims, redPacketStatus: nextStatus, metadata: { ...meta, claims: nextClaims, status: nextStatus } };
-          if (!walletClaimRedPacket(String(packet.id), 'me', userCents / 100, String(packet.senderName || '群成员'), slotIndex, shares.map((value: any) => Math.max(0, Math.round(Number(value) || 0))))) {
+          if (!await walletClaimRedPacket(String(packet.id), 'me', userCents / 100, String(packet.senderName || '群成员'), slotIndex, shares.map((value: any) => Math.max(0, Math.round(Number(value) || 0))), Number(meta.amount || packet.redPacketAmount || 0))) {
             showToast('该红包已领取或已结算，不能重复领取'); return;
           }
           setMessages((prev) => prev.map((item: any) => String(item.id) === String(packet.id) ? updated : item));
