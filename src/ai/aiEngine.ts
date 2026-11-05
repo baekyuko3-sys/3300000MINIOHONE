@@ -896,8 +896,8 @@ function wrapProviderReasoning(text: string, reasoning: string): string {
 }
 
 async function imageUrlToDataUrl(imageUrl: string): Promise<string | null> {
-  if (/^data:image\\//i.test(imageUrl)) return imageUrl;
-  if (!/^https?:\\/\\//i.test(imageUrl)) return null;
+  if (/^data:image\//i.test(imageUrl)) return imageUrl;
+  if (!/^https?:\/\//i.test(imageUrl)) return null;
   try {
     const response = await fetchWithTimeout(imageUrl, { method: 'GET' }, 15000);
     if (!response.ok) return null;
