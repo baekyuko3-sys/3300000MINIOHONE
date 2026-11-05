@@ -245,17 +245,21 @@ export function walletRegisterRedPacketClaim(packetId: string, claimId: string, 
 }
 
 /** Claiming an incoming packet credits balance and records the claim in one commit. */
-export function walletClaimRedPacket(packetId: string, claimId: string, amount: number, from: string, slotIndex?: number): boolean {
+export function walletClaimRedPacket(packetId: string, claimId: string, amount: number, from: string, slotIndex?: number, sharesCents?: number[]): boolean {
   if (!packetId || !claimId || !Number.isFinite(amount) || amount <= 0 || !Number.isInteger(slotIndex) || (slotIndex as number) < 0) return false;
+  if (!Array.isArray(sharesCents) || !sharesCents.length || sharesCents.some(value => !Number.isInteger(value) || value <= 0)) return false;
   const cents = Math.round(amount * 100);
-  if (cents <= 0) return false;
+  const slot = slotIndex as number;
+  if (cents <= 0 || slot >= sharesCents.length || sharesCents[slot] !== cents) return false;
   const result = commitWalletLedger(current => {
     const packet = findPacket(current, packetId);
     if (packet?.sent || packet?.refunded || packet?.claimed.includes(claimId)) return null;
-    const slot = slotIndex as number;
+    if (packet?.sharesCents && (packet.sharesCents.length !== sharesCents.length || packet.sharesCents.some((value, index) => value !== sharesCents[index]))) return null;
     if (packet && Object.entries(packet.slots || {}).some(([id, used]) => id !== claimId && used === slot)) return null;
     const nextPacket: PacketOperation = {
-      ...(packet || { id: packetId, claimed: [], refunded: false }),
+      ...(packet || { id: packetId, claimed: [], refunded: false, sent: false }),
+      sharesCents: packet?.sharesCents || [...sharesCents],
+      totalCents: packet?.totalCents || sharesCents.reduce((sum, value) => sum + value, 0),
       slots: { ...(packet?.slots || {}), [claimId]: slot },
       claimed: [...(packet?.claimed || []), claimId],
     };
