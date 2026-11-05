@@ -66,17 +66,24 @@ function validateBaseUrl(value: string): string {
   return cleanBaseUrl(parsed.toString());
 }
 
+const upstreamTimers = new WeakMap<Response, ReturnType<typeof setTimeout>>();
+
 async function fetchUpstream(input: string, init: RequestInit = {}): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25000);
   try {
-    return await fetch(input, {
+    const response = await fetch(input, {
       ...init,
       redirect: 'error',
       signal: controller.signal,
     });
-  } finally {
+    // Keep the deadline active after headers arrive; upstreamJson still has to
+    // consume the response body, which can otherwise hang indefinitely.
+    upstreamTimers.set(response, timer);
+    return response;
+  } catch (error) {
     clearTimeout(timer);
+    throw error;
   }
 }
 
@@ -98,16 +105,22 @@ function cleanBaseUrl(value: string) {
 }
 
 async function upstreamJson(response: Response) {
-  const text = await response.text();
-  let data: unknown = {};
   try {
-    data = text ? JSON.parse(text) : {};
-  } catch {
-    data = { error: text || response.statusText || 'Upstream returned invalid JSON' };
+    const text = await response.text();
+    let data: unknown = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      data = { error: text || response.statusText || 'Upstream returned invalid JSON' };
+    }
+    return json(data, response.status, {
+      'Content-Type': response.headers.get('content-type') || 'application/json',
+    });
+  } finally {
+    const timer = upstreamTimers.get(response);
+    if (timer) clearTimeout(timer);
+    upstreamTimers.delete(response);
   }
-  return json(data, response.status, {
-    'Content-Type': response.headers.get('content-type') || 'application/json',
-  });
 }
 
 async function handleRequest(request: Request) {
@@ -193,9 +206,10 @@ async function handleRequest(request: Request) {
     });
     return upstreamJson(response);
   } catch (error) {
+    const timedOut = Boolean(error && typeof error === 'object' && 'name' in error && error.name === 'AbortError');
     return json({
-      error: error instanceof Error ? error.message : 'AI proxy request failed',
-    }, 502);
+      error: timedOut ? 'AI upstream request timed out after 25 seconds' : error instanceof Error ? error.message : 'AI proxy request failed',
+    }, timedOut ? 504 : 502);
   }
 }
 
