@@ -544,3 +544,28 @@ test('identity prefixes use colon and NPC conversation keys stay bare-normalized
   assert.equal(npcConversationId('xyz'), 'npc:xyz:persona:legacy');
 });
 
+test('together-music drawer picks songs from the music app library', async () => {
+  // The drawer must search the music app's own library (NetEase search +
+  // liked tracks + the current character's playlist) instead of forcing a
+  // pasted audio URL; a picked track fills title/artist/cover/album and its
+  // play URL is resolved on demand, with a warning when it cannot be.
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/components/line/LineConversationView.tsx', import.meta.url), 'utf8');
+  assert.ok(source.includes('searchMusic'));
+  assert.ok(source.includes('resolveTrackUrl'));
+  assert.ok(source.includes('getLikedTracks'));
+  assert.ok(source.includes('getCharacterPlaylists'));
+  assert.ok(source.includes('从曲库选一首'));
+  assert.ok(source.includes('搜歌名 / 歌手'));
+  assert.ok(source.includes('我喜欢的'));
+  assert.ok(source.includes('正在取播放链接'));
+  assert.ok(source.includes('这首歌拿不到播放链接，换一首或手动贴链接'));
+  assert.ok(source.includes('cover: musicCover || undefined'));
+  assert.ok(source.includes('durationLabel: musicDurationLabel || undefined'));
+  assert.ok(source.includes('disabled={musicResolving}'));
+  // The picker handlers must live after importedCharacter / showToast, or
+  // the drawer render hits a TDZ white screen.
+  assert.ok(source.indexOf('const pickMusicTrack') > source.indexOf('const showToast = '));
+  assert.ok(source.indexOf('const musicLikedTracks') > source.indexOf('const importedCharacter'));
+});
+

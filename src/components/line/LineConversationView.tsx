@@ -39,7 +39,7 @@ import {
   type TogetherMusicSession,
 } from '../../store/togetherMusic';
 import { emitWorldEvent, setCharacterRuntime } from '../../store/worldRuntime';
-import { readStrangerSession } from '../../store/music';
+import { getCharacterPlaylists, getLikedTracks, readStrangerSession, resolveTrackUrl, searchMusic, type MusicTrack } from '../../store/music';
 import { appendStatusBarSnapshot, deleteStatusBarSnapshot, clearStatusBarHistory, getStatusBarHistory, getStatusBarPresets, getStatusBarRandomMode, getStatusBarForCharacter, renderStatusBarHtml, resolveStatusBarTokens, extractStatusMatch, sanitizeHtmlFragment, sanitizeStatusBarHtml, restoreStatusBarPresentationStyles, saveStatusBarRandomMode, type StatusBarPreset, type StatusBarSnapshot } from '../../store/statusBarPresets';
 import { getCotPresets, type CotPreset, type CotPresetTarget } from '../../store/cotPresets';
 import { getActivePromptPreset } from '../../store/promptPresets';
@@ -1041,6 +1041,15 @@ export function LineConversationView({
   const [musicTitle, setMusicTitle] = useState('');
   const [musicArtist, setMusicArtist] = useState('');
   const [musicUrl, setMusicUrl] = useState('');
+  const [musicSearchKeyword, setMusicSearchKeyword] = useState('');
+  const [musicSearchResults, setMusicSearchResults] = useState<MusicTrack[]>([]);
+  const [musicSearching, setMusicSearching] = useState(false);
+  const [musicSearchError, setMusicSearchError] = useState('');
+  const [musicResolving, setMusicResolving] = useState(false);
+  const [musicCover, setMusicCover] = useState('');
+  const [musicAlbum, setMusicAlbum] = useState('');
+  const [musicDurationLabel, setMusicDurationLabel] = useState('');
+  const [musicPickedTrackId, setMusicPickedTrackId] = useState('');
   const [creatorType, setCreatorType] = useState<'image' | 'video' | 'file' | 'voice'>('image');
   const [creatorPrompt, setCreatorPrompt] = useState('');
   /** 发送文字视频时的秒数；null = 跟聊天设置默认 */
@@ -2487,6 +2496,58 @@ export function LineConversationView({
     setToastMsg(text);
     setTimeout(() => setToastMsg(''), 1800);
   };
+
+  // 一起听歌抽屉：从音乐 App 曲库选歌（网易云搜索 + 我喜欢的 + 当前角色歌单）。
+  // 注意：必须放在 importedCharacter / showToast 声明之后，否则会触发 TDZ 白屏。
+  const musicLikedTracks = useMemo(() => (showTogetherMusic ? getLikedTracks().slice(0, 5) : []), [showTogetherMusic]);
+  const musicCharacterPlaylist = useMemo(() => {
+    if (!showTogetherMusic) return null;
+    return getCharacterPlaylists().find((p) => String(p.characterId || '') === String(importedCharacter?.id || characterId || '')) || null;
+  }, [showTogetherMusic, importedCharacter?.id, characterId]);
+  const searchMusicForInvite = async () => {
+    const keyword = musicSearchKeyword.trim();
+    if (!keyword) { showToast('先输入要搜的歌名或歌手'); return; }
+    setMusicSearching(true);
+    setMusicSearchError('');
+    try {
+      const results = await searchMusic(keyword);
+      setMusicSearchResults(results.slice(0, 30));
+      if (!results.length) setMusicSearchError('没搜到这首歌，换个关键词试试');
+    } catch {
+      setMusicSearchError('搜歌失败，检查网络或音乐 App 的网易云 API 设置');
+    } finally {
+      setMusicSearching(false);
+    }
+  };
+  const pickMusicTrack = async (track: MusicTrack) => {
+    setMusicPickedTrackId(String(track.id));
+    setMusicTitle(track.name || '');
+    setMusicArtist(track.artist || '未知艺术家');
+    setMusicCover(track.cover || '');
+    setMusicAlbum(track.album || '');
+    setMusicDurationLabel(track.duration ? formatSongDurationLabel(track.duration) : '');
+    if (track.playUrl) { setMusicUrl(track.playUrl); return; }
+    setMusicUrl('');
+    setMusicResolving(true);
+    try {
+      const resolved = await resolveTrackUrl(track);
+      if (resolved.playUrl) setMusicUrl(resolved.playUrl);
+      else showToast('这首歌拿不到播放链接，换一首或手动贴链接');
+    } catch {
+      showToast('这首歌拿不到播放链接，换一首或手动贴链接');
+    } finally {
+      setMusicResolving(false);
+    }
+  };
+  const renderMusicPickRow = (track: MusicTrack) => (
+    <button key={String(track.id)} type="button" onClick={() => void pickMusicTrack(track)} className={'w-full flex items-center gap-2.5 px-2.5 py-2 text-left ' + (musicPickedTrackId === String(track.id) ? 'bg-[#faf3f5]' : '')}>
+      {track.cover ? (<img src={track.cover} alt="" className="w-8 h-8 rounded-md object-cover shrink-0" referrerPolicy="no-referrer" />) : (<span className="w-8 h-8 rounded-md bg-[#f0e6e8] flex items-center justify-center shrink-0"><Music2 className="w-4 h-4 text-[#8b7560]" /></span>)}
+      <span className="flex-1 min-w-0">
+        <span className="block truncate text-xs text-[#333] font-medium">{track.name}</span>
+        <span className="block truncate text-[10px] text-[#999]">{track.artist}{track.album ? ` · ${track.album}` : ''}</span>
+      </span>
+    </button>
+  );
 
   // Music App can end a listening session outside LINE. Observe the shared session
   // event and notify this conversation once, then clear its active listening state.
@@ -8256,7 +8317,38 @@ export function LineConversationView({
           <div onClick={(e) => e.stopPropagation()} className="w-full bg-white rounded-t-[20px] p-4 pb-7 space-y-3.5 animate-in slide-in-from-bottom">
             <div className="w-8 h-1 bg-[#ddd] rounded-full mx-auto" />
             <div className="flex items-center gap-2"><Music2 className="w-4 h-4 text-[#8b7560]" /><div className="font-semibold text-sm text-[#333]">邀请一起听歌</div></div>
-            <div className="text-[9px] text-[#999] leading-relaxed">填写一个可以在浏览器直接播放的音频链接。以后可以继续接入你的在线音乐曲库。</div>
+            <div className="text-[9px] text-[#999] leading-relaxed">从曲库选一首，或手动贴一个能直接播放的音频链接。</div>
+            <div className="flex gap-2">
+              <input value={musicSearchKeyword} onChange={e => setMusicSearchKeyword(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void searchMusicForInvite(); } }} placeholder="搜歌名 / 歌手" className="flex-1 p-2.5 bg-[#f7f7f8] rounded-xl text-xs outline-none" />
+              <button type="button" disabled={musicSearching} onClick={() => void searchMusicForInvite()} className="px-4 rounded-xl bg-[#f0e6e8] text-[#8b7560] text-xs font-semibold disabled:opacity-50">{musicSearching ? '搜中…' : '搜索'}</button>
+            </div>
+            {musicSearchError && (<div className="text-[10px] text-[#b42318] leading-relaxed">{musicSearchError}</div>)}
+            {musicSearchResults.length > 0 && (
+              <div className="max-h-[180px] overflow-y-auto rounded-xl border border-[#f0e6e8] divide-y divide-[#faf1f3]">
+                {musicSearchResults.map((track) => renderMusicPickRow(track))}
+              </div>
+            )}
+            {musicSearchResults.length === 0 && (musicLikedTracks.length > 0 || (musicCharacterPlaylist?.tracks?.length || 0) > 0) && (
+              <div className="space-y-2">
+                {musicLikedTracks.length > 0 && (
+                  <div>
+                    <div className="text-[10px] text-[#999]">我喜欢的</div>
+                    <div className="max-h-[104px] overflow-y-auto rounded-xl border border-[#f0e6e8] divide-y divide-[#faf1f3] mt-1">
+                      {musicLikedTracks.map((track) => renderMusicPickRow(track))}
+                    </div>
+                  </div>
+                )}
+                {musicCharacterPlaylist && musicCharacterPlaylist.tracks.length > 0 && (
+                  <div>
+                    <div className="text-[10px] text-[#999]">{musicCharacterPlaylist.name || '角色歌单'}</div>
+                    <div className="max-h-[104px] overflow-y-auto rounded-xl border border-[#f0e6e8] divide-y divide-[#faf1f3] mt-1">
+                      {musicCharacterPlaylist.tracks.slice(0, 5).map((track) => renderMusicPickRow(track))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {musicResolving && (<div className="text-[10px] text-[#999]">正在取播放链接…</div>)}
             <input value={musicTitle} onChange={e => setMusicTitle(e.target.value)} placeholder="歌曲名称" className="w-full p-2.5 bg-[#f7f7f8] rounded-xl text-xs outline-none" />
             <input value={musicArtist} onChange={e => setMusicArtist(e.target.value)} placeholder="歌手 / 艺术家" className="w-full p-2.5 bg-[#f7f7f8] rounded-xl text-xs outline-none" />
             <input value={musicUrl} onChange={e => setMusicUrl(e.target.value)} placeholder="音频 URL（mp3 / wav / ogg 等）" className="w-full p-2.5 bg-[#f7f7f8] rounded-xl text-[10px] font-mono outline-none" />
@@ -8267,7 +8359,7 @@ export function LineConversationView({
             )}
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => setShowTogetherMusic(false)} className="py-2.5 rounded-xl bg-[#f5f5f5] text-[#777] text-xs">取消</button>
-              <button
+              <button disabled={musicResolving}
                 onClick={() => {
                   const title = musicTitle.trim();
                   const artist = musicArtist.trim() || '未知艺术家';
@@ -8278,6 +8370,9 @@ export function LineConversationView({
                     title,
                     artist,
                     url,
+                    cover: musicCover || undefined,
+                    album: musicAlbum || undefined,
+                    durationLabel: musicDurationLabel || undefined,
                     note: '想和你一起听这首。',
                     colors: pickSongInviteColors(title + artist),
                     startedBy: 'me',
@@ -8295,7 +8390,7 @@ export function LineConversationView({
                     metadata: { musicSession: session },
                   };
                   setMessages(prev => [...prev, inviteMsg]);
-                  setMusicTitle(''); setMusicArtist(''); setMusicUrl('');
+                  setMusicTitle(''); setMusicArtist(''); setMusicUrl(''); setMusicCover(''); setMusicAlbum(''); setMusicDurationLabel(''); setMusicPickedTrackId(''); setMusicSearchResults([]); setMusicSearchKeyword(''); setMusicSearchError('');
                   setShowTogetherMusic(false);
                   showToast('已发出一起听歌邀请 ♪');
                   // 立刻生成角色回应（不等待 effect）
