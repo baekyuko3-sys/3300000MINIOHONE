@@ -8893,10 +8893,12 @@ export function LineConversationView({
           }
           // 每个红包的份额在发送时已固定；领取时绝不重新抽签，也不替 NPC 自动领取。
           const shares = Array.isArray(meta.sharesCents) ? meta.sharesCents : [];
-          const userCents = Number(shares[claims.length] || 0);
-          if (userCents <= 0) { showToast('红包份额无效，请刷新后重试'); return; }
+          const occupiedSlots = new Set<number>(claims.map((claim: any, index: number) => Number.isInteger(claim?.slotIndex) ? Number(claim.slotIndex) : index));
+          const slotIndex = shares.findIndex((_: number, index: number) => !occupiedSlots.has(index));
+          const userCents = Number(shares[slotIndex] || 0);
+          if (slotIndex < 0 || userCents <= 0) { showToast('红包份额无效，请刷新后重试'); return; }
           const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const userClaim = { userId: 'me', name: '我', amount: (userCents / 100).toFixed(2), time: now() };
+          const userClaim = { userId: 'me', name: '我', slotIndex, amount: (userCents / 100).toFixed(2), time: now() };
           const nextClaims = [...claims, userClaim];
           const nextStatus = nextClaims.length >= count ? 'claimed' : 'partial';
           const updated = { ...packet, redPacketClaims: nextClaims, redPacketStatus: nextStatus, metadata: { ...meta, claims: nextClaims, status: nextStatus } };
