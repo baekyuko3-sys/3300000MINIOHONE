@@ -1009,6 +1009,28 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}
   }
 }
 
+/**
+ * 把 AI 报错翻译成人话：失败卡和提示里不要出现 AI_OPENAI_504 这种代码。
+ * 认不出的原文原样返回，不吞掉任何信息。
+ */
+export function humanizeAiError(error: unknown): string {
+  const raw = String((error as any)?.message || error || '').trim();
+  if (!raw) return '生成失败，请重试';
+  const statusMatch = raw.match(/AI_OPENAI_(\d{3})/);
+  const status = statusMatch ? Number(statusMatch[1]) : 0;
+  if (/AI_TIMEOUT|AI_STREAM_TIMEOUT/.test(raw)) return 'AI 服务超时：等了很久模型都没回，等一会儿再点重试';
+  if (status === 504) return 'AI 服务超时（504）：模型那边响应太慢，等一会儿再点重试';
+  if (status === 429) return 'AI 服务限流（429）：请求太频繁或额度用完了，等一会儿再试';
+  if (status === 401) return 'AI 服务拒绝（401）：API Key 不对或过期了，去设置里检查一下';
+  if (status === 403) return 'AI 服务拒绝（403）：没有权限用这个模型';
+  if (status === 404) return 'AI 服务找不到（404）：模型不存在或接口地址不对';
+  if (status >= 500) return 'AI 服务出问题了（' + status + '）：服务商那边不稳定，等一会儿再点重试';
+  if (status >= 400) return 'AI 请求被拒绝（' + status + '）：检查一下设置里的模型和 API 地址';
+  if (/Failed to fetch|NetworkError|network|ERR_NETWORK|Load failed/i.test(raw)) return '网络不通：检查一下网络或 API 地址';
+  if (/AI_NOT_CONFIGURED|未配置/.test(raw)) return '还没配好 AI：去设置里填好 API 地址和 Key';
+  return raw;
+}
+
 // 最近一次发送给 API 的完整 prompt（供聊天设置里的「查看 Prompt」功能读取）
 let lastSentPrompt: { system: string; messages: { role: string; content: string }[]; at: number } | null = null;
 export function getLastSentPrompt() {

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isLineMessageFromUser, normalizeLineMessage, bareIdentityId, withCharPrefix, withNpcPrefix, npcConversationId, formatChatListTime } from '../src/store/lineRuntime.ts';
+import { humanizeAiError } from '../src/ai/aiEngine.ts';
 
 test('LINE uses role as the sole authority for message direction', () => {
   assert.equal(isLineMessageFromUser({ role: 'user' }), true);
@@ -636,5 +637,28 @@ test('a blank moments result shows a persistent failure card with the reason', a
   assert.ok(source.includes('{momentsGenerateError.text}'));
   assert.ok(source.includes("if (from === 'npc') void generateNpcMomentsPost();"));
   assert.ok(source.includes('>重试</button>'));
+});
+
+test('AI errors are translated to plain language for the moments failure card', () => {
+  // The card must never show a raw code like AI_OPENAI_504: the user asked
+  // what the reason is, so each common failure maps to one plain sentence.
+  assert.equal(humanizeAiError(new Error('AI_OPENAI_504: Gateway Timeout')), 'AI 服务超时（504）：模型那边响应太慢，等一会儿再点重试');
+  assert.equal(humanizeAiError(new Error('AI_OPENAI_429: too many requests')), 'AI 服务限流（429）：请求太频繁或额度用完了，等一会儿再试');
+  assert.equal(humanizeAiError(new Error('AI_OPENAI_401: bad key')), 'AI 服务拒绝（401）：API Key 不对或过期了，去设置里检查一下');
+  assert.equal(humanizeAiError(new Error('AI_OPENAI_500: boom')), 'AI 服务出问题了（500）：服务商那边不稳定，等一会儿再点重试');
+  assert.equal(humanizeAiError(new Error('AI_TIMEOUT: API 接口超过 30 秒没有响应')), 'AI 服务超时：等了很久模型都没回，等一会儿再点重试');
+  assert.equal(humanizeAiError(new Error('Failed to fetch')), '网络不通：检查一下网络或 API 地址');
+  // Plain messages pass through untouched; unknown codes are not swallowed.
+  assert.equal(humanizeAiError('生成失败：AI 返回空内容'), '生成失败：AI 返回空内容');
+  assert.equal(humanizeAiError(new Error('something odd happened')), 'something odd happened');
+});
+
+test('moments failure paths use the plain-language translator', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/components/line/LineAppView.tsx', import.meta.url), 'utf8');
+  assert.ok(source.includes('humanizeAiError'));
+  assert.ok(source.includes('setMomentsGenerateError({ text: humanizeAiError(msg), from:'));
+  assert.ok(source.includes("showToast(humanizeAiError(msg));"));
+  assert.ok(source.includes("setMomentsGenerateError({ text: humanizeAiError(e instanceof Error ? e.message : '朋友圈 AI 请求失败'), from: 'all' })"));
 });
 

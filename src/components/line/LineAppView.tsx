@@ -31,7 +31,7 @@ import { putMedia } from '../../store/mediaVault';
 import { markCharacterRead } from '../../store/worldRuntime';
 import { bareIdentityId, getLineConversationMeta, markLineConversationRead, markLineNotificationsReadForConversation, stripLeakedInternalBlocks, stripLeakedMarkupTags, touchLineConversation, runLineStorageMigrations, removeLineConversationData, formatChatListTime } from '../../store/lineRuntime';
 import { reportPersistenceIssue } from '../../store/usePersistentState';
-import { generateCreativeText, listOpenAiCompatibleModels, resolveChannelAiSettings, testAiConnection, type AiSettings } from '../../ai/aiEngine';
+import { generateCreativeText, humanizeAiError, listOpenAiCompatibleModels, resolveChannelAiSettings, testAiConnection, type AiSettings } from '../../ai/aiEngine';
 import { useImagePresets, useMinimaxKey, useVoicePresets, type ImagePreset, type VoicePreset } from '../../ai/imageGen';
 import { readAppSettings, saveAppSettings, type ChannelAiSettings } from '../../store/appSettings';
 import { fetchLineWeather, formatLineWeather, type LineWeatherSnapshot } from '../../store/lineReality';
@@ -360,8 +360,8 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       allowed = importedCharacters.filter(character => momentsSettings.enabledCharacterIds.length === 0 || momentsSettings.enabledCharacterIds.includes(character.id));
       allowedNpcs = listPostableNpcs(momentsSettings);
     } catch (e) {
-      setMomentsGenerateError({ text: e instanceof Error ? e.message : '一键生成失败，请重试', from: 'all' });
-      showToast(e instanceof Error ? e.message : '一键生成失败，请重试');
+      setMomentsGenerateError({ text: humanizeAiError(e instanceof Error ? e.message : '一键生成失败，请重试'), from: 'all' });
+      showToast(humanizeAiError(e instanceof Error ? e.message : '一键生成失败，请重试'));
       return;
     }
     if (!allowed.length && !allowedNpcs.length) {
@@ -392,12 +392,12 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       try {
         const msg = await generateNpcMomentNow(pickedNpc.id);
         try { setMomentsPosts(JSON.parse(window.localStorage.getItem(MOMENTS_POSTS_KEY) || '[]')); } catch { /* ignore */ }
-        showToast(msg);
+        showToast(humanizeAiError(msg));
         if (msg.startsWith('生成成功')) setMomentsGenerateError(null);
-        else setMomentsGenerateError({ text: msg, from: 'all' });
+        else setMomentsGenerateError({ text: humanizeAiError(msg), from: 'all' });
       } catch (e) {
-        setMomentsGenerateError({ text: e instanceof Error ? e.message : 'NPC 朋友圈生成失败', from: 'all' });
-        showToast(e instanceof Error ? e.message : 'NPC 朋友圈生成失败');
+        setMomentsGenerateError({ text: humanizeAiError(e instanceof Error ? e.message : 'NPC 朋友圈生成失败'), from: 'all' });
+        showToast(humanizeAiError(e instanceof Error ? e.message : 'NPC 朋友圈生成失败'));
       } finally {
         setIsRefreshingMoments(false);
       }
@@ -459,8 +459,8 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
         showToast('生成失败：AI 返回空内容');
       }
     } catch (e) {
-      setMomentsGenerateError({ text: e instanceof Error ? e.message : '朋友圈 AI 请求失败', from: 'all' });
-      showToast(e instanceof Error ? e.message : '朋友圈 AI 请求失败');
+      setMomentsGenerateError({ text: humanizeAiError(e instanceof Error ? e.message : '朋友圈 AI 请求失败'), from: 'all' });
+      showToast(humanizeAiError(e instanceof Error ? e.message : '朋友圈 AI 请求失败'));
     } finally {
       setIsRefreshingMoments(false);
     }
@@ -486,12 +486,12 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     try {
       const msg = await generateNpcMomentNow(pickedNpc.id);
       try { setMomentsPosts(JSON.parse(window.localStorage.getItem(MOMENTS_POSTS_KEY) || '[]')); } catch { /* ignore */ }
-      showToast(msg);
+      showToast(humanizeAiError(msg));
       if (msg.startsWith('生成成功')) setMomentsGenerateError(null);
-      else setMomentsGenerateError({ text: msg, from: 'npc' });
+      else setMomentsGenerateError({ text: humanizeAiError(msg), from: 'npc' });
     } catch (e) {
-      setMomentsGenerateError({ text: e instanceof Error ? e.message : 'NPC 朋友圈生成失败', from: 'npc' });
-      showToast(e instanceof Error ? e.message : 'NPC 朋友圈生成失败');
+      setMomentsGenerateError({ text: humanizeAiError(e instanceof Error ? e.message : 'NPC 朋友圈生成失败'), from: 'npc' });
+      showToast(humanizeAiError(e instanceof Error ? e.message : 'NPC 朋友圈生成失败'));
     } finally {
       setIsRefreshingMoments(false);
     }
