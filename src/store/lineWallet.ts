@@ -148,7 +148,7 @@ export function getWalletBalance(): number {
 
 export async function setWalletBalance(amount: number): Promise<void> {
   if (!Number.isFinite(amount) || amount < 0) return;
-  commitWalletLedger(current => ({
+  await commitWalletLedger(current => ({
     next: { ...current, balanceCents: Math.round(amount * 100) },
     result: undefined,
   }));
@@ -434,6 +434,7 @@ export function getFamilyCards(): FamilyCard[] {
 }
 
 export async function addFamilyCard(holderName: string, monthlyLimit: number, holderAvatar?: string): Promise<FamilyCard | null> {
+  if (!holderName.trim() || !Number.isFinite(monthlyLimit) || monthlyLimit <= 0) return null;
   const card: FamilyCard = {
     id: 'fc-' + Date.now().toString(36),
     holderName,
