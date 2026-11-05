@@ -53,7 +53,7 @@ import {
   type MomentComment,
   type MomentsCommentSettings,
 } from '../../store/momentsComments';
-import { buildMomentWorldbookContext, generateNpcMomentNow, refreshMomentsFeed } from '../../store/momentsAfterChat';
+import { buildMomentWorldbookContext, generateNpcMomentNow, refreshMomentsFeed, writePosts } from '../../store/momentsAfterChat';
 import { edgePair, isAllowedEdge as isVroomAllowedEdge, isBlockedEdge as isVroomBlockedEdge, readVroomScopeSettings, setFriendEdge as setVroomFriendEdge } from '../../store/vroomScope';
 import {
   Pin, Bell, BellOff, Bookmark, Heart, MessageCircle, Share2, Plus, Search,
@@ -432,9 +432,16 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
           likers: [] as string[],
           characterId: source.id,
         };
-        setMomentsPosts(prev => [newAiPost, ...prev]);
-        showToast('生成成功：' + source.name + ' 发布了一条朋友圈');
-        applyBatchCommentsAfterPost(newAiPost);
+        // 先同步写存储并核对：300ms 防抖写入失败（存储满了）是静默的，
+        // 之前这里报了假成功，帖子下次重读就没了。写不成直说，不显示。
+        const nextPosts = [newAiPost, ...(Array.isArray(momentsPostsRef.current) ? momentsPostsRef.current : [])];
+        if (!writePosts(nextPosts)) {
+          showToast('保存失败：本地存储空间不足，帖子没有存下来。先去手机体检里“清理日志和历史快照”腾出空间再试');
+        } else {
+          setMomentsPosts(nextPosts);
+          showToast('生成成功：' + source.name + ' 发布了一条朋友圈');
+          applyBatchCommentsAfterPost(newAiPost);
+        }
       } else {
         showToast('生成失败：AI 返回空内容');
       }
@@ -1270,6 +1277,11 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   const momentsPosts = Array.isArray(momentsPostsRaw)
     ? momentsPostsRaw.filter((p): p is Record<string, any> => !!p && typeof p === 'object')
     : [];
+  // One-tap generation is async: the handler must read the freshest posts
+  // (including ones still inside the 300ms persistence debounce), or a
+  // verified write would clobber them. Mirrors momentsPostsRaw each render.
+  const momentsPostsRef = useRef(momentsPostsRaw);
+  momentsPostsRef.current = momentsPostsRaw;
 
   // Proactive / autonomous writers touch localStorage directly — refresh React state.
   useEffect(() => {

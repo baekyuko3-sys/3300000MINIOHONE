@@ -585,3 +585,19 @@ test('stale chunk after a redeploy reloads once instead of boot-crashing', async
   assert.ok(source.indexOf('reloadOnceForStaleChunk(error)') < source.indexOf("title: '有问题 · 待修复'"));
 });
 
+test('one-tap character moment verifies the write instead of false success', async () => {
+  // The character branch used to setMomentsPosts (300ms debounced, quota
+  // failures swallowed) and toast success anyway, so the post vanished on
+  // the next storage re-read. It must write through writePosts first and
+  // only toast success when the write is verified; a failed write must say
+  // the storage is full instead of pretending the post was published.
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/components/line/LineAppView.tsx', import.meta.url), 'utf8');
+  assert.ok(source.includes('writePosts } from'));
+  assert.ok(source.includes('momentsPostsRef'));
+  assert.ok(source.includes('if (!writePosts(nextPosts))'));
+  assert.ok(source.includes('setMomentsPosts(nextPosts)'));
+  assert.ok(source.includes('保存失败：本地存储空间不足'));
+  assert.ok(!source.includes('setMomentsPosts(prev => [newAiPost, ...prev])'));
+});
+
