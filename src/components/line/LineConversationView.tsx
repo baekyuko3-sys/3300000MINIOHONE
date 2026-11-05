@@ -3949,6 +3949,7 @@ export function LineConversationView({
       const settings = conversationAiSettings();
       const result = await generateCharacterReply({
         settings,
+        signal: aiAbortController.signal,
         character: importedCharacter,
         characterProfile: { ...characterProfile, canCharacterSelfJudge: characterProfile.canCharacterSelfJudge },
         persona: activePersona ? { ...activePersona, background: (activePersona as any).setting || (activePersona as any).background || '' } : activePersona,
@@ -4298,7 +4299,6 @@ export function LineConversationView({
           const recent = messagesRef.current.slice(-10).map((m: any) => `${m.role === 'user' ? '我' : (m.senderName || m.characterName || importedCharacter.name)}：${String(m.text || '').slice(0, 180)}`).join('\n');
           const raw = await generateCreativeText({
             settings: { ...resolveChannelAiSettings('chat'), maxOutputTokens: 100 },
-          signal: aiAbortController.signal,
             systemPrompt: `你正在扮演角色${importedCharacter.name}。结合角色人设、双方关系和当前剧情，判断是否接受对方转账。只输出 JSON：{"decision":"accepted"} 或 {"decision":"rejected"}。不得为了推进剧情随意接受；不愿收、觉得不合适或关系不允许时可以拒绝。`,
             userPrompt: JSON.stringify({ personality: importedCharacter.personality || '', description: importedCharacter.description || '', scenario: importedCharacter.scenario || '', creatorNotes: importedCharacter.creatorNotes || '', amount, note, recentConversation: recent.slice(0, 1800) }),
             temperature: 0.6,
