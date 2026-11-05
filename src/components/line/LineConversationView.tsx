@@ -4208,13 +4208,6 @@ export function LineConversationView({
     }
     if (!(isGroup && redPacketMode === 'equal')) shares.sort(() => Math.random() - 0.5);
     if (!walletSendRedPacket(Number(amount), blessing, packetId, shares)) { showToast('钱包余额不足或红包份额无效'); return; }
-    // 亲情卡：仅在红包扣款成功后计入持卡人月限额。
-    if (!isGroup) {
-      const holder = importedCharacter?.name || '';
-      if (holder && !spendFamilyCard(holder, Number(amount))) {
-        showToast('已超出该亲情卡本月限额（红包仍已发送）');
-      }
-    }
     const newMsg = {
       id: packetId, role: 'user' as const, kind: 'red-packet' as const,
       text: `[红包] ¥${amount} · ${blessing}`, time: '刚刚',
@@ -4230,6 +4223,13 @@ export function LineConversationView({
       return;
     }
     setMessages((prev) => [...prev, newMsg]);
+    // 聊天卡片成功落盘后才计入亲情卡月限额。
+    if (!isGroup) {
+      const holder = importedCharacter?.name || '';
+      if (holder && !spendFamilyCard(holder, Number(amount))) {
+        showToast('已超出该亲情卡本月限额（红包仍已发送）');
+      }
+    }
     // NPC 是否领取由角色 AI 根据人设和当前剧情独立判断；AI 失败时保持未领取。
     void (async () => {
       const candidates = isGroup
