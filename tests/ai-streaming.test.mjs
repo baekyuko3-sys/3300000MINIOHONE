@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSseResponse, readError } from '../src/ai/streaming.ts';
+import { parseSseResponse, readError, readJsonResponseWithTimeout, readResponseTextWithTimeout } from '../src/ai/streaming.ts';
 
 const extractOpenAiText = data => (data?.choices || [])
   .map(choice => choice?.delta?.content || '')
@@ -62,4 +62,20 @@ test('readError extracts structured provider error codes and messages', async ()
   const message = await readError(response);
   assert.match(message, /code=invalid_api_key/);
   assert.match(message, /Key rejected/);
+});
+
+
+test('non-streaming response body reads have an idle timeout and cancel stalled bodies', async () => {
+  let cancelled = false;
+  const response = new Response(new ReadableStream({
+    pull() { return new Promise(() => {}); },
+    cancel() { cancelled = true; },
+  }));
+  await assert.rejects(readResponseTextWithTimeout(response, 10), /AI_RESPONSE_BODY_TIMEOUT/);
+  assert.equal(cancelled, true);
+});
+
+test('non-streaming JSON parser reports invalid provider payloads clearly', async () => {
+  const response = new Response('not-json');
+  await assert.rejects(readJsonResponseWithTimeout(response), /AI_INVALID_JSON_RESPONSE/);
 });
