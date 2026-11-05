@@ -8,7 +8,7 @@ import { generateSpeech, transcribeAudio } from '../../ai/mediaEngine';
 import { readAppSettings } from '../../store/appSettings';
 import type { ChannelAiSettings } from '../../store/appSettings';
 import { getMedia, putMedia } from '../../store/mediaVault';
-import { walletSendRedPacket, walletSendTransfer, walletClaimRedPacket, spendFamilyCard } from '../../store/lineWallet';
+import { walletSendRedPacket, walletSendTransfer, walletClaimRedPacket, walletRefundRedPacket, spendFamilyCard } from '../../store/lineWallet';
 import { VroomImage } from '../VroomImage';
 import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory, updateCharacterMemoryItem, deleteCharacterMemoryItem, clearCharacterMemory, clearAllCharacterMemoryVariants } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
@@ -833,6 +833,31 @@ export function LineConversationView({
   const musicInviteDecisionBusyRef = useRef<Set<string>>(new Set());
   const musicInviteDecisionDoneRef = useRef<Set<string>>(new Set());
 
+
+  // 新红包到期后自动退回未领取份额；旧红包没有 sharesCents 时不猜测退款。
+  useEffect(() => {
+    let changed = false;
+    const now = Date.now();
+    for (const message of messages) {
+      if (message.kind !== 'red-packet') continue;
+      const meta = message.metadata && typeof message.metadata === 'object' ? message.metadata : {};
+      const expiresAt = Date.parse(String(meta.expiresAt || ''));
+      const shares = Array.isArray(meta.sharesCents) ? meta.sharesCents.map((value: any) => Math.max(0, Math.round(Number(value) || 0))) : null;
+      if (!shares || !Number.isFinite(expiresAt) || now < expiresAt || meta.refundedAt || meta.status === 'expired') continue;
+      const claims = Array.isArray(message.redPacketClaims) ? message.redPacketClaims : Array.isArray(meta.claims) ? meta.claims : [];
+      const occupied = new Set<number>(claims.map((claim: any, index: number) => Number.isInteger(claim?.slotIndex) ? Number(claim.slotIndex) : index));
+      const remainingCents = shares.reduce((sum: number, cents: number, index: number) => sum + (occupied.has(index) ? 0 : cents), 0);
+      if (remainingCents > 0 && !walletRefundRedPacket(String(message.id), remainingCents / 100)) continue;
+      const status = remainingCents > 0 ? 'expired' : 'claimed';
+      const updatedMeta = { ...meta, status, refundedAt: new Date().toISOString(), refundAmount: remainingCents / 100 };
+      const updated = { ...message, redPacketStatus: status, metadata: updatedMeta };
+      setMessages(prev => prev.map((item: any) => String(item.id) === String(message.id) ? updated : item));
+      updateLineMessage(conversationStorageId, message.id, { redPacketStatus: status, metadata: updatedMeta } as any);
+      if (String(activeRedPacket?.id) === String(message.id)) setActiveRedPacket(updated);
+      changed = true;
+    }
+    if (changed) window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
+  }, [conversationStorageId, messages, activeRedPacket?.id]);
 
   // LINE keeps the complete conversation in storage, but only renders the newest
   // page at first. Older messages load naturally as you scroll upward.
