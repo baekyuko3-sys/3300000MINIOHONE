@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getNpcs } from '../src/store/npcs.ts';
-import { getLineGroups } from '../src/store/lineGroups.ts';
+import { getNpcs, upsertNpc } from '../src/store/npcs.ts';
+import { getLineGroups, upsertLineGroup } from '../src/store/lineGroups.ts';
 
 class MemoryStorage {
   values = new Map();
@@ -31,5 +31,25 @@ test('LINE group reader fails closed on valid JSON with the wrong top-level sche
   storage.setItem('line:groups', original);
   installWindow(storage);
   assert.deepEqual(getLineGroups(), []);
+  assert.equal(storage.getItem('line:groups'), original);
+});
+
+
+test('NPC mutations refuse to overwrite a valid-JSON but invalid-schema source', () => {
+  const storage = new MemoryStorage();
+  const original = JSON.stringify({ unexpected: 'keep this' });
+  storage.setItem('phone:npcs', original);
+  installWindow(storage);
+  upsertNpc({ id: 'npc-new', name: 'New NPC' });
+  assert.equal(storage.getItem('phone:npcs'), original);
+});
+
+test('group mutations refuse to overwrite a valid-JSON but invalid-schema source', () => {
+  const storage = new MemoryStorage();
+  const original = JSON.stringify({ groups: [{ id: 'g1' }] });
+  storage.setItem('line:groups', original);
+  installWindow(storage);
+  const result = upsertLineGroup({ id: 'g2', name: 'Group', ownerId: 'user', members: [], announcement: '', createdAt: '', updatedAt: '' });
+  assert.equal(result.ok, false);
   assert.equal(storage.getItem('line:groups'), original);
 });
