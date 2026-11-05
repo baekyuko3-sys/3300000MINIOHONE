@@ -289,3 +289,31 @@ test('keeping a deleted character chat archives all persona entries and preserve
   assert.notEqual(storage.getItem('line:conversation:c_persona_b'), null);
   assert.deepEqual(JSON.parse(storage.getItem('line:runtime:notifications')), []);
 });
+
+
+test('archiving a legacy character-ID conversation preserves its transcript settings and metadata', () => {
+  const storage = new MemoryStorage();
+  installWindow(storage);
+  storage.setItem('line:chat-items', JSON.stringify([
+    { id: 'char:c3', characterId: 'char:c3', name: 'Legacy Character', unread: 4 },
+  ]));
+  storage.setItem('line:conversation:char:c3', JSON.stringify([{ id: 'legacy-1', role: 'user', text: 'must remain' }]));
+  storage.setItem('line:status:char:c3', JSON.stringify({ enabled: true }));
+  storage.setItem('line:runtime:conversations', JSON.stringify({
+    'char:c3': { id: 'char:c3', name: 'Legacy Character', isGroup: false },
+  }));
+  storage.setItem('line:runtime:notifications', JSON.stringify([
+    { id: 'legacy-notice', type: 'message', conversationId: 'char:c3', characterId: 'char:c3', title: 'Legacy', body: '', createdAt: '', read: false },
+  ]));
+
+  removeLineConversationData('char:c3', { removeChatItem: false });
+
+  assert.notEqual(storage.getItem('line:conversation:char:c3'), null);
+  assert.notEqual(storage.getItem('line:status:char:c3'), null);
+  assert.ok(JSON.parse(storage.getItem('line:runtime:conversations'))['char:c3']);
+  const archived = JSON.parse(storage.getItem('line:chat-items'))[0];
+  assert.equal(archived.characterId, undefined);
+  assert.equal(archived.unread, 0);
+  assert.equal(archived.chatLabel, '已归档角色');
+  assert.deepEqual(JSON.parse(storage.getItem('line:runtime:notifications')), []);
+});
