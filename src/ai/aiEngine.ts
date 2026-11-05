@@ -883,7 +883,7 @@ async function callGemini(input: AiReplyInput): Promise<string> {
     body: JSON.stringify(body),
   }, 90000);
 
-  if (!response.ok) throw new Error('AI_GEMINI_' + response.status + ': ' + await readError(response));
+  if (!response.ok) throw new Error('AI_GEMINI_' + response.status + ': ' + await readError(response, input.signal));
 
   if (settings.streaming) {
     let rawStream = '';
@@ -918,11 +918,11 @@ async function callGemini(input: AiReplyInput): Promise<string> {
       input.onDelta?.(visible);
     };
     let reasoningStream = '';
-    const result = await parseSseResponse(response, extractGeminiText, revealMessage, 45000, (delta) => { reasoningStream += delta; }, extractGeminiReasoning);
+    const result = await parseSseResponse(response, extractGeminiText, revealMessage, 45000, (delta) => { reasoningStream += delta; }, extractGeminiReasoning, input.signal);
     return wrapProviderReasoning(result, reasoningStream);
   }
 
-  const data = await readJsonResponseWithTimeout(response);
+  const data = await readJsonResponseWithTimeout(response, 30000, 16 * 1024 * 1024, input.signal);
   const text = extractGeminiText(data).trim();
   const result = wrapProviderReasoning(text, extractGeminiReasoning(data));
   input.onDelta?.(result);
@@ -1042,7 +1042,7 @@ async function callOpenAiCompatible(input: AiReplyInput): Promise<string> {
     body: JSON.stringify(body),
   }, 90000);
 
-  if (!response.ok) throw new Error('AI_OPENAI_' + response.status + ': ' + await readError(response));
+  if (!response.ok) throw new Error('AI_OPENAI_' + response.status + ': ' + await readError(response, input.signal));
 
   if (input.settings.streaming) {
     let rawStream = '';
@@ -1058,11 +1058,11 @@ async function callOpenAiCompatible(input: AiReplyInput): Promise<string> {
       }
     };
     let reasoningStream = '';
-    const result = await parseSseResponse(response, extractOpenAiText, revealMessage, 45000, (delta) => { reasoningStream += delta; }, extractOpenAiReasoning);
+    const result = await parseSseResponse(response, extractOpenAiText, revealMessage, 45000, (delta) => { reasoningStream += delta; }, extractOpenAiReasoning, input.signal);
     return wrapProviderReasoning(result, reasoningStream);
   }
 
-  const data = await readJsonResponseWithTimeout(response);
+  const data = await readJsonResponseWithTimeout(response, 30000, 16 * 1024 * 1024, input.signal);
   const text = extractOpenAiText(data).trim();
   const result = wrapProviderReasoning(text, extractOpenAiReasoning(data));
   input.onDelta?.(result);
@@ -1682,8 +1682,8 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
         history,
       }),
     }, 90000);
-    if (!response.ok) throw new Error('AI_PROXY_' + response.status + ': ' + await readError(response));
-    const data = await readJsonResponseWithTimeout(response);
+    if (!response.ok) throw new Error('AI_PROXY_' + response.status + ': ' + await readError(response, input.signal));
+    const data = await readJsonResponseWithTimeout(response, 30000, 16 * 1024 * 1024, input.signal);
     const text = input.settings.provider === 'gemini' ? extractGeminiText(data).trim() : extractOpenAiText(data).trim();
     if (!text) throw new Error('AI_EMPTY_RESPONSE');
     input.onDelta?.(text);
@@ -1721,9 +1721,9 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
           generationConfig: { temperature, maxOutputTokens: 2200 },
         }),
       }, input.timeoutMs ?? 90000);
-      if (!response.ok) throw new Error('AI_GEMINI_' + response.status + ': ' + await readError(response));
-      if (input.settings.streaming) return parseSseResponse(response, extractGeminiText, input.onDelta);
-      const data = await readJsonResponseWithTimeout(response);
+      if (!response.ok) throw new Error('AI_GEMINI_' + response.status + ': ' + await readError(response, input.signal));
+      if (input.settings.streaming) return parseSseResponse(response, extractGeminiText, input.onDelta, 45000, undefined, undefined, input.signal);
+      const data = await readJsonResponseWithTimeout(response, 30000, 16 * 1024 * 1024, input.signal);
       const text = extractGeminiText(data).trim();
       input.onDelta?.(text);
       return text;
@@ -1748,9 +1748,9 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
         ],
       }),
     }, input.timeoutMs ?? 90000);
-    if (!response.ok) throw new Error('AI_OPENAI_' + response.status + ': ' + await readError(response));
-    if (input.settings.streaming) return parseSseResponse(response, extractOpenAiText, input.onDelta);
-    const data = await readJsonResponseWithTimeout(response);
+    if (!response.ok) throw new Error('AI_OPENAI_' + response.status + ': ' + await readError(response, input.signal));
+    if (input.settings.streaming) return parseSseResponse(response, extractOpenAiText, input.onDelta, 45000, undefined, undefined, input.signal);
+    const data = await readJsonResponseWithTimeout(response, 30000, 16 * 1024 * 1024, input.signal);
     const text = extractOpenAiText(data).trim();
     input.onDelta?.(text);
     return text;
