@@ -210,8 +210,15 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   const [walletTab, setWalletTab] = useState<'topup' | 'tx' | 'family'>('tx');
   useEffect(() => {
     const refresh = () => setWalletBalance(getWalletBalance());
+    const refreshFromOtherTab = (event: StorageEvent) => {
+      if (event.key === 'line:wallet-ledger-v1' || event.key === 'line:wallet-family-cards') refresh();
+    };
     window.addEventListener('sane333:wallet-updated', refresh);
-    return () => window.removeEventListener('sane333:wallet-updated', refresh);
+    window.addEventListener('storage', refreshFromOtherTab);
+    return () => {
+      window.removeEventListener('sane333:wallet-updated', refresh);
+      window.removeEventListener('storage', refreshFromOtherTab);
+    };
   }, []);
   // One-time role + identity-prefix storage migrations (guarded, idempotent).
   useEffect(() => {
