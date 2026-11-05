@@ -22,20 +22,46 @@ export interface NpcFriendRequest {
 const REQUESTS_KEY = 'line:npc-friend-requests';
 const FRIENDSHIP_KEY = 'line:npc-friendships';
 
+const blockedNpcSocialKeys = new Set<string>();
+
+function readNpcSocialArray<T>(key: string): T[] | null {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw === null) { blockedNpcSocialKeys.delete(key); return []; }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('NPC_SOCIAL_SCHEMA_INVALID');
+    blockedNpcSocialKeys.delete(key);
+    return parsed as T[];
+  } catch (error) {
+    blockedNpcSocialKeys.add(key);
+    reportPersistenceIssue('read:' + key, 'NPC 社交数据损坏或格式不符；已锁定写入以保留好友关系和申请记录', error);
+    return null;
+  }
+}
+
 export function getNpcFriendRequests(): NpcFriendRequest[] {
-  const raw = readPersistentState<Partial<NpcFriendRequest>[]>(REQUESTS_KEY, []);
+  const raw = readNpcSocialArray<Partial<NpcFriendRequest>>(REQUESTS_KEY);
+  if (!raw) return [];
   return raw.filter(item => item && typeof item.id === 'string' && typeof item.npcId === 'string')
     .map(item => ({ ...item, status: item.status || 'pending' } as NpcFriendRequest));
 }
 
-function saveRequests(items: NpcFriendRequest[]) {
-  if (typeof window === 'undefined') return;
-  const serialized = JSON.stringify(items.slice(0, 200));
-  window.localStorage.setItem(REQUESTS_KEY, serialized);
-  if (window.localStorage.getItem(REQUESTS_KEY) !== serialized) {
-    throw new Error('NPC_FRIEND_REQUEST_PERSISTENCE_MISMATCH');
+function saveRequests(items: NpcFriendRequest[]): boolean {
+  if (typeof window === 'undefined' || blockedNpcSocialKeys.has(REQUESTS_KEY)) return false;
+  try {
+    const existingRaw = window.localStorage.getItem(REQUESTS_KEY);
+    if (existingRaw !== null && !Array.isArray(JSON.parse(existingRaw))) throw new Error('NPC_FRIEND_REQUEST_SCHEMA_INVALID');
+    const serialized = JSON.stringify(items.slice(0, 200));
+    window.localStorage.setItem(REQUESTS_KEY, serialized);
+    if (window.localStorage.getItem(REQUESTS_KEY) !== serialized) throw new Error('NPC_FRIEND_REQUEST_PERSISTENCE_MISMATCH');
+    window.dispatchEvent(new CustomEvent('sane333:npc-friend-requests-updated'));
+    return true;
+  } catch (error) {
+    blockedNpcSocialKeys.add(REQUESTS_KEY);
+    reportPersistenceIssue('write:' + REQUESTS_KEY, 'NPC 好友申请写入失败；原始申请记录已保留', error);
+    return false;
   }
-  window.dispatchEvent(new CustomEvent('sane333:npc-friend-requests-updated'));
 }
 
 /** NPC 可以表达想认识用户，但这里只创建申请，不会偷偷把 NPC 加成好友。 */
@@ -72,7 +98,7 @@ export function createNpcFriendRequest(input: {
     updatedAt: now,
   };
   try {
-    saveRequests([request, ...requests]);
+    if (!saveRequests([request, ...requests])) return null;
     return request;
   } catch (error) {
     reportPersistenceIssue('npc-friend-request-create', 'NPC 好友申请保存失败；未向界面报告申请已创建', error);
@@ -91,7 +117,8 @@ export function respondToNpcFriendRequest(id: string, status: 'accepted' | 'decl
   const next = { ...current, status, updatedAt: new Date().toISOString() } as NpcFriendRequest;
   try {
     if (status === 'accepted') {
-      const links = readPersistentState<Array<{ npcId: string; personaId: string }>>(FRIENDSHIP_KEY, []);
+      const links = readNpcSocialArray<{ npcId: string; personaId: string }>(FRIENDSHIP_KEY);
+      if (!links) throw new Error('NPC_FRIENDSHIPS_UNAVAILABLE');
       const unique = links.filter(item => !(item.npcId === current.npcId && item.personaId === current.personaId));
       unique.push({ npcId: current.npcId, personaId: current.personaId });
       // Persist the friendship and request status as one guarded operation.
@@ -102,7 +129,7 @@ export function respondToNpcFriendRequest(id: string, status: 'accepted' | 'decl
         throw new Error('NPC_FRIENDSHIP_PERSISTENCE_MISMATCH');
       }
     }
-    saveRequests(requests.map(item => item.id === id ? next : item));
+    if (!saveRequests(requests.map(item => item.id === id ? next : item))) throw new Error('NPC_FRIEND_REQUEST_SAVE_FAILED');
     const persistedRequest = getNpcFriendRequests().find(item => item.id === id);
     if (!persistedRequest || persistedRequest.status !== status) {
       throw new Error('NPC_FRIEND_REQUEST_STATUS_PERSISTENCE_MISMATCH');
@@ -126,17 +153,23 @@ export function respondToNpcFriendRequest(id: string, status: 'accepted' | 'decl
 }
 
 export function hasNpcFriendship(npcId: string, personaId: string): boolean {
-  const links = readPersistentState<Array<{ npcId: string; personaId: string }>>(FRIENDSHIP_KEY, []);
+  const links = readNpcSocialArray<{ npcId: string; personaId: string }>(FRIENDSHIP_KEY);
+  // Fail closed: unknown friendship state must not be treated as proof that no friendship exists.
+  if (!links) return true;
   return links.some(item => item.npcId === npcId && item.personaId === personaId);
 }
 
-export function setNpcFriendship(npcId: string, personaId: string, enabled: boolean) {
-  if (typeof window === 'undefined' || !npcId || !personaId) return;
-  const links = readPersistentState<Array<{ npcId: string; personaId: string }>>(FRIENDSHIP_KEY, []);
+export function setNpcFriendship(npcId: string, personaId: string, enabled: boolean): boolean {
+  if (typeof window === 'undefined' || !npcId || !personaId) return false;
+  const links = readNpcSocialArray<{ npcId: string; personaId: string }>(FRIENDSHIP_KEY);
+  if (!links || blockedNpcSocialKeys.has(FRIENDSHIP_KEY)) return false;
   const next = links.filter(item => !(item.npcId === npcId && item.personaId === personaId));
   if (enabled) next.push({ npcId, personaId });
   try {
-    window.localStorage.setItem(FRIENDSHIP_KEY, JSON.stringify(next));
+    const serialized = JSON.stringify(next);
+    window.localStorage.setItem(FRIENDSHIP_KEY, serialized);
+    if (window.localStorage.getItem(FRIENDSHIP_KEY) !== serialized) throw new Error('NPC_FRIENDSHIP_PERSISTENCE_MISMATCH');
+    return true;
   } catch (error) {
     reportPersistenceIssue('npc-friendship-write', 'NPC 好友关系写入失败；更改可能尚未保存', error);
     throw error;
