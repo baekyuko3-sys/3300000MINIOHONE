@@ -212,3 +212,27 @@ test('wallet operation idempotency survives more than 500 historical settlements
   assert.equal(getWalletBalance(), 1480);
   assert.equal(getWalletTransactions().length, 520);
 });
+
+test('wallet ledger recovers the latest committed balance and bills from its verified mirror', async () => {
+  const values = installStorage();
+  await setWalletBalance(30);
+  assert.equal(await walletSendTransfer(7, '角色', '', 'backup-recovery-transfer'), true);
+  assert.equal(getWalletBalance(), 23);
+  assert.equal(getWalletTransactions().length, 1);
+  values.set('line:wallet-ledger-v1', '{corrupt-primary');
+  assert.equal(getWalletBalance(), 23);
+  assert.equal(getWalletTransactions().length, 1);
+  assert.equal(await walletSendTransfer(3, '角色', '', 'after-recovery-transfer'), true);
+  assert.equal(getWalletBalance(), 20);
+  assert.equal(getWalletTransactions().length, 2);
+});
+
+test('wallet refuses to overwrite a corrupt primary and corrupt mirror when no safe recovery exists', async () => {
+  const values = installStorage();
+  values.set('line:wallet-ledger-v1', '{corrupt-primary');
+  values.set('line:wallet-ledger-v1:backup', '{corrupt-backup');
+  assert.equal(getWalletBalance(), 0);
+  assert.equal(await walletSendTransfer(1, '角色', '', 'must-not-overwrite'), false);
+  assert.equal(values.get('line:wallet-ledger-v1'), '{corrupt-primary');
+  assert.equal(values.get('line:wallet-ledger-v1:backup'), '{corrupt-backup');
+});

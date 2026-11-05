@@ -1,4 +1,4 @@
-import { readPersistentState } from './usePersistentState';
+import { readPersistentState, reportPersistenceIssue } from './usePersistentState';
 
 // Family-card allowance is auxiliary state; keep its existing storage key and migration format.
 function writeWalletState<T>(key: string, value: T): void {
@@ -38,6 +38,8 @@ type WalletLedger = {
 };
 
 const LEDGER_KEY = 'line:wallet-ledger-v1';
+const LEDGER_BACKUP_KEY = 'line:wallet-ledger-v1:backup';
+let walletLedgerBlocked = false;
 const BALANCE_KEY = 'line:wallet-balance';
 const TX_KEY = 'line:wallet-transactions';
 const TRANSFER_SETTLEMENT_KEY = 'line:wallet-transfer-settlements';
@@ -59,26 +61,75 @@ function makeEmptyLedger(): WalletLedger {
   return { version: 1, balanceCents: 0, transactions: [], transfers: [], packets: [], familyCards: [] };
 }
 
-/** Read the consolidated ledger, migrating the legacy split keys once when necessary. */
+function parseWalletLedger(raw: string | null): WalletLedger | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<WalletLedger>;
+    if (parsed?.version !== 1 || !Number.isFinite(parsed.balanceCents) ||
+      !Array.isArray(parsed.transactions) || !Array.isArray(parsed.transfers) || !Array.isArray(parsed.packets)) return null;
+    return {
+      version: 1,
+      balanceCents: Math.max(0, Math.round(Number(parsed.balanceCents))),
+      transactions: parsed.transactions,
+      transfers: parsed.transfers,
+      packets: parsed.packets,
+      familyCards: Array.isArray(parsed.familyCards) ? parsed.familyCards : readJson<FamilyCard[]>(FAMILY_KEY, []),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Read the consolidated ledger, recovering the last verified copy before legacy migration. */
 function readWalletLedger(): WalletLedger {
   if (typeof window === 'undefined') return makeEmptyLedger();
+  let primaryRaw: string | null = null;
+  let backupRaw: string | null = null;
   try {
-    const raw = window.localStorage.getItem(LEDGER_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<WalletLedger>;
-      if (parsed?.version === 1 && Number.isFinite(parsed.balanceCents) && Array.isArray(parsed.transactions) && Array.isArray(parsed.transfers) && Array.isArray(parsed.packets)) {
-        return {
-          version: 1,
-          balanceCents: Math.max(0, Math.round(Number(parsed.balanceCents))),
-          transactions: parsed.transactions,
-          transfers: parsed.transfers,
-          packets: parsed.packets,
-          familyCards: Array.isArray(parsed.familyCards) ? parsed.familyCards : readJson<FamilyCard[]>(FAMILY_KEY, []),
-        };
-      }
-    }
-  } catch { /* fall through to legacy migration */ }
+    primaryRaw = window.localStorage.getItem(LEDGER_KEY);
+    backupRaw = window.localStorage.getItem(LEDGER_BACKUP_KEY);
+  } catch {
+    walletLedgerBlocked = true;
+    reportPersistenceIssue('wallet-read', '钱包账本无法读取；为防止覆盖可能存在的余额和流水，已暂停钱包写入');
+    return makeEmptyLedger();
+  }
 
+  const primary = parseWalletLedger(primaryRaw);
+  if (primary) {
+    walletLedgerBlocked = false;
+    return primary;
+  }
+  const backup = parseWalletLedger(backupRaw);
+  if (backup) {
+    walletLedgerBlocked = false;
+    if (primaryRaw !== null) {
+      reportPersistenceIssue('wallet-recovery', '钱包主账本损坏，已从最近一次验证过的备份账本恢复');
+      try {
+        const recoveryKey = 'sane333:recovery:corrupt:line-wallet-ledger';
+        if (window.localStorage.getItem(recoveryKey) === null) {
+          window.localStorage.setItem(recoveryKey, JSON.stringify({ key: LEDGER_KEY, capturedAt: new Date().toISOString(), raw: primaryRaw }));
+        }
+      } catch { /* the valid backup remains available */ }
+    }
+    return backup;
+  }
+
+  if (primaryRaw !== null || backupRaw !== null) {
+    walletLedgerBlocked = true;
+    // Do not silently migrate stale split keys over a corrupt consolidated ledger.
+    // Preserve the damaged bytes and fail closed until the user restores a backup.
+    try {
+      const damaged = primaryRaw ?? backupRaw;
+      const recoveryKey = 'sane333:recovery:corrupt:line-wallet-ledger';
+      if (damaged && window.localStorage.getItem(recoveryKey) === null) {
+        window.localStorage.setItem(recoveryKey, JSON.stringify({ key: primaryRaw !== null ? LEDGER_KEY : LEDGER_BACKUP_KEY, capturedAt: new Date().toISOString(), raw: damaged }));
+      }
+    } catch { /* keep the original ledger keys untouched */ }
+    reportPersistenceIssue('wallet-corrupt', '钱包主账本和恢复副本均无法解析；已暂停钱包写入以免覆盖原始账单数据');
+    return makeEmptyLedger();
+  }
+
+  walletLedgerBlocked = false;
   const legacyBalance = Number(readJson<number>(BALANCE_KEY, 0));
   const legacyTransactions = readJson<WalletTransaction[]>(TX_KEY, []);
   const legacyTransfers = readJson<TransferSettlement[]>(TRANSFER_SETTLEMENT_KEY, []);
@@ -93,13 +144,17 @@ function readWalletLedger(): WalletLedger {
   };
 }
 
-/** One localStorage key is the commit boundary for balance, transaction and settlement state. */
+/** The primary ledger is authoritative; a verified mirror permits recovery from later corruption. */
 function persistWalletLedger(next: WalletLedger): boolean {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined' || walletLedgerBlocked) return false;
   try {
     const serialized = JSON.stringify(next);
     window.localStorage.setItem(LEDGER_KEY, serialized);
-    return window.localStorage.getItem(LEDGER_KEY) === serialized;
+    if (window.localStorage.getItem(LEDGER_KEY) !== serialized) return false;
+    // Write the recovery mirror only after the primary commit has been verified.
+    // A failed mirror write must not roll back a valid primary transaction.
+    try { window.localStorage.setItem(LEDGER_BACKUP_KEY, serialized); } catch { /* primary remains committed */ }
+    return true;
   } catch {
     return false;
   }
