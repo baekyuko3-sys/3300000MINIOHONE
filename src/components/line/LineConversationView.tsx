@@ -1607,6 +1607,7 @@ export function LineConversationView({
   useEffect(() => () => {
     activeAiAbortControllerRef.current?.abort();
     activeAiAbortControllerRef.current = null;
+    typingRequestIdRef.current = '';
   }, []);
   const [editingPersonaId, setEditingPersonaId] = useState<string | null>(null);
   const [showMyAvatar, setShowMyAvatar] = usePersistentState<boolean>(`line:show-my-avatar:${conversationStorageId}`, true);
