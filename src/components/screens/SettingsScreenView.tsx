@@ -16,7 +16,7 @@ import { listOpenAiCompatibleModels, testAiConnection } from '../../ai/aiEngine'
 import { generateImage, generateSpeech } from '../../ai/mediaEngine';
 import { generateImage as generateImageNew, useImagePresets } from '../../ai/imageGen';
 import { playAppSound, saveSoundFile, type AppSoundKind } from '../../store/soundManager';
-import { exportMedia, replaceMedia, getMediaStats } from '../../store/mediaVault';
+import { exportMedia, replaceMedia, getMediaStats, validateBackupMediaSection } from '../../store/mediaVault';
 import { reportPersistenceIssue, readPersistenceDiagnostics, type PersistenceDiagnostic } from '../../store/usePersistentState';
 import {
   getBackgroundHeartbeat,
@@ -377,13 +377,7 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
       if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份缺少有效的 data 数据；没有修改本机数据');
       const entries = Object.entries(data as Record<string, unknown>).filter(([key]) => key.startsWith('phone:') || key.startsWith('line:'));
       if (!entries.length) throw new Error('备份里没有 phone:/line: 数据；没有修改本机数据');
-      const media = parsed.media === undefined ? {} : parsed.media;
-      if (!media || typeof media !== 'object' || Array.isArray(media)) throw new Error('备份媒体区格式错误；没有修改本机数据');
-      for (const [id, value] of Object.entries(media as Record<string, unknown>)) {
-        if (!id || typeof value !== 'string' || !/^data:[^;,]+(?:;[^,]*)?,/.test(value)) {
-          throw new Error('媒体文件格式无效：' + id + '；没有修改本机数据');
-        }
-      }
+      const media = validateBackupMediaSection(parsed.media, Object.prototype.hasOwnProperty.call(parsed, 'media'));
 
       const previous = new Map<string, string | null>();
       for (const [key] of entries) previous.set(key, localStorage.getItem(key));
@@ -398,8 +392,12 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
         }
         // The media vault is replaced in one IndexedDB transaction. Decode/validation
         // happens before that transaction, and clear+put commit or abort together.
-        const mediaCount = await replaceMedia(media as Record<string, string>);
-        if (mediaCount !== Object.keys(media).length) throw new Error('媒体恢复数量不匹配');
+        // Legacy backups did not contain a media section. Absence means preserve
+        // the current vault; only an explicit media object replaces it.
+        if (media !== null) {
+          const mediaCount = await replaceMedia(media);
+          if (mediaCount !== Object.keys(media).length) throw new Error('媒体恢复数量不匹配');
+        }
       } catch (restoreError) {
         let rollbackFailed = false;
         for (const key of changed.reverse()) {
@@ -419,7 +417,7 @@ export function SettingsScreenView({ onNavigate }: { onNavigate: (screen: Screen
       }
 
       window.dispatchEvent(new Event('sane333:data-restored'));
-      notify('备份已校验并恢复：' + entries.length + ' 项数据、' + Object.keys(media).length + ' 个媒体文件；正在重新载入');
+      notify('备份已校验并恢复：' + entries.length + ' 项数据、' + (media === null ? '旧版未包含媒体，已保留本机媒体' : Object.keys(media).length + ' 个媒体文件') + '；正在重新载入');
       window.setTimeout(() => window.location.reload(), 500);
     } catch (error) {
       reportPersistenceIssue('backup-import', '备份导入失败', error);

@@ -184,3 +184,19 @@ export async function replaceMedia(records: Record<string, string>): Promise<num
   });
   return prepared.length;
 }
+
+/** Missing media in a legacy backup means preserve the current vault; an explicit empty object means replace it with an empty vault. */
+export function validateBackupMediaSection(value: unknown, present: boolean): Record<string, string> | null {
+  if (!present) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('备份媒体区格式错误；没有修改本机数据');
+  }
+  const records: Record<string, string> = {};
+  for (const [id, dataUrl] of Object.entries(value as Record<string, unknown>)) {
+    if (!id || typeof dataUrl !== 'string' || !/^data:[^;,]+(?:;[^,]*)?,/.test(dataUrl)) {
+      throw new Error('媒体文件格式无效：' + id + '；没有修改本机数据');
+    }
+    records[id] = dataUrl;
+  }
+  return records;
+}
