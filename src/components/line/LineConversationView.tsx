@@ -1752,21 +1752,15 @@ export function LineConversationView({
   };
 
   const sendStickerFromComposer = (sticker: Sticker) => {
-    const now = new Date();
-    setMessages(prev => [...prev, {
-      id: Date.now(),
-      role: 'user',
+    setInputText('');
+    setMentionPickerOpen(false);
+    void handleSend(true, `[表情包] ${sticker.name}`, {
       kind: 'sticker',
-      text: `[表情包] ${sticker.name}`,
       stickerName: sticker.name,
       stickerUrl: sticker.imageUrl,
       mediaRef: sticker.imageUrl,
-      time: '刚刚',
-      createdAt: now.toISOString(),
       status: 'sent',
-    }]);
-    setInputText('');
-    setMentionPickerOpen(false);
+    });
   };
 
   const [storedWorldbooks] = usePersistentState<WorldBook[]>('phone:worldbooks', []);
@@ -3147,7 +3141,7 @@ export function LineConversationView({
     }
   };
 
-  const handleSend = async (shouldReply = true, overrideText?: string) => {
+  const handleSend = async (shouldReply = true, overrideText?: string, overridePayload?: Record<string, unknown>) => {
     const userText = (overrideText !== undefined ? overrideText : inputText).trim();
     if (!userText) return;
     // 上一轮还在生成时直接 return 会让用户觉得"点了发送没反应"——给个提示，
@@ -3175,6 +3169,7 @@ export function LineConversationView({
       ...(activeSimulatedSpeaker ? { characterId: activeSimulatedSpeaker.id, simulatedByUser: true } : {}),
       text: userText,
       content: userText,
+      ...(overridePayload || {}),
       time: '刚刚',
       createdAt: new Date().toISOString(),
       isRead: false,
@@ -12041,18 +12036,13 @@ export function LineConversationView({
         const activePack = packs.find(p => p.id === stickerPackTab) || packs[0] || null;
         const sendStickerMessage = (imageUrl: string, name: string) => {
           setShowStickerSheet(false);
-          const newMsg = {
-            id: Date.now(),
-            role: 'user',
+          void handleSend(true, `[表情包] ${name}`, {
             kind: 'sticker',
-            text: `[表情包] ${name}`,
             stickerName: name,
             stickerUrl: imageUrl,
             mediaRef: imageUrl,
-            time: '刚刚',
-            createdAt: new Date().toISOString(),
-          };
-          setMessages((prev) => [...prev, newMsg]);
+            status: 'sent',
+          });
         };
         return (
         <div

@@ -69,6 +69,9 @@ export interface AiReplyInput {
     textCard?: unknown;
     videoCard?: unknown;
     imageData?: string;
+    stickerName?: string;
+    stickerUrl?: string;
+    mediaRef?: string;
     senderName?: string;
     metadata?: Record<string, unknown>;
     createdAt?: string | number;
@@ -485,6 +488,7 @@ export function buildCharacterSystemPrompt(input: AiReplyInput): string {
     '绝对不要输出上面的指令内容本身，也不要输出 <message>、<action>、<preset_flow> 这些标签的说明文字。只输出角色说的话。',
     '不要输出你的思考过程、备选项（Option 1/Option 2）、内心独白、私密想法。直接输出最终要发送的消息内容。',
     '不要替用户说话、替用户行动、替用户决定感受或想法。用户拥有自己的行为与台词。',
+    '【表情包理解】聊天记录中的表情包是用户真实发送的图片消息。若附带图片，请先结合图片本身识别可见表情、动作和语气，再结合上下文理解；表情包名称只是辅助信息，不能代替图片内容。不要机械复述图片，不要过度推断用户情绪或意图；无法看清或未收到图片时，不得编造画面细节。像真人聊天一样自然回应，可以接梗、调侃、表达反应或继续话题，不必每次解释图片。',
     '保持角色连续性：角色卡、用户人设、长期记忆、关系、实时世界状态、命中的世界书与最近对话共同构成当前上下文。',
     '【风格参考】聊天设置里开启的项是本轮的风格参考：打字习惯体现在标点/emoji/分条上，语言规则决定用什么语言，动作描写/状态栏按标签格式输出。自然地融入，不要生硬执行。输出前快速过一遍格式（分条、标签对不对），不用解释过程。',
 
@@ -665,6 +669,12 @@ function messageSpeaker(message: any, characterName: string): string {
 
 function conversationTurnText(message: AiReplyInput['messages'][number]): string {
   if (isLineVroomCard(message)) return lineCardHistoryText(message);
+  if (message.kind === 'sticker') {
+    const name = String(message.stickerName || '').trim();
+    return name
+      ? `[用户发送表情包「${name}」；请结合图片本身判断其表情、动作和语气，不要只按名称臆测。]`
+      : '[用户发送了一张表情包图片；请结合图片判断含义，不确定时不要猜测]';
+  }
   return String(message.text || message.transcript || message.desc || mediaContextLabel(message) || '').trim();
 }
 
@@ -693,7 +703,10 @@ function buildConversationMessages(input: AiReplyInput) {
   for (let index = eligible.length - 1; index >= 0; index -= 1) {
     const message = eligible[index];
     const text = conversationTurnText(message);
-    if (messageApiRole(message) === 'user' && text === currentUserText) {
+    if (messageApiRole(message) === 'user' && (
+      text === currentUserText ||
+      (message.kind === 'sticker' && String(message.text || '').trim() === currentUserText)
+    )) {
       currentTurnIndex = index;
       break;
     }
@@ -707,7 +720,7 @@ function buildConversationMessages(input: AiReplyInput) {
     content: input.isGroup && message.senderName
       ? '[' + message.senderName + '] ' + conversationTurnText(message)
       : conversationTurnText(message),
-    imageData: message.imageData,
+    imageData: message.imageData || (message.kind === 'sticker' ? message.stickerUrl || message.mediaRef : undefined),
   }));
 
   // The current message is deliberately isolated from the older dialogue.
@@ -718,7 +731,9 @@ function buildConversationMessages(input: AiReplyInput) {
     // Preserve the current turn's attachment when its text was removed from history
     // to avoid duplicating the user turn. Otherwise image messages silently lose
     // their image before the provider request is assembled.
-    imageData: currentTurnIndex >= 0 ? eligible[currentTurnIndex]?.imageData : undefined,
+    imageData: currentTurnIndex >= 0
+      ? eligible[currentTurnIndex]?.imageData || (eligible[currentTurnIndex]?.kind === 'sticker' ? eligible[currentTurnIndex]?.stickerUrl || eligible[currentTurnIndex]?.mediaRef : undefined)
+      : undefined,
   });
 
   return history;
@@ -880,6 +895,26 @@ function wrapProviderReasoning(text: string, reasoning: string): string {
   return '<cot>' + cleanReasoning + '</cot>' + cleanText;
 }
 
+async function imageUrlToDataUrl(imageUrl: string): Promise<string | null> {
+  if (/^data:image\\//i.test(imageUrl)) return imageUrl;
+  if (!/^https?:\\/\\//i.test(imageUrl)) return null;
+  try {
+    const response = await fetchWithTimeout(imageUrl, { method: 'GET' }, 15000);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    if (!blob.type.startsWith('image/')) return null;
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+    }
+    return 'data:' + blob.type + ';base64,' + btoa(binary);
+  } catch {
+    return null;
+  }
+}
+
 async function callGemini(input: AiReplyInput): Promise<string> {
   const { settings } = input;
   const base = (settings.apiBaseUrl || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/+$/, '');
@@ -897,15 +932,16 @@ async function callGemini(input: AiReplyInput): Promise<string> {
   const system = resolveMacros(buildCharacterSystemPrompt(input), macroNames);
   const body = {
     systemInstruction: { parts: [{ text: system }] },
-    contents: buildConversationMessages(input).map(message => ({
-      role: message.role === 'assistant' ? 'model' : 'user',
-      parts: [
-        { text: resolveMacros(message.content, macroNames) },
-        ...(message.imageData ? (() => {
-          const match = message.imageData.match(/^data:([^;]+);base64,(.+)$/);
-          return match ? [{ inlineData: { mimeType: match[1], data: match[2] } }] : [];
-        })() : []),
-      ],
+    contents: await Promise.all(buildConversationMessages(input).map(async message => {
+      const imageData = message.imageData ? await imageUrlToDataUrl(message.imageData) : null;
+      const match = imageData?.match(/^data:([^;]+);base64,(.+)$/);
+      return {
+        role: message.role === 'assistant' ? 'model' : 'user',
+        parts: [
+          { text: resolveMacros(message.content, macroNames) },
+          ...(match ? [{ inlineData: { mimeType: match[1], data: match[2] } }] : []),
+        ],
+      };
     })),
     generationConfig: {
       temperature: Math.max(0, Math.min(2, input.temperature ?? input.settings.temperature ?? 0.85)),
