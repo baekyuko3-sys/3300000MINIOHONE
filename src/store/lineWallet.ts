@@ -131,7 +131,9 @@ async function commitWalletLedger<T>(mutate: (current: WalletLedger) => { next: 
     return changed.result;
   };
   try {
-    const lockManager = (navigator as Navigator & { locks?: { request: <R>(name: string, options: { mode: 'exclusive' }, callback: () => R) => Promise<R> } }).locks;
+    const lockManager = typeof navigator !== 'undefined'
+      ? (navigator as Navigator & { locks?: { request: <R>(name: string, options: { mode: 'exclusive' }, callback: () => R) => Promise<R> } }).locks
+      : undefined;
     if (lockManager?.request) return await lockManager.request(WALLET_LOCK_NAME, { mode: 'exclusive' }, execute);
     // Compatibility fallback: serialize this tab's operations. Cross-tab safety is provided
     // by Web Locks in current Chromium, Firefox and Safari; this fallback keeps older browsers usable.
