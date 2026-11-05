@@ -205,7 +205,10 @@ export function walletSendRedPacket(totalAmount: number, desc: string, operation
   if (!Array.isArray(sharesCents) || !sharesCents.length || sharesCents.some(value => !Number.isInteger(value) || value <= 0) || sharesCents.reduce((sum, value) => sum + value, 0) !== cents) return false;
   const result = commitWalletLedger(current => {
     const existing = findPacket(current, operationId);
-    if (existing) return { next: current, result: existing.sent === true && !existing.refunded && existing.totalCents === cents };
+    if (existing) {
+      const sameShares = Array.isArray(existing.sharesCents) && existing.sharesCents.length === sharesCents.length && existing.sharesCents.every((value, index) => value === sharesCents[index]);
+      return { next: current, result: existing.sent === true && !existing.refunded && existing.totalCents === cents && sameShares };
+    }
     if (current.balanceCents < cents) return null;
     const packet: PacketOperation = { id: operationId, claimed: [], refunded: false, sent: true, sharesCents: [...sharesCents], totalCents: cents, slots: {} };
     const transaction = makeTransaction({ type: 'redpacket_send', amount: -cents / 100, desc: desc || '发出红包' });
