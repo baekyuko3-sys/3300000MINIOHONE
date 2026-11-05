@@ -352,6 +352,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   };
 
   const generateMomentsPost = async () => {
+    if (isRefreshingMoments) return;
     let allowed: typeof importedCharacters = [];
     let allowedNpcs: ReturnType<typeof listPostableNpcs> = [];
     try {
@@ -381,6 +382,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     if (useNpc) {
       const pickedNpc = visibleNpcs[Math.floor(Math.random() * visibleNpcs.length)];
       if (!pickedNpc) { showToast('当前人设的朋友圈里没有可见的发帖人'); return; }
+      setMomentsGeneratingText('正在让 ' + pickedNpc.name + ' 发朋友圈…');
       setIsRefreshingMoments(true);
       showToast('正在让 NPC 发朋友圈…');
       try {
@@ -396,6 +398,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     }
     const source = visibleAllowed[Math.floor(Math.random() * visibleAllowed.length)];
     if (!source) { showToast('请先在朋友圈设置里允许至少一个角色发动态'); return; }
+    setMomentsGeneratingText('正在让 ' + source.name + ' 发朋友圈…');
     setIsRefreshingMoments(true);
     showToast('正在生成朋友圈…');
     try {
@@ -453,6 +456,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   };
 
   const generateNpcMomentsPost = async () => {
+    if (isRefreshingMoments) return;
     const visibleNpcs = listPostableNpcs(momentsSettings).filter(npc => {
       const isFriend = friendsList.some(f => !f.deleted && f.npcId === npc.id && (!f.personaId || f.personaId === effectivePersonaId));
       return isVisibleMomentAuthor('npc:' + npc.id, isFriend, npc.boundCharacterId || undefined);
@@ -463,6 +467,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     }
     const pickedNpc = visibleNpcs[Math.floor(Math.random() * visibleNpcs.length)];
     if (!pickedNpc) { showToast('当前人设的朋友圈里没有可见的 NPC'); return; }
+      setMomentsGeneratingText('正在让 ' + pickedNpc.name + ' 发朋友圈…');
     setIsRefreshingMoments(true);
     showToast('正在让 NPC 发朋友圈…');
     try {
@@ -779,6 +784,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
 
   // Moments refresh state
   const [isRefreshingMoments, setIsRefreshingMoments] = useState(false);
+  const [momentsGeneratingText, setMomentsGeneratingText] = useState('正在生成朋友圈…');
   const [isRefreshingComments, setIsRefreshingComments] = useState(false);
   const [generatingCommentsPostId, setGeneratingCommentsPostId] = useState<string | null>(null);
   const [commentActionTarget, setCommentActionTarget] = useState<{ postId: string; comment: MomentComment } | null>(null);
@@ -2250,6 +2256,17 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
             </div>
           </div>
 
+          {isRefreshingMoments && (
+            <div className="mx-1 mb-2 flex items-center justify-center gap-2 rounded-2xl bg-[#faf3f5] border border-[#f0dee3] px-3 py-3">
+              <span className="inline-flex gap-[3px]">
+                {[0, 1, 2].map((dot) => (
+                  <i key={dot} className="inline-block w-[5px] h-[5px] rounded-full bg-[#c4989a] animate-bounce" style={{ animationDelay: `${dot * 150}ms`, animationDuration: '1s' }} />
+                ))}
+              </span>
+              <span className="text-xs text-[#8d7078]">{momentsGeneratingText}</span>
+            </div>
+          )}
+
           {/* Posts List */}
           <div
             className={`pt-2 transition-opacity duration-300 ${
@@ -3249,9 +3266,9 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
                 <span className="block text-[10px] text-[#aaa] mt-0.5">AI 与发布偏好</span>
               </span>
             </button>
-            <button
+            <button disabled={isRefreshingMoments}
               type="button"
-              className="w-full flex items-center gap-3 py-3 px-1 border-b border-[#f3f3f4] text-left"
+              className="w-full flex items-center gap-3 py-3 px-1 border-b border-[#f3f3f4] text-left disabled:opacity-50"
               onClick={() => {
                 setMomentsMoreOpen(false);
                 void generateMomentsPost();
@@ -3809,10 +3826,10 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              <button
+              <button disabled={isRefreshingMoments}
                 type="button"
                 onClick={() => { setShowMomentsSettings(false); void generateMomentsPost(); }}
-                className="w-full py-2.5 rounded-xl bg-[#292724] text-white text-xs"
+                className="w-full py-2.5 rounded-xl bg-[#292724] text-white text-xs disabled:opacity-50"
               >
                 角色/NPC 发一条
               </button>

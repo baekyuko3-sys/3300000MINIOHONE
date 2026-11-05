@@ -601,3 +601,22 @@ test('one-tap character moment verifies the write instead of false success', asy
   assert.ok(!source.includes('setMomentsPosts(prev => [newAiPost, ...prev])'));
 });
 
+test('moments generation shows a persistent on-screen indicator, not a blank feed', async () => {
+  // The 1.8s toast plus dimming an (often empty) list to 35% left the screen
+  // blank for the whole 10-60s generation. While generating, the feed must
+  // show a visible card with who is posting, and the one-tap buttons must
+  // be disabled so a second tap cannot start a duplicate generation.
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/components/line/LineAppView.tsx', import.meta.url), 'utf8');
+  assert.ok(source.includes('momentsGeneratingText'));
+  assert.ok(source.includes("{isRefreshingMoments && ("));
+  assert.ok(source.includes('{momentsGeneratingText}'));
+  assert.ok(source.includes("setMomentsGeneratingText('正在让 ' + source.name + ' 发朋友圈…')"));
+  assert.ok(source.includes("setMomentsGeneratingText('正在让 ' + pickedNpc.name + ' 发朋友圈…')"));
+  assert.ok(source.includes('disabled={isRefreshingMoments}'));
+  assert.ok(source.includes('if (isRefreshingMoments) return;'));
+  // The indicator must sit above the dimming posts list, not inside it,
+  // or it would dim to 35% with the list.
+  assert.ok(source.indexOf('{momentsGeneratingText}') < source.indexOf("isRefreshingMoments ? 'opacity-35'"));
+});
+
