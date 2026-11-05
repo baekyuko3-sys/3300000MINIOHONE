@@ -171,12 +171,34 @@ export interface FamilyCard {
   monthlyLimit: number;
   spentThisMonth: number;
   createdAt: string;
+  /** Local calendar month for spentThisMonth; absent on legacy cards. */
+  monthKey?: string;
 }
 
 const FAMILY_KEY = 'line:wallet-family-cards';
 
+export function currentFamilyCardMonth(date = new Date()): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Preserve legacy spend once, then reset the monthly counter when the calendar month changes. */
+export function normalizeFamilyCardsForMonth(cards: FamilyCard[], monthKey: string): FamilyCard[] {
+  return cards.map(card => {
+    // Legacy cards have no month marker. Preserve their existing value as the
+    // current month's spend rather than unexpectedly erasing user data.
+    if (!card.monthKey) return { ...card, monthKey };
+    if (card.monthKey !== monthKey) return { ...card, spentThisMonth: 0, monthKey };
+    return card;
+  });
+}
+
 export function getFamilyCards(): FamilyCard[] {
-  return readPersistentState<FamilyCard[]>(FAMILY_KEY, []);
+  const stored = readPersistentState<FamilyCard[]>(FAMILY_KEY, []);
+  const normalized = normalizeFamilyCardsForMonth(stored, currentFamilyCardMonth());
+  if (normalized.some((card, index) => card.monthKey !== stored[index]?.monthKey || card.spentThisMonth !== stored[index]?.spentThisMonth)) {
+    writeWalletState(FAMILY_KEY, normalized);
+  }
+  return normalized;
 }
 
 export function addFamilyCard(holderName: string, monthlyLimit: number, holderAvatar?: string): FamilyCard {
@@ -186,6 +208,7 @@ export function addFamilyCard(holderName: string, monthlyLimit: number, holderAv
     holderAvatar,
     monthlyLimit,
     spentThisMonth: 0,
+    monthKey: currentFamilyCardMonth(),
     createdAt: new Date().toISOString(),
   };
   const list = getFamilyCards();
