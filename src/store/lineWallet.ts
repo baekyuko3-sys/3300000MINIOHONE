@@ -1,162 +1,315 @@
 import { readPersistentState } from './usePersistentState';
 
-function writeWalletState<T>(key: string, value: T): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch { /* ignore */ }
-}
-
 export interface WalletTransaction {
   id: string;
   type: 'redpacket_send' | 'redpacket_grab' | 'topup' | 'transfer';
-  amount: number; // 正数=收入，负数=支出
+  amount: number;
   desc: string;
-  counterparty?: string; // 对方名字
+  counterparty?: string;
   createdAt: string;
 }
 
+type TransferSettlement = { id: string; status: 'sent' | 'accepted' | 'refunded'; amount: number; counterparty: string; updatedAt: string };
+type PacketOperation = {
+  id: string;
+  claimed: string[];
+  refunded: boolean;
+  sent?: boolean;
+  slots?: Record<string, number>;
+  sharesCents?: number[];
+  totalCents?: number;
+};
+type WalletLedger = {
+  version: 1;
+  balanceCents: number;
+  transactions: WalletTransaction[];
+  transfers: TransferSettlement[];
+  packets: PacketOperation[];
+};
+
+const LEDGER_KEY = 'line:wallet-ledger-v1';
 const BALANCE_KEY = 'line:wallet-balance';
 const TX_KEY = 'line:wallet-transactions';
+const TRANSFER_SETTLEMENT_KEY = 'line:wallet-transfer-settlements';
+const PACKET_OPERATION_KEY = 'line:wallet-redpacket-operations';
+
+function readJson<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) as T : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function makeEmptyLedger(): WalletLedger {
+  return { version: 1, balanceCents: 0, transactions: [], transfers: [], packets: [] };
+}
+
+/** Read the consolidated ledger, migrating the legacy split keys once when necessary. */
+function readWalletLedger(): WalletLedger {
+  if (typeof window === 'undefined') return makeEmptyLedger();
+  try {
+    const raw = window.localStorage.getItem(LEDGER_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<WalletLedger>;
+      if (parsed?.version === 1 && Number.isFinite(parsed.balanceCents) && Array.isArray(parsed.transactions) && Array.isArray(parsed.transfers) && Array.isArray(parsed.packets)) {
+        return {
+          version: 1,
+          balanceCents: Math.max(0, Math.round(Number(parsed.balanceCents))),
+          transactions: parsed.transactions,
+          transfers: parsed.transfers,
+          packets: parsed.packets,
+        };
+      }
+    }
+  } catch { /* fall through to legacy migration */ }
+
+  const legacyBalance = Number(readJson<number>(BALANCE_KEY, 0));
+  const legacyTransactions = readJson<WalletTransaction[]>(TX_KEY, []);
+  const legacyTransfers = readJson<TransferSettlement[]>(TRANSFER_SETTLEMENT_KEY, []);
+  const legacyPackets = readJson<PacketOperation[]>(PACKET_OPERATION_KEY, []);
+  return {
+    version: 1,
+    balanceCents: Number.isFinite(legacyBalance) ? Math.max(0, Math.round(legacyBalance * 100)) : 0,
+    transactions: Array.isArray(legacyTransactions) ? legacyTransactions : [],
+    transfers: Array.isArray(legacyTransfers) ? legacyTransfers : [],
+    packets: Array.isArray(legacyPackets) ? legacyPackets : [],
+  };
+}
+
+/** One localStorage key is the commit boundary for balance, transaction and settlement state. */
+function persistWalletLedger(next: WalletLedger): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const serialized = JSON.stringify(next);
+    window.localStorage.setItem(LEDGER_KEY, serialized);
+    return window.localStorage.getItem(LEDGER_KEY) === serialized;
+  } catch {
+    return false;
+  }
+}
+
+function notifyWalletUpdated(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
+}
+
+function makeTransaction(tx: Omit<WalletTransaction, 'id' | 'createdAt'>): WalletTransaction {
+  return {
+    ...tx,
+    id: 'tx-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function commitWalletLedger<T>(mutate: (current: WalletLedger) => { next: WalletLedger; result: T } | null): T | null {
+  const current = readWalletLedger();
+  const changed = mutate(current);
+  if (!changed || !persistWalletLedger(changed.next)) return null;
+  notifyWalletUpdated();
+  return changed.result;
+}
 
 export function getWalletBalance(): number {
-  return readPersistentState<number>(BALANCE_KEY, 0);
+  return readWalletLedger().balanceCents / 100;
 }
 
 export function setWalletBalance(amount: number): void {
-  writeWalletState(BALANCE_KEY, Math.max(0, Math.round(amount * 100) / 100));
+  if (!Number.isFinite(amount) || amount < 0) return;
+  commitWalletLedger(current => ({
+    next: { ...current, balanceCents: Math.round(amount * 100) },
+    result: undefined,
+  }));
 }
 
 export function getWalletTransactions(): WalletTransaction[] {
-  return readPersistentState<WalletTransaction[]>(TX_KEY, []);
+  return readWalletLedger().transactions;
 }
 
-export function addWalletTransaction(tx: Omit<WalletTransaction, 'id' | 'createdAt'>): WalletTransaction {
-  const full: WalletTransaction = {
-    ...tx,
-    id: 'tx-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    createdAt: new Date().toISOString(),
-  };
-  const list = getWalletTransactions();
-  writeWalletState(TX_KEY, [full, ...list].slice(0, 200));
-  // 同步更新余额
-  setWalletBalance(getWalletBalance() + tx.amount);
-  window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
-  return full;
+export function addWalletTransaction(tx: Omit<WalletTransaction, 'id' | 'createdAt'>): WalletTransaction | null {
+  if (!Number.isFinite(tx.amount) || Math.round(tx.amount * 100) === 0) return null;
+  return commitWalletLedger(current => {
+    const delta = Math.round(tx.amount * 100);
+    const balanceCents = current.balanceCents + delta;
+    if (balanceCents < 0) return null;
+    const full = makeTransaction({ ...tx, amount: delta / 100 });
+    return {
+      next: { ...current, balanceCents, transactions: [full, ...current.transactions].slice(0, 200) },
+      result: full,
+    };
+  });
 }
 
-// 转账结算采用独立追加式状态，保留既有余额、亲情卡及历史流水。
-type TransferSettlement = { id: string; status: 'sent' | 'accepted' | 'refunded'; amount: number; counterparty: string; updatedAt: string };
-const TRANSFER_SETTLEMENT_KEY = 'line:wallet-transfer-settlements';
-function getTransferSettlements(): TransferSettlement[] { return readPersistentState<TransferSettlement[]>(TRANSFER_SETTLEMENT_KEY, []); }
-function saveTransferSettlement(item: TransferSettlement): void {
-  const all = getTransferSettlements();
-  writeWalletState(TRANSFER_SETTLEMENT_KEY, [item, ...all.filter(entry => entry.id !== item.id)].slice(0, 500));
+function findTransfer(current: WalletLedger, id: string): TransferSettlement | undefined {
+  return current.transfers.find(entry => entry.id === id);
 }
+
 export function walletSendTransfer(amount: number, counterparty: string, desc = '', operationId?: string): boolean {
-  if (!Number.isFinite(amount) || amount <= 0 || !operationId) return false;
+  if (!Number.isFinite(amount) || amount <= 0 || !operationId?.trim()) return false;
   const cents = Math.round(amount * 100);
   if (cents <= 0) return false;
-  const existing = getTransferSettlements().find(entry => entry.id === operationId);
-  if (existing) return existing.status !== 'refunded';
-  if (Math.round(getWalletBalance() * 100) < cents) return false;
-  const normalizedAmount = cents / 100;
-  addWalletTransaction({ type: 'transfer', amount: -normalizedAmount, desc: desc || '转账支出', counterparty: counterparty || undefined });
-  saveTransferSettlement({ id: operationId, status: 'sent', amount: normalizedAmount, counterparty, updatedAt: new Date().toISOString() });
-  return true;
-}
-export function walletSettleTransfer(operationId: string, decision: 'accepted' | 'rejected'): boolean {
-  const item = getTransferSettlements().find(entry => entry.id === operationId);
-  if (!item || item.status !== 'sent') return false;
-  if (decision === 'rejected') {
-    addWalletTransaction({ type: 'transfer', amount: item.amount, desc: '转账拒收退款', counterparty: item.counterparty });
-    saveTransferSettlement({ ...item, status: 'refunded', updatedAt: new Date().toISOString() });
-  } else saveTransferSettlement({ ...item, status: 'accepted', updatedAt: new Date().toISOString() });
-  return true;
+  const result = commitWalletLedger(current => {
+    const existing = findTransfer(current, operationId);
+    if (existing) return { next: current, result: existing.status !== 'refunded' && existing.amount === cents / 100 };
+    if (current.balanceCents < cents) return null;
+    const now = new Date().toISOString();
+    const settlement: TransferSettlement = { id: operationId, status: 'sent', amount: cents / 100, counterparty, updatedAt: now };
+    const transaction = makeTransaction({ type: 'transfer', amount: -cents / 100, desc: desc || '转账支出', counterparty: counterparty || undefined });
+    return {
+      next: {
+        ...current,
+        balanceCents: current.balanceCents - cents,
+        transactions: [transaction, ...current.transactions].slice(0, 200),
+        transfers: [settlement, ...current.transfers.filter(entry => entry.id !== operationId)].slice(0, 500),
+      },
+      result: true,
+    };
+  });
+  return result === true;
 }
 
-export function walletSendRedPacket(totalAmount: number, desc: string, operationId?: string): boolean {
-  if (!Number.isFinite(totalAmount) || totalAmount <= 0) return false;
+export function walletSettleTransfer(operationId: string, decision: 'accepted' | 'rejected'): boolean {
+  if (!operationId || (decision !== 'accepted' && decision !== 'rejected')) return false;
+  const result = commitWalletLedger(current => {
+    const item = findTransfer(current, operationId);
+    if (!item) return null;
+    if (item.status !== 'sent') return { next: current, result: item.status === (decision === 'accepted' ? 'accepted' : 'refunded') };
+    const now = new Date().toISOString();
+    const updated: TransferSettlement = { ...item, status: decision === 'accepted' ? 'accepted' : 'refunded', updatedAt: now };
+    if (decision === 'accepted') {
+      return { next: { ...current, transfers: [updated, ...current.transfers.filter(entry => entry.id !== operationId)].slice(0, 500) }, result: true };
+    }
+    const transaction = makeTransaction({ type: 'transfer', amount: item.amount, desc: '转账拒收退款', counterparty: item.counterparty || undefined });
+    return {
+      next: {
+        ...current,
+        balanceCents: current.balanceCents + Math.round(item.amount * 100),
+        transactions: [transaction, ...current.transactions].slice(0, 200),
+        transfers: [updated, ...current.transfers.filter(entry => entry.id !== operationId)].slice(0, 500),
+      },
+      result: true,
+    };
+  });
+  return result === true;
+}
+
+function findPacket(current: WalletLedger, id: string): PacketOperation | undefined {
+  return current.packets.find(entry => entry.id === id);
+}
+
+export function walletSendRedPacket(totalAmount: number, desc: string, operationId?: string, sharesCents?: number[]): boolean {
+  if (!Number.isFinite(totalAmount) || totalAmount <= 0 || !operationId?.trim()) return false;
   const cents = Math.round(totalAmount * 100);
   if (cents <= 0) return false;
-  const amount = cents / 100;
-  const ops = getPacketOperations();
-  if (operationId) {
-    const existing = ops.find(item => item.id === operationId);
-    if (existing) return existing.sent === true && !existing.refunded;
-  }
-  if (Math.round(getWalletBalance() * 100) < cents) return false;
-  addWalletTransaction({ type: 'redpacket_send', amount: -amount, desc: desc || '发出红包' });
-  if (operationId) {
-    const existing = ops.find(item => item.id === operationId);
-    savePacketOperation({ ...(existing || { id: operationId, claimed: [], refunded: false }), sent: true });
-  }
-  return true;
+  if (!Array.isArray(sharesCents) || !sharesCents.length || sharesCents.some(value => !Number.isInteger(value) || value <= 0) || sharesCents.reduce((sum, value) => sum + value, 0) !== cents) return false;
+  const result = commitWalletLedger(current => {
+    const existing = findPacket(current, operationId);
+    if (existing) return { next: current, result: existing.sent === true && !existing.refunded && existing.totalCents === cents };
+    if (current.balanceCents < cents) return null;
+    const packet: PacketOperation = { id: operationId, claimed: [], refunded: false, sent: true, sharesCents: [...sharesCents], totalCents: cents, slots: {} };
+    const transaction = makeTransaction({ type: 'redpacket_send', amount: -cents / 100, desc: desc || '发出红包' });
+    return {
+      next: {
+        ...current,
+        balanceCents: current.balanceCents - cents,
+        transactions: [transaction, ...current.transactions].slice(0, 200),
+        packets: [packet, ...current.packets.filter(entry => entry.id !== operationId)].slice(0, 500),
+      },
+      result: true,
+    };
+  });
+  return result === true;
 }
 
-// 红包领取和退款用消息 ID + 领取者 ID 做幂等保护。
-type PacketOperation = { id: string; claimed: string[]; refunded: boolean; sent?: boolean; slots?: Record<string, number> };
-const PACKET_OPERATION_KEY = 'line:wallet-redpacket-operations';
-function getPacketOperations(): PacketOperation[] { return readPersistentState<PacketOperation[]>(PACKET_OPERATION_KEY, []); }
-function savePacketOperation(item: PacketOperation): void {
-  const all = getPacketOperations();
-  writeWalletState(PACKET_OPERATION_KEY, [item, ...all.filter(x => x.id !== item.id)].slice(0, 500));
-}
-function reservePacketSlot(packetId: string, claimId: string, slotIndex: number): PacketOperation | null {
-  if (!packetId || !claimId || !Number.isInteger(slotIndex) || slotIndex < 0) return null;
-  const ops = getPacketOperations();
-  const op = ops.find(x => x.id === packetId) || { id: packetId, claimed: [], refunded: false };
-  const slots = op.slots || {};
-  if (op.refunded || op.claimed.includes(claimId) || Object.entries(slots).some(([id, slot]) => id !== claimId && slot === slotIndex)) return null;
-  const next = { ...op, slots: { ...slots, [claimId]: slotIndex } };
-  savePacketOperation(next);
-  return next;
-}
-/** 原子化记录 NPC 领取份额；NPC 不会因此增加用户钱包余额。 */
+/** Reserve a unique share for an NPC on a packet sent by this wallet. */
 export function walletRegisterRedPacketClaim(packetId: string, claimId: string, slotIndex: number): boolean {
-  const op = reservePacketSlot(packetId, claimId, slotIndex);
-  if (!op) return false;
-  if (!op.claimed.includes(claimId)) savePacketOperation({ ...op, claimed: [...op.claimed, claimId] });
-  return true;
+  if (!packetId || !claimId || !Number.isInteger(slotIndex) || slotIndex < 0) return false;
+  const result = commitWalletLedger(current => {
+    const packet = findPacket(current, packetId);
+    if (!packet?.sent || packet.refunded || !packet.sharesCents || slotIndex >= packet.sharesCents.length) return null;
+    const existingSlot = packet.slots?.[claimId];
+    if (packet.claimed.includes(claimId)) return { next: current, result: existingSlot === slotIndex };
+    if (Object.entries(packet.slots || {}).some(([id, slot]) => id !== claimId && slot === slotIndex)) return null;
+    const nextPacket: PacketOperation = {
+      ...packet,
+      slots: { ...(packet.slots || {}), [claimId]: slotIndex },
+      claimed: [...packet.claimed, claimId],
+    };
+    return {
+      next: { ...current, packets: [nextPacket, ...current.packets.filter(entry => entry.id !== packetId)].slice(0, 500) },
+      result: true,
+    };
+  });
+  return result === true;
 }
+
+/** Claiming an incoming packet credits balance and records the claim in one commit. */
 export function walletClaimRedPacket(packetId: string, claimId: string, amount: number, from: string, slotIndex?: number): boolean {
-  if (!packetId || !claimId || !Number.isFinite(amount) || amount <= 0) return false;
+  if (!packetId || !claimId || !Number.isFinite(amount) || amount <= 0 || !Number.isInteger(slotIndex) || (slotIndex as number) < 0) return false;
   const cents = Math.round(amount * 100);
   if (cents <= 0) return false;
-  const ops = getPacketOperations();
-  const existing = ops.find(x => x.id === packetId);
-  if (existing?.refunded || existing?.claimed.includes(claimId)) return false;
-  const op = slotIndex === undefined ? (existing || { id: packetId, claimed: [], refunded: false }) : reservePacketSlot(packetId, claimId, slotIndex);
-  if (!op) return false;
-  addWalletTransaction({ type: 'redpacket_grab', amount: cents / 100, desc: `抢到${from}的红包`, counterparty: from });
-  savePacketOperation({ ...op, claimed: [...op.claimed, claimId] });
-  return true;
+  const result = commitWalletLedger(current => {
+    const packet = findPacket(current, packetId);
+    if (packet?.sent || packet?.refunded || packet?.claimed.includes(claimId)) return null;
+    const slot = slotIndex as number;
+    if (packet && Object.entries(packet.slots || {}).some(([id, used]) => id !== claimId && used === slot)) return null;
+    const nextPacket: PacketOperation = {
+      ...(packet || { id: packetId, claimed: [], refunded: false }),
+      slots: { ...(packet?.slots || {}), [claimId]: slot },
+      claimed: [...(packet?.claimed || []), claimId],
+    };
+    const transaction = makeTransaction({ type: 'redpacket_grab', amount: cents / 100, desc: `抢到${from}的红包`, counterparty: from });
+    return {
+      next: {
+        ...current,
+        balanceCents: current.balanceCents + cents,
+        transactions: [transaction, ...current.transactions].slice(0, 200),
+        packets: [nextPacket, ...current.packets.filter(entry => entry.id !== packetId)].slice(0, 500),
+      },
+      result: true,
+    };
+  });
+  return result === true;
 }
-export function walletRefundRedPacket(packetId: string, amount: number, desc = '未领取红包退回', sharesCents?: number[], claimedSlots: number[] = []): boolean {
-  if (!packetId || !Number.isFinite(amount) || amount <= 0) return false;
-  const ops = getPacketOperations();
-  const op = ops.find(x => x.id === packetId) || { id: packetId, claimed: [], refunded: false };
-  if (op.refunded) return true;
-  const cents = sharesCents
-    ? sharesCents.reduce((sum, share, index) => sum + (Object.values(op.slots || {}).includes(index) || claimedSlots.includes(index) ? 0 : Math.max(0, Math.round(Number(share) || 0))), 0)
-    : Math.round(amount * 100);
-  if (cents <= 0) { savePacketOperation({ ...op, refunded: true }); return true; }
-  // 同步先标记结算，阻止同一事件重复退款；钱包操作在同一 JS 调用栈内完成。
-  savePacketOperation({ ...op, refunded: true });
-  addWalletTransaction({ type: 'redpacket_send', amount: cents / 100, desc });
-  return true;
+
+/** Only the original sender may refund; refund amount is derived from the stored share table. */
+export function walletRefundRedPacket(packetId: string, _amount: number, desc = '未领取红包退回', _sharesCents?: number[], claimedSlots: number[] = []): boolean {
+  if (!packetId) return false;
+  const result = commitWalletLedger(current => {
+    const packet = findPacket(current, packetId);
+    if (!packet?.sent || !packet.sharesCents) return null;
+    if (packet.refunded) return { next: current, result: true };
+    const occupied = new Set<number>([
+      ...Object.values(packet.slots || {}),
+      ...claimedSlots.filter(Number.isInteger),
+    ]);
+    const refundCents = packet.sharesCents.reduce((sum, share, index) => sum + (occupied.has(index) ? 0 : share), 0);
+    const updated: PacketOperation = { ...packet, refunded: true };
+    const transactions = refundCents > 0
+      ? [makeTransaction({ type: 'redpacket_send', amount: refundCents / 100, desc }), ...current.transactions].slice(0, 200)
+      : current.transactions;
+    return {
+      next: {
+        ...current,
+        balanceCents: current.balanceCents + refundCents,
+        transactions,
+        packets: [updated, ...current.packets.filter(entry => entry.id !== packetId)].slice(0, 500),
+      },
+      result: true,
+    };
+  });
+  return result === true;
 }
+
 export function walletGrabRedPacket(amount: number, from: string): void {
+  if (!Number.isFinite(amount) || amount <= 0) return;
   addWalletTransaction({ type: 'redpacket_grab', amount, desc: `抢到${from}的红包`, counterparty: from });
 }
 
-// 充值（虚拟）
 export function walletTopup(amount: number): void {
-  addWalletTransaction({
-    type: 'topup',
-    amount,
-    desc: '钱包充值',
-  });
+  if (!Number.isFinite(amount) || amount <= 0) return;
+  addWalletTransaction({ type: 'topup', amount: Math.round(amount * 100) / 100, desc: '钱包充值' });
 }
 
 export function formatWalletAmount(amount: number): string {
