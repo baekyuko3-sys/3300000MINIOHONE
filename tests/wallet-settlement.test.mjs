@@ -13,6 +13,7 @@ import {
   addFamilyCard,
   getFamilyCards,
   getWalletPacketClaims,
+  getWalletTransferStatus,
 } from '../src/store/lineWallet.ts';
 
 function installStorage() {
@@ -41,6 +42,14 @@ test('transfer debit, transaction and pending settlement commit together', async
   assert.equal(await walletSendTransfer(25.50, '角色', '晚餐', 'transfer-1'), true);
   assert.equal(getWalletBalance(), 74.50);
   assert.equal(getWalletTransactions().length, 1);
+});
+
+test('transfer status remains queryable for chat-card recovery', async () => {
+  await setWalletBalance(20);
+  assert.equal(await walletSendTransfer(5, '角色', '', 'transfer-recovery'), true);
+  assert.equal(getWalletTransferStatus('transfer-recovery'), 'sent');
+  assert.equal(await walletSettleTransfer('transfer-recovery', 'accepted'), true);
+  assert.equal(getWalletTransferStatus('transfer-recovery'), 'accepted');
 });
 
 test('transfer cannot overspend and rejected transfer refunds exactly once', async () => {

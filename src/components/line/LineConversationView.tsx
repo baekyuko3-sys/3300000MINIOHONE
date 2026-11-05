@@ -8,7 +8,7 @@ import { generateSpeech, transcribeAudio } from '../../ai/mediaEngine';
 import { readAppSettings } from '../../store/appSettings';
 import type { ChannelAiSettings } from '../../store/appSettings';
 import { getMedia, putMedia } from '../../store/mediaVault';
-import { walletSendRedPacket, walletSendTransfer, walletClaimRedPacket, walletRegisterRedPacketClaim, walletRefundRedPacket, walletSettleTransfer, getFamilyCards, getWalletPacketClaims } from '../../store/lineWallet';
+import { walletSendRedPacket, walletSendTransfer, walletClaimRedPacket, walletRegisterRedPacketClaim, walletRefundRedPacket, walletSettleTransfer, getFamilyCards, getWalletPacketClaims, getWalletTransferStatus } from '../../store/lineWallet';
 import { VroomImage } from '../VroomImage';
 import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory, updateCharacterMemoryItem, deleteCharacterMemoryItem, clearCharacterMemory, clearAllCharacterMemoryVariants } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
@@ -1038,6 +1038,42 @@ export function LineConversationView({
   useEffect(() => {
     if (!moneySheetType) walletActionLockRef.current = false;
   }, [moneySheetType]);
+  // Reconcile transfer chat cards from the authoritative wallet ledger.
+  // A tab can close after debiting the wallet but before AI settlement or chat-card
+  // persistence; accepted/refunded state is restored on reopen, stale pending
+  // transfers are safely refunded after the AI request timeout window.
+  useEffect(() => {
+    let cancelled = false;
+    const reconcileTransfers = async () => {
+      for (const message of messages) {
+        if (cancelled || message.kind !== 'transfer') continue;
+        const meta = message.metadata && typeof message.metadata === 'object' ? message.metadata : {};
+        const operationId = String(meta.settlementId || message.id || '');
+        if (!operationId) continue;
+        let status = getWalletTransferStatus(operationId);
+        if (status === 'sent') {
+          const createdAt = Date.parse(String(meta.createdAt || message.createdAt || ''));
+          if (Number.isFinite(createdAt) && Date.now() - createdAt >= 120_000) {
+            await walletSettleTransfer(operationId, 'rejected');
+            status = getWalletTransferStatus(operationId);
+          }
+        }
+        if (cancelled || (status !== 'accepted' && status !== 'refunded')) continue;
+        const currentStatus = String((message as any).transferStatus || meta.status || 'sent');
+        if (currentStatus === status) continue;
+        const updatedMeta = { ...meta, status };
+        const patch = { transferStatus: status, metadata: updatedMeta };
+        const persisted = updateLineMessage(conversationStorageId, message.id, patch as any);
+        if (!persisted.some((item: any) => String(item.id) === String(message.id) &&
+          String((item as any).transferStatus || (item as any).metadata?.status) === status)) continue;
+        setMessages(prev => prev.map((item: any) => String(item.id) === String(message.id) ? { ...item, ...patch } : item));
+      }
+    };
+    void reconcileTransfers();
+    const timer = window.setInterval(() => { void reconcileTransfers(); }, 60_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [conversationStorageId, messages]);
+
   // Reconcile packet claim slots from the authoritative wallet ledger.
   // If a chat-card write failed after a successful claim/reservation, rebuild the
   // missing claim row on next render instead of letting the UI disagree forever.
@@ -4203,7 +4239,8 @@ export function LineConversationView({
       transferAmount: amount,
       transferNote: note,
       transferStatus: 'sent',
-      metadata: { amount, note, status: 'sent', settlementId: transferId },
+      createdAt: new Date().toISOString(),
+      metadata: { amount, note, status: 'sent', settlementId: transferId, createdAt: new Date().toISOString() },
     };
     const persistedTransferMessages = appendLineMessage(conversationStorageId, newMsg);
     if (!persistedTransferMessages.some((item: any) => String(item.id) === String(transferId))) {

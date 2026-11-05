@@ -181,6 +181,12 @@ function findTransfer(current: WalletLedger, id: string): TransferSettlement | u
   return current.transfers.find(entry => entry.id === id);
 }
 
+/** Read authoritative transfer state for chat-card recovery after a failed UI write. */
+export function getWalletTransferStatus(operationId: string): TransferSettlement['status'] | null {
+  if (!operationId) return null;
+  return findTransfer(readWalletLedger(), operationId)?.status || null;
+}
+
 export async function walletSendTransfer(amount: number, counterparty: string, desc = '', operationId?: string, familyHolderName?: string): Promise<boolean> {
   if (!Number.isFinite(amount) || amount <= 0 || !operationId?.trim()) return false;
   const cents = Math.round(amount * 100);
