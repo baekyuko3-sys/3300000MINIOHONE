@@ -33,6 +33,7 @@ type WalletLedger = {
   transactions: WalletTransaction[];
   transfers: TransferSettlement[];
   packets: PacketOperation[];
+  familyCards: FamilyCard[];
 };
 
 const LEDGER_KEY = 'line:wallet-ledger-v1';
@@ -40,6 +41,8 @@ const BALANCE_KEY = 'line:wallet-balance';
 const TX_KEY = 'line:wallet-transactions';
 const TRANSFER_SETTLEMENT_KEY = 'line:wallet-transfer-settlements';
 const PACKET_OPERATION_KEY = 'line:wallet-redpacket-operations';
+const FAMILY_KEY = 'line:wallet-family-cards';
+const WALLET_LOCK_NAME = '33phone-wallet-ledger-v1';
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
@@ -52,7 +55,7 @@ function readJson<T>(key: string, fallback: T): T {
 }
 
 function makeEmptyLedger(): WalletLedger {
-  return { version: 1, balanceCents: 0, transactions: [], transfers: [], packets: [] };
+  return { version: 1, balanceCents: 0, transactions: [], transfers: [], packets: [], familyCards: [] };
 }
 
 /** Read the consolidated ledger, migrating the legacy split keys once when necessary. */
@@ -69,6 +72,7 @@ function readWalletLedger(): WalletLedger {
           transactions: parsed.transactions,
           transfers: parsed.transfers,
           packets: parsed.packets,
+          familyCards: Array.isArray(parsed.familyCards) ? parsed.familyCards : readJson<FamilyCard[]>(FAMILY_KEY, []),
         };
       }
     }
@@ -84,6 +88,7 @@ function readWalletLedger(): WalletLedger {
     transactions: Array.isArray(legacyTransactions) ? legacyTransactions : [],
     transfers: Array.isArray(legacyTransfers) ? legacyTransfers : [],
     packets: Array.isArray(legacyPackets) ? legacyPackets : [],
+    familyCards: readJson<FamilyCard[]>(FAMILY_KEY, []),
   };
 }
 
@@ -111,19 +116,28 @@ function makeTransaction(tx: Omit<WalletTransaction, 'id' | 'createdAt'>): Walle
   };
 }
 
-function commitWalletLedger<T>(mutate: (current: WalletLedger) => { next: WalletLedger; result: T } | null): T | null {
-  const current = readWalletLedger();
-  const changed = mutate(current);
-  if (!changed || !persistWalletLedger(changed.next)) return null;
-  notifyWalletUpdated();
-  return changed.result;
+async function commitWalletLedger<T>(mutate: (current: WalletLedger) => { next: WalletLedger; result: T } | null): Promise<T | null> {
+  if (typeof window === 'undefined' || !('locks' in navigator) || !navigator.locks?.request) return null;
+  try {
+    return await navigator.locks.request(WALLET_LOCK_NAME, { mode: 'exclusive' }, () => {
+      const current = readWalletLedger();
+      const changed = mutate(current);
+      if (!changed || !persistWalletLedger(changed.next)) return null;
+      // Keep legacy family-card readers in sync, but the ledger remains authoritative.
+      try { window.localStorage.setItem(FAMILY_KEY, JSON.stringify(changed.next.familyCards)); } catch { /* ledger commit already succeeded */ }
+      notifyWalletUpdated();
+      return changed.result;
+    });
+  } catch {
+    return null;
+  }
 }
 
 export function getWalletBalance(): number {
   return readWalletLedger().balanceCents / 100;
 }
 
-export function setWalletBalance(amount: number): void {
+export async function setWalletBalance(amount: number): Promise<void> {
   if (!Number.isFinite(amount) || amount < 0) return;
   commitWalletLedger(current => ({
     next: { ...current, balanceCents: Math.round(amount * 100) },
@@ -135,7 +149,7 @@ export function getWalletTransactions(): WalletTransaction[] {
   return readWalletLedger().transactions;
 }
 
-export function addWalletTransaction(tx: Omit<WalletTransaction, 'id' | 'createdAt'>): WalletTransaction | null {
+export async function addWalletTransaction(tx: Omit<WalletTransaction, 'id' | 'createdAt'>): Promise<WalletTransaction | null> {
   if (!Number.isFinite(tx.amount) || Math.round(tx.amount * 100) === 0) return null;
   return commitWalletLedger(current => {
     const delta = Math.round(tx.amount * 100);
@@ -153,7 +167,7 @@ function findTransfer(current: WalletLedger, id: string): TransferSettlement | u
   return current.transfers.find(entry => entry.id === id);
 }
 
-export function walletSendTransfer(amount: number, counterparty: string, desc = '', operationId?: string): boolean {
+export async function walletSendTransfer(amount: number, counterparty: string, desc = '', operationId?: string): Promise<boolean> {
   if (!Number.isFinite(amount) || amount <= 0 || !operationId?.trim()) return false;
   const cents = Math.round(amount * 100);
   if (cents <= 0) return false;
@@ -177,7 +191,7 @@ export function walletSendTransfer(amount: number, counterparty: string, desc = 
   return result === true;
 }
 
-export function walletSettleTransfer(operationId: string, decision: 'accepted' | 'rejected'): boolean {
+export async function walletSettleTransfer(operationId: string, decision: 'accepted' | 'rejected'): Promise<boolean> {
   if (!operationId || (decision !== 'accepted' && decision !== 'rejected')) return false;
   const result = commitWalletLedger(current => {
     const item = findTransfer(current, operationId);
@@ -206,7 +220,7 @@ function findPacket(current: WalletLedger, id: string): PacketOperation | undefi
   return current.packets.find(entry => entry.id === id);
 }
 
-export function walletSendRedPacket(totalAmount: number, desc: string, operationId?: string, sharesCents?: number[]): boolean {
+export async function walletSendRedPacket(totalAmount: number, desc: string, operationId?: string, sharesCents?: number[]): Promise<boolean> {
   if (!Number.isFinite(totalAmount) || totalAmount <= 0 || !operationId?.trim()) return false;
   const cents = Math.round(totalAmount * 100);
   if (cents <= 0) return false;
@@ -234,7 +248,7 @@ export function walletSendRedPacket(totalAmount: number, desc: string, operation
 }
 
 /** Reserve a unique share for an NPC on a packet sent by this wallet. */
-export function walletRegisterRedPacketClaim(packetId: string, claimId: string, slotIndex: number): boolean {
+export async function walletRegisterRedPacketClaim(packetId: string, claimId: string, slotIndex: number): Promise<boolean> {
   if (!packetId || !claimId || !Number.isInteger(slotIndex) || slotIndex < 0) return false;
   const result = commitWalletLedger(current => {
     const packet = findPacket(current, packetId);
@@ -256,7 +270,7 @@ export function walletRegisterRedPacketClaim(packetId: string, claimId: string, 
 }
 
 /** Claiming an incoming packet credits balance and records the claim in one commit. */
-export function walletClaimRedPacket(packetId: string, claimId: string, amount: number, from: string, slotIndex?: number, sharesCents?: number[], totalAmount?: number): boolean {
+export async function walletClaimRedPacket(packetId: string, claimId: string, amount: number, from: string, slotIndex?: number, sharesCents?: number[], totalAmount?: number): Promise<boolean> {
   if (!packetId || !claimId || !Number.isFinite(amount) || amount <= 0 || !Number.isInteger(slotIndex) || (slotIndex as number) < 0) return false;
   if (!Array.isArray(sharesCents) || !sharesCents.length || sharesCents.some(value => !Number.isInteger(value) || value <= 0)) return false;
   if (!Number.isFinite(totalAmount) || (totalAmount as number) <= 0) return false;
@@ -291,7 +305,7 @@ export function walletClaimRedPacket(packetId: string, claimId: string, amount: 
 }
 
 /** Only the original sender may refund; refund amount is derived from the stored share table. */
-export function walletRefundRedPacket(packetId: string, _amount: number, desc = '未领取红包退回', legacySharesCents?: number[], claimedSlots: number[] = []): boolean {
+export async function walletRefundRedPacket(packetId: string, _amount: number, desc = '未领取红包退回', legacySharesCents?: number[], claimedSlots: number[] = []): Promise<boolean> {
   if (!packetId) return false;
   const validLegacyShares = Array.isArray(legacySharesCents) && legacySharesCents.length > 0 && legacySharesCents.every(value => Number.isInteger(value) && value > 0)
     ? legacySharesCents
@@ -351,12 +365,12 @@ export function walletRefundRedPacket(packetId: string, _amount: number, desc = 
   return result === true;
 }
 
-export function walletGrabRedPacket(amount: number, from: string): void {
+export async function walletGrabRedPacket(amount: number, from: string): Promise<void> {
   if (!Number.isFinite(amount) || amount <= 0) return;
   addWalletTransaction({ type: 'redpacket_grab', amount, desc: `抢到${from}的红包`, counterparty: from });
 }
 
-export function walletTopup(amount: number): void {
+export async function walletTopup(amount: number): Promise<void> {
   if (!Number.isFinite(amount) || amount <= 0) return;
   addWalletTransaction({ type: 'topup', amount: Math.round(amount * 100) / 100, desc: '钱包充值' });
 }
@@ -377,8 +391,6 @@ export interface FamilyCard {
   monthKey?: string;
 }
 
-const FAMILY_KEY = 'line:wallet-family-cards';
-
 export function currentFamilyCardMonth(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
@@ -395,15 +407,11 @@ export function normalizeFamilyCardsForMonth(cards: FamilyCard[], monthKey: stri
 }
 
 export function getFamilyCards(): FamilyCard[] {
-  const stored = readPersistentState<FamilyCard[]>(FAMILY_KEY, []);
-  const normalized = normalizeFamilyCardsForMonth(stored, currentFamilyCardMonth());
-  if (normalized.some((card, index) => card.monthKey !== stored[index]?.monthKey || card.spentThisMonth !== stored[index]?.spentThisMonth)) {
-    writeWalletState(FAMILY_KEY, normalized);
-  }
-  return normalized;
+  const stored = readWalletLedger().familyCards || readPersistentState<FamilyCard[]>(FAMILY_KEY, []);
+  return normalizeFamilyCardsForMonth(stored, currentFamilyCardMonth());
 }
 
-export function addFamilyCard(holderName: string, monthlyLimit: number, holderAvatar?: string): FamilyCard {
+export async function addFamilyCard(holderName: string, monthlyLimit: number, holderAvatar?: string): Promise<FamilyCard | null> {
   const card: FamilyCard = {
     id: 'fc-' + Date.now().toString(36),
     holderName,
@@ -413,35 +421,33 @@ export function addFamilyCard(holderName: string, monthlyLimit: number, holderAv
     monthKey: currentFamilyCardMonth(),
     createdAt: new Date().toISOString(),
   };
-  const list = getFamilyCards();
-  writeWalletState(FAMILY_KEY, [...list, card]);
-  window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
-  return card;
+  const saved = await commitWalletLedger(current => ({ next: { ...current, familyCards: [...normalizeFamilyCardsForMonth(current.familyCards || [], currentFamilyCardMonth()), card] }, result: card }));
+  return saved || null;
 }
 
-export function removeFamilyCard(id: string): void {
-  writeWalletState(FAMILY_KEY, getFamilyCards().filter(c => c.id !== id));
-  window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
+export async function removeFamilyCard(id: string): Promise<void> {
+  await commitWalletLedger(current => ({ next: { ...current, familyCards: (current.familyCards || []).filter(card => card.id !== id) }, result: undefined }));
 }
 
 // 亲情卡消费：把给持卡人的钱计入月限额（发红包/转账时调用）
 // 没有亲情卡 → 返回 true（不限制）；超限额 → 返回 false（仍然记录，显示为超支）
-export function spendFamilyCard(holderName: string, amount: number): boolean {
-  if (!holderName || !(amount > 0)) return true;
-  const list = getFamilyCards();
-  const idx = list.findIndex(c => c.holderName === holderName);
-  if (idx < 0) return true;
-  const card = list[idx];
-  const spent = Math.round((card.spentThisMonth + amount) * 100) / 100;
-  const next = [...list];
-  next[idx] = { ...card, spentThisMonth: spent };
-  writeWalletState(FAMILY_KEY, next);
-  window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
-  return spent <= card.monthlyLimit;
+export async function spendFamilyCard(holderName: string, amount: number): Promise<boolean> {
+  if (!holderName || !Number.isFinite(amount) || amount <= 0) return false;
+  const result = await commitWalletLedger(current => {
+    const list = normalizeFamilyCardsForMonth(current.familyCards || [], currentFamilyCardMonth());
+    const idx = list.findIndex(card => card.holderName === holderName);
+    if (idx < 0) return { next: { ...current, familyCards: list }, result: true };
+    const card = list[idx];
+    const spent = Math.round((card.spentThisMonth + amount) * 100) / 100;
+    const next = [...list];
+    next[idx] = { ...card, spentThisMonth: spent };
+    return { next: { ...current, familyCards: next }, result: spent <= card.monthlyLimit };
+  });
+  return result === true;
 }
 
 // 自定义金额充值
-export function walletTopupCustom(amount: number): void {
+export async function walletTopupCustom(amount: number): Promise<void> {
   if (amount <= 0 || !isFinite(amount)) return;
   walletTopup(Math.round(amount * 100) / 100);
 }
