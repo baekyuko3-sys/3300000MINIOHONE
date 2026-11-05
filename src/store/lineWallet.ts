@@ -106,7 +106,9 @@ function persistWalletLedger(next: WalletLedger): boolean {
 }
 
 function notifyWalletUpdated(): void {
-  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
+  if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('sane333:wallet-updated'));
+  }
 }
 
 function makeTransaction(tx: Omit<WalletTransaction, 'id' | 'createdAt'>): WalletTransaction {
