@@ -27,6 +27,14 @@ function readPosts(): any[] {
 export function writePosts(posts: any[]): boolean {
   if (typeof window === 'undefined') return false;
   try {
+    const existingRaw = window.localStorage.getItem(MOMENTS_POSTS_KEY);
+    if (existingRaw !== null) {
+      const existing = JSON.parse(existingRaw);
+      if (!Array.isArray(existing)) {
+        reportPersistenceIssue('write:' + MOMENTS_POSTS_KEY, '朋友圈数据结构异常；已阻止新动态覆盖原始数据', new Error('MOMENTS_POSTS_SCHEMA_INVALID'));
+        return false;
+      }
+    }
     const payload = JSON.stringify(posts.slice(0, 200));
     window.localStorage.setItem(MOMENTS_POSTS_KEY, payload);
     if (window.localStorage.getItem(MOMENTS_POSTS_KEY) !== payload) return false;

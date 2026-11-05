@@ -71,18 +71,39 @@ export function getNpcs(): SaneNpc[] {
     .filter(item => Boolean(item.name));
 }
 
+function readNpcRecordsForMutation(): SaneNpc[] {
+  const raw = window.localStorage.getItem(KEY);
+  if (raw === null) return [];
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error('NPC_STORAGE_SCHEMA_INVALID');
+  return parsed as SaneNpc[];
+}
+
 export function upsertNpc(npc: SaneNpc): void {
   if (typeof window === 'undefined') return;
-  const all = getNpcs();
-  const next = all.some(item => item.id === npc.id)
-    ? all.map(item => item.id === npc.id ? npc : item)
-    : [npc, ...all];
-  window.localStorage.setItem(KEY, JSON.stringify(next));
+  try {
+    const all = readNpcRecordsForMutation();
+    const next = all.some(item => item.id === npc.id)
+      ? all.map(item => item.id === npc.id ? npc : item)
+      : [npc, ...all];
+    const serialized = JSON.stringify(next);
+    window.localStorage.setItem(KEY, serialized);
+    if (window.localStorage.getItem(KEY) !== serialized) throw new Error('NPC_STORAGE_WRITE_VERIFY_FAILED');
+  } catch (error) {
+    reportPersistenceIssue('write:' + KEY, 'NPC 保存失败；已保留原始 NPC 数据', error);
+  }
 }
 
 export function deleteNpc(id: string): void {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(KEY, JSON.stringify(getNpcs().filter(item => item.id !== id)));
+  try {
+    const next = readNpcRecordsForMutation().filter(item => item.id !== id);
+    const serialized = JSON.stringify(next);
+    window.localStorage.setItem(KEY, serialized);
+    if (window.localStorage.getItem(KEY) !== serialized) throw new Error('NPC_STORAGE_WRITE_VERIFY_FAILED');
+  } catch (error) {
+    reportPersistenceIssue('delete:' + KEY, 'NPC 删除失败；已保留原始 NPC 数据', error);
+  }
 }
 
 /** 删除 NPC 后清理各处引用，避免群聊/好友列表里留下幽灵成员 */

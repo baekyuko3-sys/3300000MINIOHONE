@@ -55,11 +55,17 @@ export function getLineGroupByName(name: string): LineGroup | null {
 export function upsertLineGroup(group: LineGroup): { ok: boolean; error?: string } {
   if (typeof window === 'undefined') return { ok: false, error: 'no-window' };
   try {
-    const groups = getLineGroups();
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const parsed = raw === null ? [] : JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('LINE_GROUPS_SCHEMA_INVALID');
+    const groups = parsed as LineGroup[];
     const next = groups.some(item => item.id === group.id)
       ? groups.map(item => item.id === group.id ? group : item)
       : [group, ...groups];
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    const serialized = JSON.stringify(next);
+    window.localStorage.setItem(STORAGE_KEY, serialized);
+    if (window.localStorage.getItem(STORAGE_KEY) !== serialized) throw new Error('LINE_GROUPS_WRITE_VERIFY_FAILED');
+    window.dispatchEvent(new CustomEvent('sane333:storage-changed', { detail: { key: STORAGE_KEY } }));
     return { ok: true };
   } catch (error) {
     // Storage failure must not break LINE, but callers must know the save failed
