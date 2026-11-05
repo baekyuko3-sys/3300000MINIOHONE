@@ -1,9 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 
 type InitialValue<T> = T | (() => T);
 const DIAGNOSTICS_KEY = 'sane333:storage-diagnostics';
 const MAX_DIAGNOSTICS = 100;
+
+/** Missing keys are safe to initialize; unreadable/corrupt existing values must never be overwritten by a fallback. */
+export function isPersistentStorageReadSafe(raw: string | null, readFailed = false): boolean {
+  if (readFailed) return false;
+  if (raw === null) return true;
+  try {
+    JSON.parse(raw);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function redactDiagnosticText(value: string): string {
   return value
@@ -64,6 +76,10 @@ export function usePersistentState<T>(
   key: string,
   initialValue: InitialValue<T>,
 ): [T, Dispatch<SetStateAction<T>>] {
+  // If an existing value cannot be read, fail closed for this hook instance.
+  // Otherwise the fallback state would be written 300ms later and destroy the
+  // only remaining copy of the user's malformed or temporarily inaccessible data.
+  const persistenceBlockedRef = useRef(false);
   const [value, setValue] = useState<T>(() => {
     if (typeof window === 'undefined') {
       return typeof initialValue === 'function'
@@ -76,8 +92,8 @@ export function usePersistentState<T>(
       raw = window.localStorage.getItem(key);
       if (raw !== null) return JSON.parse(raw) as T;
     } catch (error) {
-      // Preserve malformed JSON before returning a fallback. The normal persistence
-      // effect may subsequently write the fallback to the original key.
+      // Preserve the original key until the user explicitly restores or clears it.
+      persistenceBlockedRef.current = true;
       if (raw !== null) {
         try {
           const recoveryKey = 'sane333:recovery:corrupt:' + encodeURIComponent(key);
@@ -101,7 +117,7 @@ export function usePersistentState<T>(
   });
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || persistenceBlockedRef.current) return;
     // 300ms 防抖：输入框连续输入、大聊天记录频繁更新时不卡顿
     const timer = window.setTimeout(() => {
       try {
