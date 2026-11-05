@@ -43,11 +43,17 @@ function readPacks(): StickerPack[] {
 function writePacks(packs: StickerPack[]): boolean {
   if (typeof window === 'undefined' || stickerPacksWriteBlocked) return false;
   try {
+    const existingRaw = window.localStorage.getItem(KEY);
+    if (existingRaw !== null) {
+      const existing = JSON.parse(existingRaw);
+      if (!Array.isArray(existing)) throw new Error('STICKER_PACKS_SCHEMA_INVALID');
+    }
     const serialized = JSON.stringify(packs);
     window.localStorage.setItem(KEY, serialized);
     if (window.localStorage.getItem(KEY) !== serialized) throw new Error('STICKER_PACKS_WRITE_VERIFY_FAILED');
     return true;
   } catch (error) {
+    stickerPacksWriteBlocked = true;
     reportPersistenceIssue('write:' + KEY, '表情包数据写入失败；原始内容已保留', error);
     return false;
   }

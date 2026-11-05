@@ -81,6 +81,7 @@ function readJson<T>(key: string, fallback: T): T {
     const raw = window.localStorage.getItem(key);
     if (raw === null) { blockedMusicJsonKeys.delete(key); return fallback; }
     const parsed = JSON.parse(raw);
+    if (Array.isArray(fallback) && !Array.isArray(parsed)) throw new Error('MUSIC_STORAGE_SCHEMA_INVALID');
     blockedMusicJsonKeys.delete(key);
     return parsed == null ? fallback : parsed as T;
   } catch (error) {
@@ -93,6 +94,14 @@ function readJson<T>(key: string, fallback: T): T {
 function writeJson(key: string, value: unknown, event: string): boolean {
   if (typeof window === 'undefined' || blockedMusicJsonKeys.has(key)) return false;
   try {
+    const existingRaw = window.localStorage.getItem(key);
+    if (existingRaw !== null) {
+      const existing = JSON.parse(existingRaw);
+      if ((Array.isArray(existing) !== Array.isArray(value)) ||
+          (existing !== null && value !== null && typeof existing !== typeof value)) {
+        throw new Error('MUSIC_STORAGE_SCHEMA_INVALID');
+      }
+    }
     const serialized = JSON.stringify(value);
     window.localStorage.setItem(key, serialized);
     if (window.localStorage.getItem(key) !== serialized) throw new Error('MUSIC_STORAGE_WRITE_VERIFY_FAILED');

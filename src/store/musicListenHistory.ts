@@ -145,6 +145,11 @@ function readRaw(): MusicListenRecord[] {
 function writeRaw(records: MusicListenRecord[]): boolean {
   if (typeof window === 'undefined' || historyWriteBlocked) return false;
   try {
+    const existingRaw = window.localStorage.getItem(HISTORY_KEY);
+    if (existingRaw !== null) {
+      const existing = JSON.parse(existingRaw);
+      if (!Array.isArray(existing)) throw new Error('MUSIC_HISTORY_SCHEMA_INVALID');
+    }
     const cleaned = consolidateRaw(records).map((item) => ({
       ...item,
       cover: safeAlbumCover(item.cover),
@@ -156,6 +161,7 @@ function writeRaw(records: MusicListenRecord[]): boolean {
     window.dispatchEvent(new CustomEvent('sane333:music-history-changed'));
     return true;
   } catch (error) {
+    historyWriteBlocked = true;
     reportPersistenceIssue('write:' + HISTORY_KEY, '音乐历史写入失败；原始记录已保留', error);
     return false;
   }
