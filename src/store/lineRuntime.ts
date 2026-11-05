@@ -766,56 +766,96 @@ export function removeLineConversationData(id: string, options: { removeChatItem
   if (typeof window === 'undefined' || !id) return;
   const removeChatItem = options.removeChatItem !== false;
 
-  window.localStorage.removeItem(conversationKey(id));
-  window.localStorage.removeItem(`line:custom-css:${id}`);
-  window.localStorage.removeItem(`line:wallpaper:${id}`);
-  window.localStorage.removeItem(`line:chat-api-override:${id}`);
-  // 该会话的其余 per-conversation 设置也一并清理，否则同 id 重建会话时会读到幽灵旧配置。
-  for (const key of [
-    `line:opening-context:${id}`,
-    `line:schedule:${id}`,
-    `line:cot-active:${id}`,
-    `line:cot-custom:${id}`,
-    `line:preset:${id}`,
-    `line:preset-temp:${id}`,
-    `line:preset-context:${id}`,
-    `line:status:${id}`,
-    `line:status-regex:${id}`,
-    `line:status-format:${id}`,
-    `line:status-bar-active:${id}`,
-    `line:offline-draft:${id}`,
-    `line:offline-css:${id}`,
-    `line:allow-role-message:${id}`,
-  ]) {
-    try { window.localStorage.removeItem(key); } catch { /* ignore */ }
+  // Character IDs and actual chat-item IDs are not always the same. A character
+  // may have one independent c_* conversation per persona. Remove/archieve all
+  // ordinary chats that point at this character, but never cascade into NPC chats
+  // merely because an NPC is bound to the same character.
+  let chats: any[] | null = null;
+  try {
+    const raw = window.localStorage.getItem('line:chat-items');
+    if (raw === null) chats = [];
+    else {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error('LINE_CHAT_ITEMS_SCHEMA_INVALID');
+      chats = parsed;
+    }
+  } catch (error) {
+    reportPersistenceIssue('line-delete-chat-items', '删除角色聊天时无法读取聊天列表；原始列表已保留，其他可确定的数据仍会处理', error);
   }
 
-  const meta = readJson<Record<string, LineConversationMeta>>(META_KEY, {});
-  delete meta[id];
-  writeJson(META_KEY, meta);
+  const relatedChats = (chats || []).filter((item: any) =>
+    item && typeof item.id === 'string' &&
+    (item.id === id || (!item.npcId && String(item.characterId || '') === id))
+  );
+  const conversationIds = Array.from(new Set([
+    id,
+    ...(removeChatItem ? relatedChats.map((item: any) => String(item.id)) : []),
+  ]));
 
-  // Notifications are not part of the transcript, so they are always removed
-  // when the character itself is deleted.
+  const removeSettings = (conversationId: string) => {
+    for (const key of [
+      conversationKey(conversationId),
+      `line:custom-css:${conversationId}`,
+      `line:wallpaper:${conversationId}`,
+      `line:chat-api-override:${conversationId}`,
+      `line:opening-context:${conversationId}`,
+      `line:schedule:${conversationId}`,
+      `line:cot-active:${conversationId}`,
+      `line:cot-custom:${conversationId}`,
+      `line:preset:${conversationId}`,
+      `line:preset-temp:${conversationId}`,
+      `line:preset-context:${conversationId}`,
+      `line:status:${conversationId}`,
+      `line:status-regex:${conversationId}`,
+      `line:status-format:${conversationId}`,
+      `line:status-bar-active:${conversationId}`,
+      `line:offline-draft:${conversationId}`,
+      `line:offline-css:${conversationId}`,
+      `line:allow-role-message:${conversationId}`,
+    ]) {
+      try { window.localStorage.removeItem(key); }
+      catch (error) { reportPersistenceIssue('line-delete-setting:' + key, '聊天专属设置清理失败', error); }
+    }
+  };
+  conversationIds.forEach(removeSettings);
+
+  const meta = readJson<unknown>(META_KEY, {});
+  if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
+    const nextMeta = { ...(meta as Record<string, LineConversationMeta>) };
+    conversationIds.forEach(conversationId => { delete nextMeta[conversationId]; });
+    writeJson(META_KEY, nextMeta);
+  } else {
+    reportPersistenceIssue('line-delete-meta', '聊天元数据结构异常；已保留原始元数据');
+  }
+
+  // Notifications belong to either the character identity or a concrete
+  // conversation. Remove all persona-chat notifications for deleted chats.
+  const notifications = getLineNotifications();
   writeJson(
     NOTIFICATION_KEY,
-    getLineNotifications().filter(item => item.characterId !== id && item.conversationId !== id),
+    notifications.filter(item => item.characterId !== id && !conversationIds.includes(String(item.conversationId || ''))),
   );
 
-  try {
-    const rawChats = window.localStorage.getItem('line:chat-items');
-    const chats = rawChats ? JSON.parse(rawChats) : [];
-    if (Array.isArray(chats)) {
-      const nextChats = removeChatItem
-        ? chats.filter((item: any) => item.id !== id && item.characterId !== id)
-        : chats.map((item: any) =>
-            item.id === id || item.characterId === id
-              ? { ...item, characterId: undefined, unread: 0, chatLabel: item.chatLabel || '已归档角色' }
-              : item
-          );
-      window.localStorage.setItem('line:chat-items', JSON.stringify(nextChats));
+  if (chats) {
+    const nextChats = removeChatItem
+      ? chats.filter((item: any) =>
+          !(item?.id === id || (!item?.npcId && String(item?.characterId || '') === id))
+        )
+      : chats.map((item: any) =>
+          item?.id === id || (!item?.npcId && String(item?.characterId || '') === id)
+            ? { ...item, characterId: undefined, unread: 0, chatLabel: item.chatLabel || '已归档角色' }
+            : item
+        );
+    try {
+      const serialized = JSON.stringify(nextChats);
+      window.localStorage.setItem('line:chat-items', serialized);
+      if (window.localStorage.getItem('line:chat-items') !== serialized) {
+        throw new Error('LINE_CHAT_ITEMS_DELETE_VERIFY_FAILED');
+      }
+      window.dispatchEvent(new CustomEvent('sane333:storage-changed', { detail: { key: 'line:chat-items' } }));
+    } catch (error) {
+      reportPersistenceIssue('line-delete-chat-items', '聊天入口清理失败；原始聊天列表已尽可能保留', error);
     }
-  } catch {
-    // Chat-list cleanup is best-effort.
   }
 
   window.dispatchEvent(new CustomEvent('sane333:line-runtime-changed'));
