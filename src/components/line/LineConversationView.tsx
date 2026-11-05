@@ -8,7 +8,7 @@ import { generateSpeech, transcribeAudio } from '../../ai/mediaEngine';
 import { readAppSettings } from '../../store/appSettings';
 import type { ChannelAiSettings } from '../../store/appSettings';
 import { getMedia, putMedia } from '../../store/mediaVault';
-import { walletSendRedPacket, walletGrabRedPacket, spendFamilyCard } from '../../store/lineWallet';
+import { walletSendRedPacket, walletSendTransfer, walletGrabRedPacket, spendFamilyCard } from '../../store/lineWallet';
 import { VroomImage } from '../VroomImage';
 import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory, updateCharacterMemoryItem, deleteCharacterMemoryItem, clearCharacterMemory, clearAllCharacterMemoryVariants } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
@@ -4085,6 +4085,13 @@ export function LineConversationView({
     const amount = formatMoneyAmount(transferAmount);
     if (!amount) { showToast('请填写转账金额'); return; }
     const note = transferNote.trim();
+    const transferValue = Number(amount);
+    const counterparty = isGroup ? (activeGroup?.name || '群聊') : (importedCharacter?.name || characterProfile.nickname || '角色');
+    // 先完成钱包扣款与流水写入；余额不足时不创建聊天消息，避免出现“已发送但未扣款”。
+    if (!walletSendTransfer(transferValue, counterparty, note || 'LINE 转账')) {
+      showToast('钱包余额不足或转账金额无效');
+      return;
+    }
     const newMsg = {
       id: Date.now(),
       role: 'user' as const,

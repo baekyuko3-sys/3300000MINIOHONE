@@ -46,6 +46,24 @@ export function addWalletTransaction(tx: Omit<WalletTransaction, 'id' | 'created
 }
 
 // 发红包：扣钱
+// 转账：发送时从现有虚拟钱包扣款，并写入独立流水。
+// 使用整数分比较与扣款，避免小数精度导致余额不足判断错误。
+export function walletSendTransfer(amount: number, counterparty: string, desc = ''): boolean {
+  if (!Number.isFinite(amount) || amount <= 0) return false;
+  const cents = Math.round(amount * 100);
+  if (cents <= 0) return false;
+  const normalizedAmount = cents / 100;
+  const balanceCents = Math.round(getWalletBalance() * 100);
+  if (balanceCents < cents) return false;
+  addWalletTransaction({
+    type: 'transfer',
+    amount: -normalizedAmount,
+    desc: desc || '转账支出',
+    counterparty: counterparty || undefined,
+  });
+  return true;
+}
+
 export function walletSendRedPacket(totalAmount: number, desc: string): boolean {
   const balance = getWalletBalance();
   if (balance < totalAmount) return false;
