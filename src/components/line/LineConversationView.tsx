@@ -9013,7 +9013,7 @@ export function LineConversationView({
           const nextClaims = [...claims, userClaim];
           const nextStatus = nextClaims.length >= count ? 'claimed' : 'partial';
           const updated = { ...packet, redPacketClaims: nextClaims, redPacketStatus: nextStatus, metadata: { ...meta, claims: nextClaims, status: nextStatus } };
-          if (!walletClaimRedPacket(String(packet.id), 'me', userCents / 100, String(packet.senderName || '群成员'), slotIndex)) {
+          if (!walletClaimRedPacket(String(packet.id), 'me', userCents / 100, String(packet.senderName || '群成员'), slotIndex, shares.map((value: any) => Math.max(0, Math.round(Number(value) || 0))))) {
             showToast('该红包已领取或已结算，不能重复领取'); return;
           }
           setMessages((prev) => prev.map((item: any) => String(item.id) === String(packet.id) ? updated : item));
