@@ -158,10 +158,14 @@ export function removeCharacterFromLineGroups(characterId: string): number {
   const next = groups.flatMap((group: any) => {
     if (!group || typeof group !== 'object') return [group];
     const members = Array.isArray(group.members) ? group.members : [];
-    const filtered = members.filter((member: any) =>
-      !(member && (String(member.characterId || '') === characterId ||
-        (member.kind === 'character' && String(member.id || '') === characterId)))
-    );
+    const filtered = members.filter((member: any) => {
+      if (!member || typeof member !== 'object') return true;
+      // NPCs may be linked to a character card; deleting that card must unbind,
+      // not delete the independent NPC from the group.
+      if (member.kind === 'npc' || member.npcId) return true;
+      return !(String(member.characterId || '') === characterId ||
+        (member.kind === 'character' && String(member.id || '') === characterId));
+    });
     const removed = filtered.length !== members.length;
     const ownerRemoved = String(group.ownerId || '') === characterId ||
       members.some((member: any) => member?.kind === 'character' && String(member?.id || '') === characterId && member.role === 'owner');
