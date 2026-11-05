@@ -340,19 +340,51 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
     })();
   };
 
+  // 一键生成只挑当前朋友圈里看得见的作者：之前按 VROOM 设置允许的挑，
+  // 挑到没加好友、没绑定当前人设的作者时，帖子生成了也会被朋友圈的
+  // 好友门和人设门过滤掉，看起来就是“点了没反应、朋友圈还是空白”。
+  const isVisibleMomentAuthor = (authorKey: string, isFriend: boolean, bound: string | undefined) => {
+    const viewerKey = 'persona:' + (effectivePersonaId || 'default');
+    if (authorKey && isVroomBlockedEdge(viewerKey, authorKey)) return false;
+    if (!isFriend && !isVroomAllowedEdge(viewerKey, authorKey)) return false;
+    if (hasBounds && bound && !boundSet.has(bound)) return false;
+    return true;
+  };
+
   const generateMomentsPost = async () => {
-    const allowed = importedCharacters.filter(character => momentsSettings.enabledCharacterIds.length === 0 || momentsSettings.enabledCharacterIds.includes(character.id));
-    const allowedNpcs = listPostableNpcs(momentsSettings);
+    let allowed: typeof importedCharacters = [];
+    let allowedNpcs: ReturnType<typeof listPostableNpcs> = [];
+    try {
+      allowed = importedCharacters.filter(character => momentsSettings.enabledCharacterIds.length === 0 || momentsSettings.enabledCharacterIds.includes(character.id));
+      allowedNpcs = listPostableNpcs(momentsSettings);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '一键生成失败，请重试');
+      return;
+    }
     if (!allowed.length && !allowedNpcs.length) {
       showToast('请先在 VROOM 设置里允许至少一个角色或 NPC 发动态');
       return;
     }
-    const useNpc = allowedNpcs.length > 0 && (allowed.length === 0 || Math.random() < 0.4);
+    const visibleAllowed = allowed.filter(character => {
+      const isFriend = friendsList.some(f => !f.deleted && !f.npcId && ((character.id && f.characterId === character.id) || (character.name && f.name === character.name)));
+      return isVisibleMomentAuthor('character:' + character.id, isFriend, character.id);
+    });
+    const visibleNpcs = allowedNpcs.filter(npc => {
+      const isFriend = friendsList.some(f => !f.deleted && f.npcId === npc.id && (!f.personaId || f.personaId === effectivePersonaId));
+      return isVisibleMomentAuthor('npc:' + npc.id, isFriend, npc.boundCharacterId || undefined);
+    });
+    if (!visibleAllowed.length && !visibleNpcs.length) {
+      showToast('当前人设的朋友圈里没有可见的发帖人：去 VROOM 设置里允许已加好友的角色/NPC，或切换人设');
+      return;
+    }
+    const useNpc = visibleNpcs.length > 0 && (visibleAllowed.length === 0 || Math.random() < 0.4);
     if (useNpc) {
+      const pickedNpc = visibleNpcs[Math.floor(Math.random() * visibleNpcs.length)];
+      if (!pickedNpc) { showToast('当前人设的朋友圈里没有可见的发帖人'); return; }
       setIsRefreshingMoments(true);
       showToast('正在让 NPC 发朋友圈…');
       try {
-        const msg = await generateNpcMomentNow();
+        const msg = await generateNpcMomentNow(pickedNpc.id);
         try { setMomentsPosts(JSON.parse(window.localStorage.getItem(MOMENTS_POSTS_KEY) || '[]')); } catch { /* ignore */ }
         showToast(msg);
       } catch (e) {
@@ -362,7 +394,7 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
       }
       return;
     }
-    const source = allowed[Math.floor(Math.random() * allowed.length)];
+    const source = visibleAllowed[Math.floor(Math.random() * visibleAllowed.length)];
     if (!source) { showToast('请先在朋友圈设置里允许至少一个角色发动态'); return; }
     setIsRefreshingMoments(true);
     showToast('正在生成朋友圈…');
@@ -414,10 +446,20 @@ export function LineAppView({ onNavigateHome, onNavigateScreen }: LineAppViewPro
   };
 
   const generateNpcMomentsPost = async () => {
+    const visibleNpcs = listPostableNpcs(momentsSettings).filter(npc => {
+      const isFriend = friendsList.some(f => !f.deleted && f.npcId === npc.id && (!f.personaId || f.personaId === effectivePersonaId));
+      return isVisibleMomentAuthor('npc:' + npc.id, isFriend, npc.boundCharacterId || undefined);
+    });
+    if (!visibleNpcs.length) {
+      showToast('当前人设的朋友圈里没有可见的 NPC：去 VROOM 设置里允许已加好友的 NPC，或切换人设');
+      return;
+    }
+    const pickedNpc = visibleNpcs[Math.floor(Math.random() * visibleNpcs.length)];
+    if (!pickedNpc) { showToast('当前人设的朋友圈里没有可见的 NPC'); return; }
     setIsRefreshingMoments(true);
     showToast('正在让 NPC 发朋友圈…');
     try {
-      const msg = await generateNpcMomentNow();
+      const msg = await generateNpcMomentNow(pickedNpc.id);
       try { setMomentsPosts(JSON.parse(window.localStorage.getItem(MOMENTS_POSTS_KEY) || '[]')); } catch { /* ignore */ }
       showToast(msg);
     } catch (e) {

@@ -351,6 +351,21 @@ test('deleting one npc author deletes only that npc, never the bound family', as
   assert.ok(lineAppSrc.includes('authorKeyOf(p) === key'));
 });
 
+test('one-tap moments only picks authors visible in the current feed', async () => {
+  // 一键生成之前按 VROOM 设置允许的挑，挑到没加好友、没绑定当前人设的
+  // 作者时，帖子生成了也会被朋友圈的好友门和人设门过滤掉，看起来就是
+  // “点了没反应、朋友圈还是空白”。现在只挑看得见的作者，NPC 也要先挑好再传 id。
+  const { readFile } = await import('node:fs/promises');
+  const lineAppSrc = await readFile(new URL('../src/components/line/LineAppView.tsx', import.meta.url), 'utf8');
+  assert.ok(lineAppSrc.includes('isVisibleMomentAuthor'));
+  assert.ok(lineAppSrc.includes('const visibleAllowed = allowed.filter'));
+  assert.ok(lineAppSrc.includes('const visibleNpcs = allowedNpcs.filter'));
+  assert.ok(lineAppSrc.includes('generateNpcMomentNow(pickedNpc.id)'));
+  assert.ok(!lineAppSrc.includes('generateNpcMomentNow()'));
+  assert.ok(lineAppSrc.includes('当前人设的朋友圈里没有可见的发帖人'));
+  assert.ok(lineAppSrc.includes('const source = visibleAllowed[Math.floor(Math.random() * visibleAllowed.length)]'));
+});
+
 test('chat send button is always clickable (no disabled-when-empty)', async () => {
   // The paper-plane send button must never be disabled: it stays colored and
   // tappable even with empty input; the empty-input guard in onClick/handleSend
