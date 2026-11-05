@@ -8,7 +8,7 @@ import { generateSpeech, transcribeAudio } from '../../ai/mediaEngine';
 import { readAppSettings } from '../../store/appSettings';
 import type { ChannelAiSettings } from '../../store/appSettings';
 import { getMedia, putMedia } from '../../store/mediaVault';
-import { walletSendRedPacket, walletSendTransfer, walletClaimRedPacket, walletRefundRedPacket, spendFamilyCard } from '../../store/lineWallet';
+import { walletSendRedPacket, walletSendTransfer, walletClaimRedPacket, walletRefundRedPacket, walletSettleTransfer, spendFamilyCard } from '../../store/lineWallet';
 import { VroomImage } from '../VroomImage';
 import { addRecentMemorySummary, applyMemoryMergeResult, getCharacterMemory, updateCharacterMemoryItem, deleteCharacterMemoryItem, clearCharacterMemory, clearAllCharacterMemoryVariants } from '../../store/characterMemory';
 import { getProjectManifest } from '../../store/projectManifest';
@@ -4131,6 +4131,29 @@ export function LineConversationView({
     };
     setMessages((prev) => [...prev, newMsg]);
     appendLineMessage(conversationStorageId, newMsg);
+    // 单聊收款由角色 AI 按人设和剧情判断；群聊收款对象不明确，保持待确认。
+    if (!isGroup && importedCharacter) {
+      void (async () => {
+        try {
+          const recent = messagesRef.current.slice(-10).map((m: any) => `${m.role === 'user' ? '我' : (m.senderName || m.characterName || importedCharacter.name)}：${String(m.text || '').slice(0, 180)}`).join('\n');
+          const raw = await generateCreativeText({
+            settings: { ...resolveChannelAiSettings('chat'), maxOutputTokens: 100 },
+            systemPrompt: `你正在扮演角色${importedCharacter.name}。结合角色人设、双方关系和当前剧情，判断是否接受对方转账。只输出 JSON：{"decision":"accepted"} 或 {"decision":"rejected"}。不得为了推进剧情随意接受；不愿收、觉得不合适或关系不允许时可以拒绝。`,
+            userPrompt: JSON.stringify({ personality: importedCharacter.personality || '', description: importedCharacter.description || '', scenario: importedCharacter.scenario || '', creatorNotes: importedCharacter.creatorNotes || '', amount, note, recentConversation: recent.slice(0, 1800) }),
+            temperature: 0.6,
+          });
+          const parsed = JSON.parse(String(raw || '').match(/\{[\s\S]*\}/)?.[0] || '{}');
+          const decision = parsed.decision === 'accepted' || parsed.decision === 'rejected' ? parsed.decision : null;
+          if (!decision || !walletSettleTransfer(transferId, decision)) return;
+          const status = decision === 'accepted' ? 'accepted' : 'refunded';
+          const patch = { transferStatus: status, metadata: { ...newMsg.metadata, status } };
+          setMessages(prev => prev.map((item: any) => String(item.id) === String(transferId) ? { ...item, ...patch } : item));
+          updateLineMessage(conversationStorageId, transferId, patch as any);
+        } catch (error) {
+          console.warn('[LINE transfer] AI settlement unavailable; keep pending:', error);
+        }
+      })();
+    }
     // 亲情卡：计入持卡人月限额（仅单聊）
     if (!isGroup) {
       const holder = importedCharacter?.name || '';
