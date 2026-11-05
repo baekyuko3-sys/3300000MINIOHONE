@@ -1,8 +1,10 @@
 import type { ImportedCharacter } from '../data/characterImport';
 import type { OfflineEvent } from '../types';
+import { reportPersistenceIssue } from './usePersistentState';
 
 const STORAGE_KEY = 'phone:world-runtime-v1';
 const MAX_EVENTS = 80;
+let worldStateWriteBlocked = false;
 
 export type WorldEventType =
   | 'character.message'
@@ -64,6 +66,7 @@ function preserveCorruptWorldState(raw: string): void {
 }
 
 function readState(): WorldRuntimeState {
+  worldStateWriteBlocked = false;
   if (typeof window === 'undefined') return {
     version: 1,
     updatedAt: new Date().toISOString(),
@@ -84,7 +87,18 @@ function readState(): WorldRuntimeState {
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as Partial<WorldRuntimeState> | null;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      worldStateWriteBlocked = true;
       preserveCorruptWorldState(raw);
+      reportPersistenceIssue('read:' + STORAGE_KEY, '世界运行数据格式损坏；已停止写入以保留原始数据', new Error('WORLD_RUNTIME_SCHEMA_INVALID'));
+      return fallback;
+    }
+    const hasCharacters = Object.prototype.hasOwnProperty.call(parsed, 'characters');
+    const hasEvents = Object.prototype.hasOwnProperty.call(parsed, 'events');
+    if ((hasCharacters && (!parsed.characters || typeof parsed.characters !== 'object' || Array.isArray(parsed.characters))) ||
+        (hasEvents && !Array.isArray(parsed.events))) {
+      worldStateWriteBlocked = true;
+      preserveCorruptWorldState(raw);
+      reportPersistenceIssue('read:' + STORAGE_KEY, '世界运行数据字段结构不正确；已停止写入以保留原始数据', new Error('WORLD_RUNTIME_SCHEMA_INVALID'));
       return fallback;
     }
     const characters = parsed.characters && typeof parsed.characters === 'object' && !Array.isArray(parsed.characters)
@@ -100,18 +114,23 @@ function readState(): WorldRuntimeState {
       characters,
       events,
     } as WorldRuntimeState;
-  } catch {
+  } catch (error) {
+    worldStateWriteBlocked = true;
     if (raw !== null) preserveCorruptWorldState(raw);
-    // Recover with a clean runtime if local JSON is malformed.
+    reportPersistenceIssue('read:' + STORAGE_KEY, '世界运行数据无法读取；已停止写入以保留原始数据', error);
     return fallback;
   }
 }
-function writeState(state: WorldRuntimeState) {
-  if (typeof window === 'undefined') return;
+function writeState(state: WorldRuntimeState): boolean {
+  if (typeof window === 'undefined' || worldStateWriteBlocked) return false;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // Runtime state is best-effort; existing app data remains authoritative.
+    const serialized = JSON.stringify(state);
+    window.localStorage.setItem(STORAGE_KEY, serialized);
+    if (window.localStorage.getItem(STORAGE_KEY) !== serialized) throw new Error('WORLD_RUNTIME_WRITE_VERIFY_FAILED');
+    return true;
+  } catch (error) {
+    reportPersistenceIssue('write:' + STORAGE_KEY, '世界运行数据写入失败；原始数据已保留', error);
+    return false;
   }
 }
 
