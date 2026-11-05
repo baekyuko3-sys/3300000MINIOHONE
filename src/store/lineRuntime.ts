@@ -1195,10 +1195,13 @@ function listConversationKeys(): string[] {
 function readJsonArray(key: string): any[] {
   try {
     const raw = window.localStorage.getItem(key);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+    if (raw === null) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('LINE_STORAGE_ARRAY_INVALID');
+    return parsed;
+  } catch (error) {
+    reportPersistenceIssue('line-migration-read:' + key, 'LINE 数据迁移遇到损坏或格式不符的存储项；已中止迁移以保留原始数据', error);
+    throw error;
   }
 }
 
@@ -1224,8 +1227,8 @@ export function migrateLineMessagesToRole(): { conversations: number; messages: 
           conversations++;
           messages += next.length;
         }
-      } catch {
-        // Corrupt conversation keys are reported by phone diagnostics; skip them.
+      } catch (error) {
+        reportPersistenceIssue('line-role-migration:' + key, 'LINE 角色迁移跳过损坏会话；原始记录保持不变', error);
       }
     }
     return { conversations, messages };
@@ -1393,8 +1396,9 @@ export function migrateLineIdentityPrefixes(): LineIdentityMigrationReport {
         }
         if (metaChanged) window.localStorage.setItem(META_KEY, JSON.stringify(meta));
       }
-    } catch {
-      // Meta is rebuilt from chat items; a corrupt blob must not block migration.
+    } catch (error) {
+      reportPersistenceIssue('line-migration-meta', 'LINE 会话元数据损坏；已中止身份迁移，修复数据后可安全重试', error);
+      throw error;
     }
 
     // 3. Friends list + group members (mechanical, membership-mapped only).
@@ -1447,8 +1451,9 @@ export function migrateLineIdentityPrefixes(): LineIdentityMigrationReport {
           return nextItem;
         });
         if (changed) window.localStorage.setItem(key, JSON.stringify(next));
-      } catch {
-        // Skip corrupt conversation keys; diagnostics reports them.
+      } catch (error) {
+        reportPersistenceIssue('line-migration-conversation:' + key, 'LINE 会话记录损坏；已中止身份迁移，避免提前标记迁移完成', error);
+        throw error;
       }
     }
 

@@ -167,3 +167,41 @@ test('legacy version-one transcript backups remain importable without replacing 
   });
   assert.equal(storage.getItem('line:wallet-ledger-v1'), currentWallet);
 });
+
+
+test('identity migration does not mark completion when a source store is corrupt and can resume after repair', () => {
+  const storage = new MemoryStorage();
+  const corrupt = '{broken-character-store';
+  storage.setItem('phone:characters', corrupt);
+  storage.setItem('phone:npcs', JSON.stringify([]));
+  installWindow(storage);
+
+  const first = migrateLineIdentityPrefixes();
+  assert.deepEqual(first, {
+    charactersRenamed: 0,
+    npcsRenamed: 0,
+    conversationKeysRenamed: 0,
+    messageIdentitiesPrefixed: 0,
+    skipped: [],
+  });
+  assert.equal(storage.getItem('phone:characters'), corrupt);
+  assert.equal(storage.getItem('line:fix-id-prefix-v1'), null);
+
+  storage.setItem('phone:characters', JSON.stringify([{ id: 'c2', name: 'Character 2' }]));
+  storage.setItem('line:conversation:c2', JSON.stringify([{ id: 'm2', role: 'user', text: 'preserve' }]));
+  const second = migrateLineIdentityPrefixes();
+  assert.equal(second.charactersRenamed, 1);
+  assert.equal(second.conversationKeysRenamed, 1);
+  assert.equal(storage.getItem('line:fix-id-prefix-v1'), '1');
+  assert.equal(JSON.parse(storage.getItem('line:conversation:char:c2'))[0].text, 'preserve');
+});
+
+test('role migration never overwrites a malformed conversation transcript', () => {
+  const storage = new MemoryStorage();
+  const corrupt = '{broken-transcript';
+  storage.setItem('line:conversation:chat-corrupt', corrupt);
+  installWindow(storage);
+  const report = migrateLineMessagesToRole();
+  assert.deepEqual(report, { conversations: 0, messages: 0 });
+  assert.equal(storage.getItem('line:conversation:chat-corrupt'), corrupt);
+});
