@@ -64,6 +64,7 @@ test('red packet debit stores fixed shares and duplicate send does not debit aga
   setWalletBalance(50);
   assert.equal(walletSendRedPacket(10, '祝福', 'packet-1', [200, 300, 500]), true);
   assert.equal(walletSendRedPacket(10, '祝福', 'packet-1', [200, 300, 500]), true);
+  assert.equal(walletSendRedPacket(10, '祝福', 'packet-1', [100, 300, 600]), false);
   assert.equal(getWalletBalance(), 40);
   assert.equal(getWalletTransactions().length, 1);
   assert.equal(walletSendRedPacket(10, '祝福', 'packet-invalid', [200, 300]), false);
@@ -91,6 +92,20 @@ test('sender cannot claim own packet; refund is capped by unclaimed stored share
   assert.equal(walletRegisterRedPacketClaim('packet-2', 'npc:a', 0), true);
   assert.equal(walletRefundRedPacket('packet-2', 999, '退回', [999999], []), true);
   assert.equal(walletRefundRedPacket('packet-2', 999, '重复退款'), true);
+  assert.equal(getWalletBalance(), 19);
+  assert.equal(getWalletTransactions().length, 2);
+  assert.equal(getWalletTransactions()[0].amount, 5);
+});
+
+test('legacy sent packet without an operation record can refund only unclaimed fixed shares', () => {
+  const values = installStorage();
+  // Legacy app state: packet debit already happened, but no packet operation ID was stored.
+  values.set('line:wallet-balance', JSON.stringify(14));
+  values.set('line:wallet-transactions', JSON.stringify([{
+    id: 'legacy-send', type: 'redpacket_send', amount: -6, desc: '旧红包', createdAt: '2026-10-01T00:00:00.000Z',
+  }]));
+  assert.equal(walletRefundRedPacket('legacy-packet', 5, '旧红包退回', [100, 200, 300], [0]), true);
+  assert.equal(walletRefundRedPacket('legacy-packet', 5, '重复退回', [100, 200, 300], [0]), true);
   assert.equal(getWalletBalance(), 19);
   assert.equal(getWalletTransactions().length, 2);
   assert.equal(getWalletTransactions()[0].amount, 5);
