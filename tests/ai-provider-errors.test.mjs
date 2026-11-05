@@ -119,3 +119,31 @@ test('creative text requests are bounded to the serverless proxy contract', asyn
     globalThis.fetch = originalFetch;
   }
 });
+
+
+test('creative AI requests propagate caller cancellation instead of reporting a timeout', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.window = { setTimeout, clearTimeout };
+  const controller = new AbortController();
+  let markStarted;
+  const started = new Promise(resolve => { markStarted = resolve; });
+  globalThis.fetch = async (_input, init = {}) => {
+    markStarted();
+    return new Promise((_, reject) => {
+      init.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+    });
+  };
+  try {
+    const pending = generateCreativeText({
+      settings: { ...baseSettings, provider: 'openai-compatible', apiBaseUrl: 'https://api.openai.com/v1' },
+      systemPrompt: 'system',
+      userPrompt: 'cancel me',
+      signal: controller.signal,
+    });
+    await started;
+    controller.abort();
+    await assert.rejects(pending, /AI_ABORTED/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
