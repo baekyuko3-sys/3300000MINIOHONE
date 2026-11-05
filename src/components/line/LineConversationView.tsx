@@ -4171,13 +4171,23 @@ export function LineConversationView({
           });
           const parsed = JSON.parse(String(raw || '').match(/\{[\s\S]*\}/)?.[0] || '{}');
           const decision = parsed.decision === 'accepted' || parsed.decision === 'rejected' ? parsed.decision : null;
-          if (!decision || !walletSettleTransfer(transferId, decision)) return;
-          const status = decision === 'accepted' ? 'accepted' : 'refunded';
+          // AI 无法给出有效结论时自动退款，避免转账长期扣款却永远无人结算。
+          const finalDecision = decision || 'rejected';
+          if (!walletSettleTransfer(transferId, finalDecision)) return;
+          const status = finalDecision === 'accepted' ? 'accepted' : 'refunded';
           const patch = { transferStatus: status, metadata: { ...newMsg.metadata, status } };
           setMessages(prev => prev.map((item: any) => String(item.id) === String(transferId) ? { ...item, ...patch } : item));
           updateLineMessage(conversationStorageId, transferId, patch as any);
+          if (!decision) showToast('转账未能确认，金额已退回');
         } catch (error) {
-          console.warn('[LINE transfer] AI settlement unavailable; keep pending:', error);
+          // 上游异常同样走拒收退款，不能让余额无限期冻结在待确认状态。
+          if (walletSettleTransfer(transferId, 'rejected')) {
+            const patch = { transferStatus: 'refunded', metadata: { ...newMsg.metadata, status: 'refunded' } };
+            setMessages(prev => prev.map((item: any) => String(item.id) === String(transferId) ? { ...item, ...patch } : item));
+            updateLineMessage(conversationStorageId, transferId, patch as any);
+            showToast('转账暂时无法确认，金额已退回');
+          }
+          console.warn('[LINE transfer] AI settlement failed; transfer refunded:', error);
         }
       })();
     }
