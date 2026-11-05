@@ -18,26 +18,37 @@ export interface StickerPack {
 }
 
 const KEY = 'line:sticker-packs';
+let stickerPacksWriteBlocked = false;
+import { reportPersistenceIssue } from './usePersistentState';
 
 function readPacks(): StickerPack[] {
+  stickerPacksWriteBlocked = false;
   if (typeof window === 'undefined') return [];
   try {
     const raw = window.localStorage.getItem(KEY);
-    if (!raw) return [];
+    if (raw === null) return [];
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(p => p && typeof p === 'object' && typeof p.id === 'string' && Array.isArray(p.stickers));
-  } catch {
+    if (!Array.isArray(parsed) || parsed.some(p => !p || typeof p !== 'object' || typeof p.id !== 'string' || !Array.isArray(p.stickers))) {
+      throw new Error('STICKER_PACKS_SCHEMA_INVALID');
+    }
+    return parsed as StickerPack[];
+  } catch (error) {
+    stickerPacksWriteBlocked = true;
+    reportPersistenceIssue('read:' + KEY, '表情包数据损坏或格式不符；已锁定写入以保留原始内容', error);
     return [];
   }
 }
 
-function writePacks(packs: StickerPack[]): void {
-  if (typeof window === 'undefined') return;
+function writePacks(packs: StickerPack[]): boolean {
+  if (typeof window === 'undefined' || stickerPacksWriteBlocked) return false;
   try {
-    window.localStorage.setItem(KEY, JSON.stringify(packs));
-  } catch {
-    // localStorage 满了就忽略，调用方可以 toast 提示
+    const serialized = JSON.stringify(packs);
+    window.localStorage.setItem(KEY, serialized);
+    if (window.localStorage.getItem(KEY) !== serialized) throw new Error('STICKER_PACKS_WRITE_VERIFY_FAILED');
+    return true;
+  } catch (error) {
+    reportPersistenceIssue('write:' + KEY, '表情包数据写入失败；原始内容已保留', error);
+    return false;
   }
 }
 

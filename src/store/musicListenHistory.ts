@@ -32,6 +32,7 @@ export interface MusicListenRecord {
 }
 
 const HISTORY_KEY = 'phone:music-listen-history';
+let historyWriteBlocked = false;
 
 /** 同曲去重键：优先 trackId，否则歌名+歌手 */
 export function listenSongKey(record: {
@@ -114,33 +115,48 @@ function consolidateRaw(records: MusicListenRecord[]): MusicListenRecord[] {
 }
 
 function readRaw(): MusicListenRecord[] {
+  historyWriteBlocked = false;
   if (typeof window === 'undefined') return [];
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(HISTORY_KEY) || '[]');
-    if (!Array.isArray(parsed)) return [];
+    const raw = window.localStorage.getItem(HISTORY_KEY);
+    if (raw === null) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('MUSIC_HISTORY_SCHEMA_INVALID');
     const cleaned = consolidateRaw(parsed as MusicListenRecord[]);
     if (cleaned.length !== parsed.length) {
+      const serialized = JSON.stringify(cleaned);
       try {
-        window.localStorage.setItem(HISTORY_KEY, JSON.stringify(cleaned));
-      } catch {
-        /* ignore quota */
+        window.localStorage.setItem(HISTORY_KEY, serialized);
+        if (window.localStorage.getItem(HISTORY_KEY) !== serialized) throw new Error('MUSIC_HISTORY_WRITE_VERIFY_FAILED');
+      } catch (error) {
+        reportPersistenceIssue('write:' + HISTORY_KEY, '音乐历史整理失败；原始记录已保留', error);
       }
     }
     return cleaned;
-  } catch {
+  } catch (error) {
+    historyWriteBlocked = true;
+    reportPersistenceIssue('read:' + HISTORY_KEY, '音乐历史损坏或格式不符；已锁定写入以保留原始记录', error);
     return [];
   }
 }
 
-function writeRaw(records: MusicListenRecord[]) {
-  if (typeof window === 'undefined') return;
-  const cleaned = consolidateRaw(records).map((item) => ({
-    ...item,
-    cover: safeAlbumCover(item.cover),
-    plays: Math.max(1, item.plays || 1),
-  }));
-  window.localStorage.setItem(HISTORY_KEY, JSON.stringify(cleaned.slice(0, 200)));
-  window.dispatchEvent(new CustomEvent('sane333:music-history-changed'));
+function writeRaw(records: MusicListenRecord[]): boolean {
+  if (typeof window === 'undefined' || historyWriteBlocked) return false;
+  try {
+    const cleaned = consolidateRaw(records).map((item) => ({
+      ...item,
+      cover: safeAlbumCover(item.cover),
+      plays: Math.max(1, item.plays || 1),
+    }));
+    const serialized = JSON.stringify(cleaned.slice(0, 200));
+    window.localStorage.setItem(HISTORY_KEY, serialized);
+    if (window.localStorage.getItem(HISTORY_KEY) !== serialized) throw new Error('MUSIC_HISTORY_WRITE_VERIFY_FAILED');
+    window.dispatchEvent(new CustomEvent('sane333:music-history-changed'));
+    return true;
+  } catch (error) {
+    reportPersistenceIssue('write:' + HISTORY_KEY, '音乐历史写入失败；原始记录已保留', error);
+    return false;
+  }
 }
 
 export function getMusicListenHistory(profileId?: string): MusicListenRecord[] {

@@ -1,5 +1,6 @@
 import type { MusicTrack } from './music';
 import { pickTrackColors } from './musicListenHistory';
+import { reportPersistenceIssue } from './usePersistentState';
 
 /** 我创建的 / 从角色收藏来的歌单 */
 export interface UserPlaylist {
@@ -72,20 +73,35 @@ const FALLBACK_COLORS: Array<[string, string, string]> = [
   ['#dda7a1', '#ebddc6', '#f1eae1'],
 ];
 
+const blockedMusicJsonKeys = new Set<string>();
+
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(key) || 'null');
-    return parsed == null ? fallback : (parsed as T);
-  } catch {
+    const raw = window.localStorage.getItem(key);
+    if (raw === null) { blockedMusicJsonKeys.delete(key); return fallback; }
+    const parsed = JSON.parse(raw);
+    blockedMusicJsonKeys.delete(key);
+    return parsed == null ? fallback : parsed as T;
+  } catch (error) {
+    blockedMusicJsonKeys.add(key);
+    reportPersistenceIssue('read:' + key, '音乐数据损坏；已锁定该存储键，避免默认值覆盖原始内容', error);
     return fallback;
   }
 }
 
-function writeJson(key: string, value: unknown, event: string) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(key, JSON.stringify(value));
-  window.dispatchEvent(new CustomEvent(event));
+function writeJson(key: string, value: unknown, event: string): boolean {
+  if (typeof window === 'undefined' || blockedMusicJsonKeys.has(key)) return false;
+  try {
+    const serialized = JSON.stringify(value);
+    window.localStorage.setItem(key, serialized);
+    if (window.localStorage.getItem(key) !== serialized) throw new Error('MUSIC_STORAGE_WRITE_VERIFY_FAILED');
+    window.dispatchEvent(new CustomEvent(event));
+    return true;
+  } catch (error) {
+    reportPersistenceIssue('write:' + key, '音乐数据写入失败；原始数据已保留', error);
+    return false;
+  }
 }
 
 export function getUserPlaylists(profileId?: string): UserPlaylist[] {
