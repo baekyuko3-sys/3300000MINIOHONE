@@ -1087,7 +1087,7 @@ export function LineConversationView({
     };
     reconcile();
     return () => { cancelled = true; };
-  }, [conversationStorageId, messages, groupMembers, activeRedPacket?.id]);
+  }, [conversationStorageId, messages, activeRedPacket?.id]);
 
   // 新红包到期后自动退回未领取份额；旧红包没有 sharesCents 时不猜测退款。
   useEffect(() => {
