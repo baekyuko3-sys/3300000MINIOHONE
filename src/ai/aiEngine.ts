@@ -1644,7 +1644,15 @@ export async function generateCreativeText(input: CreativeTextInput): Promise<st
 async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string> {
   requireApiKey(input.settings);
   const temperature = Math.max(0, Math.min(2, input.temperature ?? input.settings.temperature ?? 0.85));
-  const history = input.history || [];
+  // Keep client requests within the same limits enforced by both serverless
+  // proxies. Long histories are reduced from the oldest end; each message keeps
+  // its most recent context, while the system prompt keeps its leading rules.
+  const history = (input.history || [])
+    .filter(message => message && (message.role === 'user' || message.role === 'assistant'))
+    .slice(-30)
+    .map(message => ({ role: message.role, content: String(message.content || '').slice(-8000) }));
+  const systemPrompt = String(input.systemPrompt || '').slice(0, 80000);
+  const userPrompt = String(input.userPrompt || '').slice(-80000);
 
   const proxyChat = async () => {
     const response = await fetchWithTimeout('/api/ai-models', {
@@ -1656,8 +1664,8 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
         baseUrl: input.settings.apiBaseUrl,
         apiKey: input.settings.apiKey.trim(),
         model: input.settings.model.trim(),
-        systemPrompt: input.systemPrompt,
-        userPrompt: input.userPrompt,
+        systemPrompt,
+        userPrompt,
         history,
       }),
     }, 90000);
@@ -1691,10 +1699,10 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': input.settings.apiKey.trim() },
         body: JSON.stringify({
-          systemInstruction: { parts: [{ text: input.systemPrompt }] },
+          systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: [
             ...history.map(message => ({ role: message.role === 'assistant' ? 'model' : 'user', parts: [{ text: message.content }] })),
-            { role: 'user', parts: [{ text: input.userPrompt }] },
+            { role: 'user', parts: [{ text: userPrompt }] },
           ],
           generationConfig: { temperature, maxOutputTokens: 2200 },
         }),
@@ -1720,9 +1728,9 @@ async function generateCreativeTextRaw(input: CreativeTextInput): Promise<string
         temperature,
         max_tokens: Math.max(128, Math.min(12000, Number(input.settings.maxOutputTokens) || 2200)),
         messages: [
-          { role: 'system', content: input.systemPrompt },
+          { role: 'system', content: systemPrompt },
           ...history,
-          { role: 'user', content: input.userPrompt },
+          { role: 'user', content: userPrompt },
         ],
       }),
     }, input.timeoutMs ?? 90000);
