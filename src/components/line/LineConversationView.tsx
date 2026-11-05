@@ -1596,11 +1596,18 @@ export function LineConversationView({
   const currentTurnContextRef = useRef({ conversationId: conversationStorageId, personaId: String(resolvedPersonaId || '') });
   currentTurnContextRef.current = { conversationId: conversationStorageId, personaId: String(resolvedPersonaId || '') };
   const typingRequestIdRef = useRef('');
+  const activeAiAbortControllerRef = useRef<AbortController | null>(null);
   useEffect(() => {
+    activeAiAbortControllerRef.current?.abort();
+    activeAiAbortControllerRef.current = null;
     typingRequestIdRef.current = '';
     setIsTyping(false);
     (window as any).__lineTypingStart = 0;
   }, [conversationStorageId, resolvedPersonaId]);
+  useEffect(() => () => {
+    activeAiAbortControllerRef.current?.abort();
+    activeAiAbortControllerRef.current = null;
+  }, []);
   const [editingPersonaId, setEditingPersonaId] = useState<string | null>(null);
   const [showMyAvatar, setShowMyAvatar] = usePersistentState<boolean>(`line:show-my-avatar:${conversationStorageId}`, true);
   const myAvatarFileRef = useRef<HTMLInputElement>(null);
@@ -3385,6 +3392,9 @@ export function LineConversationView({
     // Enter/Return only sends the user's message. The paper-plane button passes shouldReply=true.
     if (!shouldReply) return;
 
+    activeAiAbortControllerRef.current?.abort();
+    const aiAbortController = new AbortController();
+    activeAiAbortControllerRef.current = aiAbortController;
     const turnContext = { conversationId: conversationStorageId, personaId: String(resolvedPersonaId || '') };
     const turnRequestId = 'line-turn-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
     // Context and ownership token both have to match; a timed-out older request cannot append after a newer send.
@@ -3569,6 +3579,7 @@ export function LineConversationView({
 
         const result = await generateCharacterReply({
           settings: conversationAiSettings(),
+          signal: aiAbortController.signal,
           character: primary.character!,
           characterProfile: primaryProfile,
           persona: activePersona ? { ...activePersona, weather: personaLiveWeather ? formatLineWeather(personaLiveWeather) : activePersona.weather } : activePersona,
@@ -4200,6 +4211,7 @@ export function LineConversationView({
       }
     } finally {
       clearTyping();
+      if (activeAiAbortControllerRef.current === aiAbortController) activeAiAbortControllerRef.current = null;
     }
   };
   // 双击头像“拍一拍 / 戳一戳” (Nudge / Poke)
@@ -4285,6 +4297,7 @@ export function LineConversationView({
           const recent = messagesRef.current.slice(-10).map((m: any) => `${m.role === 'user' ? '我' : (m.senderName || m.characterName || importedCharacter.name)}：${String(m.text || '').slice(0, 180)}`).join('\n');
           const raw = await generateCreativeText({
             settings: { ...resolveChannelAiSettings('chat'), maxOutputTokens: 100 },
+          signal: aiAbortController.signal,
             systemPrompt: `你正在扮演角色${importedCharacter.name}。结合角色人设、双方关系和当前剧情，判断是否接受对方转账。只输出 JSON：{"decision":"accepted"} 或 {"decision":"rejected"}。不得为了推进剧情随意接受；不愿收、觉得不合适或关系不允许时可以拒绝。`,
             userPrompt: JSON.stringify({ personality: importedCharacter.personality || '', description: importedCharacter.description || '', scenario: importedCharacter.scenario || '', creatorNotes: importedCharacter.creatorNotes || '', amount, note, recentConversation: recent.slice(0, 1800) }),
             temperature: 0.6,
@@ -6144,6 +6157,9 @@ export function LineConversationView({
       return;
     }
     const target = messages[targetIndex];
+    activeAiAbortControllerRef.current?.abort();
+    const aiAbortController = new AbortController();
+    activeAiAbortControllerRef.current = aiAbortController;
     const turnContext = { conversationId: conversationStorageId, personaId: String(resolvedPersonaId || '') };
     const turnRequestId = 'line-reroll-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
     const isCurrentTurn = () => isLineTurnRequestCurrent(currentTurnContextRef.current, turnContext, typingRequestIdRef, turnRequestId);
@@ -6175,6 +6191,7 @@ export function LineConversationView({
       const turnStatusPreset = resolveStatusBarPresetForTurn();
       const result = await generateCharacterReply({
         settings: conversationAiSettings(),
+          signal: aiAbortController.signal,
         character: importedCharacter,
         characterProfile,
         persona: activePersona,
@@ -6275,6 +6292,7 @@ export function LineConversationView({
       showToast(message.length > 60 ? message.slice(0, 60) + '…' : message);
     } finally {
       clearTyping();
+      if (activeAiAbortControllerRef.current === aiAbortController) activeAiAbortControllerRef.current = null;
     }
   };
 
